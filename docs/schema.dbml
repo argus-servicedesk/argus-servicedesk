@@ -1,0 +1,909 @@
+// LinkedEye ITSM — Database Schema for dbdocs.io
+// Generated from Prisma schema
+// Run: npx dbdocs build docs/schema.dbml
+
+Project LinkedEyeITSM {
+  database_type: 'PostgreSQL'
+  Note: 'Multi-tenant ITIL-aligned IT Service Management Platform'
+}
+
+// ═══════════════════════════════════════
+// MULTI-TENANCY
+// ═══════════════════════════════════════
+
+Table Organization {
+  id varchar [pk]
+  name varchar [unique, not null]
+  slug varchar [unique, not null]
+  environment varchar [not null, default: 'PROD', note: 'PROD|DR|UAT|STAGING|DEV']
+  serverIp varchar
+  fqdn varchar
+  description text
+  preferredLanguage varchar [default: 'en']
+  isActive boolean [default: true]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+}
+
+Table Site {
+  id varchar [pk]
+  name varchar [not null]
+  code varchar [not null]
+  organizationId varchar [ref: > Organization.id, not null]
+  location varchar
+  city varchar
+  state varchar
+  country varchar [default: 'IN']
+  timezone varchar [default: 'Asia/Kolkata']
+  serverIp varchar
+  sshPort int [default: 4422]
+  sshUser varchar [default: 'finadmin']
+  redisHost varchar
+  redisPort int [default: 6379]
+  prometheusUrl varchar
+  grafanaUrl varchar
+  lokiUrl varchar
+  isActive boolean [default: true]
+  isPrimary boolean [default: false]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    (organizationId, code) [unique]
+  }
+}
+
+// ═══════════════════════════════════════
+// USER MANAGEMENT
+// ═══════════════════════════════════════
+
+Table User {
+  id varchar [pk]
+  email varchar [unique, not null]
+  password varchar [not null, note: 'bcrypt hash, 12 rounds']
+  firstName varchar [not null]
+  lastName varchar [not null]
+  phone varchar
+  avatar varchar
+  role varchar [not null, default: 'VIEWER', note: 'ADMIN|MANAGER|ENGINEER|OPERATOR|VIEWER']
+  status varchar [not null, default: 'ACTIVE', note: 'ACTIVE|INACTIVE|LOCKED']
+  department varchar
+  jobTitle varchar
+  timezone varchar [default: 'Asia/Kolkata']
+  mfaEnabled boolean [default: false]
+  lastLogin timestamp
+  loginAttempts int [default: 0]
+  lockedUntil timestamp
+  skills text [note: 'Array of strings']
+  organizationId varchar [ref: > Organization.id, note: 'null = super admin']
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    email
+    role
+    status
+    organizationId
+  }
+}
+
+Table Session {
+  id varchar [pk]
+  token varchar [unique, not null]
+  refreshToken varchar [unique, not null]
+  userId varchar [ref: > User.id, not null]
+  userAgent varchar
+  ipAddress varchar
+  expiresAt timestamp [not null]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    userId
+    expiresAt
+  }
+}
+
+Table Team {
+  id varchar [pk]
+  name varchar [not null]
+  description text
+  email varchar
+  slackChannel varchar
+  managerId varchar [ref: > User.id]
+  isActive boolean [default: true]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    (name, organizationId) [unique]
+  }
+}
+
+Table TeamMember {
+  id varchar [pk]
+  teamId varchar [ref: > Team.id, not null]
+  userId varchar [ref: > User.id, not null]
+  role varchar [default: 'MEMBER', note: 'LEAD|MEMBER|OBSERVER']
+  joinedAt timestamp [default: `now()`]
+
+  indexes {
+    (teamId, userId) [unique]
+  }
+}
+
+Table UserMfa {
+  id varchar [pk]
+  userId varchar [ref: - User.id, unique, not null]
+  secret varchar [not null]
+  backupCodes text [not null]
+  enabledAt timestamp [not null]
+  createdAt timestamp [default: `now()`]
+}
+
+// ═══════════════════════════════════════
+// ITIL CORE MODULES
+// ═══════════════════════════════════════
+
+Table Incident {
+  id varchar [pk]
+  number varchar [unique, not null, note: 'INC0000001']
+  shortDescription varchar [not null]
+  description text
+  state varchar [not null, default: 'NEW', note: 'NEW|IN_PROGRESS|ON_HOLD|ESCALATED|RESOLVED|CLOSED|CANCELLED']
+  impact varchar [default: 'INDIVIDUAL', note: 'ENTERPRISE|DEPARTMENT|TEAM|INDIVIDUAL']
+  urgency varchar [default: 'LOW', note: 'CRITICAL|HIGH|MEDIUM|LOW']
+  priority varchar [default: 'P4', note: 'P1|P2|P3|P4']
+  category varchar
+  subcategory varchar
+  assignedToId varchar [ref: > User.id]
+  assignmentGroupId varchar [ref: > Team.id]
+  createdById varchar [ref: > User.id, not null]
+  configItemId varchar [ref: > ConfigurationItem.id]
+  slaBreached boolean [default: false]
+  responseTime timestamp
+  resolutionTime timestamp
+  slaTargetResponse timestamp
+  slaTargetResolution timestamp
+  slaPausedAt timestamp
+  slaPausedDuration int [default: 0]
+  source varchar [default: 'MANUAL', note: 'MANUAL|PROMETHEUS|GRAFANA|API|EMAIL|VOICE|SLACK']
+  sourceAlertId varchar
+  resolvedAt timestamp
+  closedAt timestamp
+  resolutionCode varchar
+  resolutionNotes text
+  escalationLevel int [default: 0]
+  lastEscalatedAt timestamp
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    state
+    priority
+    assignedToId
+    createdAt
+    number
+    slaBreached
+    organizationId
+    (organizationId, state)
+    (organizationId, priority, state)
+  }
+}
+
+Table Change {
+  id varchar [pk]
+  number varchar [unique, not null, note: 'CHG0000001']
+  shortDescription varchar [not null]
+  description text
+  type varchar [default: 'NORMAL', note: 'NORMAL|STANDARD|EMERGENCY']
+  state varchar [default: 'NEW', note: 'NEW|ASSESSMENT|APPROVAL|SCHEDULED|IMPLEMENTING|REVIEW|CLOSED|CANCELLED']
+  riskLevel varchar [default: 'MEDIUM', note: 'HIGH|MEDIUM|LOW']
+  category varchar
+  assignedToId varchar [ref: > User.id]
+  assignmentGroupId varchar [ref: > Team.id]
+  createdById varchar [ref: > User.id, not null]
+  justification text
+  implementationPlan text
+  rollbackPlan text
+  testPlan text
+  communicationPlan text
+  plannedStartDate timestamp
+  plannedEndDate timestamp
+  actualStartDate timestamp
+  actualEndDate timestamp
+  affectedServices text
+  downtime int [note: 'minutes']
+  gitRepoUrl varchar
+  gitBranch varchar
+  gitCommitHash varchar
+  pullRequestUrl varchar
+  reviewNotes text
+  closureCode varchar [note: 'SUCCESSFUL|FAILED|PARTIAL']
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    state
+    type
+    assignedToId
+    number
+    organizationId
+  }
+}
+
+Table Problem {
+  id varchar [pk]
+  number varchar [unique, not null, note: 'PRB0000001']
+  shortDescription varchar [not null]
+  description text
+  state varchar [default: 'NEW', note: 'NEW|INVESTIGATION|RCA_IN_PROGRESS|KNOWN_ERROR|RESOLVED|CLOSED']
+  priority varchar [default: 'P4']
+  category varchar
+  assignedToId varchar [ref: > User.id]
+  assignmentGroupId varchar [ref: > Team.id]
+  createdById varchar [ref: > User.id, not null]
+  rootCause text
+  rootCauseAnalysis json
+  workaround text
+  workaroundEffective boolean [default: false]
+  permanentFix text
+  fixImplemented boolean [default: false]
+  isKnownError boolean [default: false]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    state
+    priority
+    isKnownError
+    number
+    organizationId
+  }
+}
+
+Table Approval {
+  id varchar [pk]
+  changeId varchar [ref: > Change.id, not null]
+  approverId varchar [ref: > User.id, not null]
+  state varchar [default: 'PENDING', note: 'PENDING|APPROVED|REJECTED']
+  comments text
+  approvedAt timestamp
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+}
+
+// ═══════════════════════════════════════
+// LINKING TABLES
+// ═══════════════════════════════════════
+
+Table IncidentChange {
+  id varchar [pk]
+  incidentId varchar [ref: > Incident.id, not null]
+  changeId varchar [ref: > Change.id, not null]
+  linkType varchar [not null, note: 'CAUSED_BY|RESOLVED_BY|RELATED']
+  notes text
+  linkedById varchar [ref: > User.id]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (incidentId, changeId) [unique]
+  }
+}
+
+Table IncidentProblem {
+  id varchar [pk]
+  incidentId varchar [ref: > Incident.id, not null]
+  problemId varchar [ref: > Problem.id, not null]
+  linkType varchar [not null, note: 'CAUSED_BY|RELATED|SYMPTOM_OF']
+  notes text
+  linkedById varchar [ref: > User.id]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (incidentId, problemId) [unique]
+  }
+}
+
+Table ChangeCI {
+  id varchar [pk]
+  changeId varchar [ref: > Change.id, not null]
+  configItemId varchar [ref: > ConfigurationItem.id, not null]
+  impactType varchar
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (changeId, configItemId) [unique]
+  }
+}
+
+// ═══════════════════════════════════════
+// CMDB
+// ═══════════════════════════════════════
+
+Table ConfigurationItem {
+  id varchar [pk]
+  name varchar [not null]
+  type varchar [not null, note: '23 CI types: SERVER, K8S_CLUSTER, DATABASE, etc.']
+  status varchar [default: 'PLANNED', note: 'LIVE|MAINTENANCE|DECOMMISSIONED|PLANNED|IN_STOCK|DISPOSED|RESERVED|IN_TRANSIT']
+  category varchar
+  subcategory varchar
+  description text
+  serialNumber varchar
+  assetTag varchar
+  manufacturer varchar
+  model varchar
+  version varchar
+  location varchar
+  rackPosition varchar
+  dataCenter varchar
+  ipAddress varchar
+  macAddress varchar
+  hostname varchar
+  fqdn varchar
+  cpu varchar
+  memory varchar
+  storage varchar
+  os varchar
+  osVersion varchar
+  ownerId varchar [ref: > User.id]
+  supportGroupId varchar [ref: > Team.id]
+  vendor varchar
+  purchaseDate timestamp
+  warrantyExpiry timestamp
+  endOfLife timestamp
+  purchaseCost float
+  monthlyCost float
+  monitoringEnabled boolean [default: false]
+  prometheusJob varchar
+  environment varchar [note: 'PROD|DR|UAT|STAGING|DEV']
+  criticality varchar [note: 'HIGH|MEDIUM|LOW']
+  organizationId varchar [ref: > Organization.id]
+  siteId varchar [ref: > Site.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    type
+    status
+    name
+    organizationId
+    siteId
+  }
+}
+
+Table Alert {
+  id varchar [pk]
+  alertId varchar [not null]
+  name varchar [not null]
+  severity varchar [not null, note: 'CRITICAL|WARNING|INFO']
+  status varchar [default: 'FIRING', note: 'FIRING|RESOLVED|ACKNOWLEDGED|SILENCED']
+  source varchar [default: 'PROMETHEUS']
+  description text
+  metric varchar
+  currentValue varchar
+  threshold varchar
+  labels text
+  configItemId varchar [ref: > ConfigurationItem.id]
+  incidentId varchar [ref: > Incident.id]
+  firedAt timestamp [not null]
+  resolvedAt timestamp
+  acknowledgedAt timestamp
+  acknowledgedBy varchar
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    (alertId, organizationId) [unique]
+    status
+    severity
+    firedAt
+    organizationId
+    (organizationId, status)
+    (organizationId, severity)
+  }
+}
+
+Table CIRelationship {
+  id varchar [pk]
+  parentId varchar [ref: > ConfigurationItem.id, not null]
+  childId varchar [ref: > ConfigurationItem.id, not null]
+  type varchar [not null, note: 'DEPENDS_ON|RUNS_ON|CONNECTS_TO|HOSTS|CONTAINS|BACKED_BY']
+  description text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (parentId, childId, type) [unique]
+  }
+}
+
+Table NetworkConnection {
+  id varchar [pk]
+  sourceDeviceId varchar [ref: > ConfigurationItem.id, not null]
+  destinationDeviceId varchar [ref: > ConfigurationItem.id, not null]
+  sourcePort varchar
+  destPort varchar
+  connectionType varchar
+  bandwidth varchar
+  vlan varchar
+  description text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table Vendor {
+  id varchar [pk]
+  name varchar [not null]
+  contactPerson varchar
+  email varchar
+  phone varchar
+  address text
+  contractNumber varchar
+  website varchar
+  isActive boolean [default: true]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+
+  indexes {
+    (name, organizationId) [unique]
+  }
+}
+
+Table AssetFinancial {
+  id varchar [pk]
+  assetId varchar [ref: - ConfigurationItem.id, unique, not null]
+  purchaseDate timestamp
+  invoiceNumber varchar
+  quantity int [default: 1]
+  unitPrice float
+  totalPrice float
+  vendorId varchar [ref: > Vendor.id]
+  warrantyExpiry timestamp
+  amcStartDate timestamp
+  amcEndDate timestamp
+  amcVendor varchar
+  currency varchar [default: 'INR']
+  poNumber varchar
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table AssetAllocation {
+  id varchar [pk]
+  assetId varchar [ref: > ConfigurationItem.id, not null]
+  customerName varchar
+  assignedUserId varchar [ref: > User.id]
+  allocationDate timestamp
+  returnDate timestamp
+  status varchar [default: 'ALLOCATED', note: 'ALLOCATED|RETURNED|LOST']
+  notes text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table AssetDisposal {
+  id varchar [pk]
+  assetId varchar [ref: - ConfigurationItem.id, unique, not null]
+  disposalDate timestamp
+  disposalQuantity int
+  disposalValue float
+  disposalMethod varchar [note: 'RECYCLED|SOLD|DONATED|DESTROYED|E_WASTE']
+  remarks text
+  approvedById varchar [ref: > User.id]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table AssetMovement {
+  id varchar [pk]
+  assetId varchar [ref: > ConfigurationItem.id, not null]
+  fromLocation varchar
+  toLocation varchar
+  movementDate timestamp
+  movedById varchar [ref: > User.id]
+  reason text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table IPAddressInventory {
+  id varchar [pk]
+  ipAddress varchar [not null]
+  subnet varchar
+  gateway varchar
+  dnsName varchar
+  assetId varchar [ref: > ConfigurationItem.id]
+  status varchar [default: 'AVAILABLE', note: 'ASSIGNED|AVAILABLE|RESERVED']
+  vlan varchar
+  notes text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (ipAddress, organizationId) [unique]
+  }
+}
+
+Table ComputerComponent {
+  id varchar [pk]
+  assetId varchar [ref: > ConfigurationItem.id, not null]
+  componentType varchar [not null]
+  name varchar [not null]
+  manufacturer varchar
+  model varchar
+  serialNumber varchar
+  capacity varchar
+  speed varchar
+  interface varchar
+  slot varchar
+  status varchar [default: 'INSTALLED']
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+// ═══════════════════════════════════════
+// SOFTWARE & LICENSING
+// ═══════════════════════════════════════
+
+Table Software {
+  id varchar [pk]
+  name varchar [not null]
+  publisher varchar
+  category varchar [default: 'OTHER', note: 'OS|PRODUCTIVITY|SECURITY|MONITORING|DB|DEV|COMM|VIRT|BACKUP|NET|OTHER']
+  description text
+  website varchar
+  isOpenSource boolean [default: false]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table SoftwareVersion {
+  id varchar [pk]
+  softwareId varchar [ref: > Software.id, not null]
+  version varchar [not null]
+  arch varchar
+  releaseDate timestamp
+  endOfSupport timestamp
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (softwareId, version) [unique]
+  }
+}
+
+Table SoftwareInstallation {
+  id varchar [pk]
+  assetId varchar [ref: > ConfigurationItem.id, not null]
+  versionId varchar [ref: > SoftwareVersion.id, not null]
+  installDate timestamp [not null]
+  uninstallDate timestamp
+  installedBy varchar
+  licenseId varchar [ref: > SoftwareLicense.id]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table SoftwareLicense {
+  id varchar [pk]
+  softwareId varchar [ref: > Software.id, not null]
+  name varchar [not null]
+  serialKey varchar
+  type varchar [default: 'PERPETUAL', note: 'PERPETUAL|SUBSCRIPTION|OPEN_SOURCE|OEM|TRIAL|FREEWARE|SITE|CONCURRENT|NAMED_USER']
+  status varchar [default: 'ACTIVE', note: 'ACTIVE|EXPIRED|REVOKED|PENDING']
+  quantity int [default: 1]
+  usedCount int [default: 0]
+  purchaseDate timestamp
+  expiryDate timestamp
+  cost float
+  currency varchar [default: 'USD']
+  vendorId varchar [ref: > Vendor.id]
+  poNumber varchar
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table ConsumableItem {
+  id varchar [pk]
+  name varchar [not null]
+  type varchar [default: 'OTHER_CONSUMABLE', note: 'TONER|CARTRIDGE|INK|DRUM|PAPER|CABLE|BATTERY|etc.']
+  manufacturer varchar
+  model varchar
+  compatibleWith varchar
+  stockTotal int [default: 0]
+  stockUsed int [default: 0]
+  stockMin int [default: 5]
+  location varchar
+  cost float
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table ConsumableUsageLog {
+  id varchar [pk]
+  consumableId varchar [ref: > ConsumableItem.id, not null]
+  assetId varchar
+  quantity int [default: 1]
+  action varchar [not null]
+  performedBy varchar
+  notes text
+  createdAt timestamp [default: `now()`]
+}
+
+// ═══════════════════════════════════════
+// SLA & ESCALATION
+// ═══════════════════════════════════════
+
+Table SLADefinition {
+  id varchar [pk]
+  name varchar [not null]
+  priority varchar [not null, note: 'P1|P2|P3|P4']
+  responseTimeMinutes int [not null]
+  resolutionTimeMinutes int [not null]
+  businessHoursOnly boolean [default: false]
+  isActive boolean [default: true]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    (priority, organizationId) [unique]
+  }
+}
+
+Table EscalationPolicy {
+  id varchar [pk]
+  teamId varchar [ref: > Team.id, not null]
+  name varchar [not null]
+  description text
+  isActive boolean [default: true]
+  createdAt timestamp [default: `now()`]
+}
+
+Table EscalationRule {
+  id varchar [pk]
+  policyId varchar [ref: > EscalationPolicy.id, not null]
+  level int [not null]
+  delayMinutes int [not null]
+  notifyType varchar [not null, note: 'SMS|EMAIL|SLACK|VOICE|ALL']
+  notifyTargets varchar [not null]
+  conditionPriority varchar
+  createdAt timestamp [default: `now()`]
+}
+
+Table OnCallSchedule {
+  id varchar [pk]
+  teamId varchar [ref: > Team.id, not null]
+  userId varchar [ref: > User.id, not null]
+  startTime timestamp [not null]
+  endTime timestamp [not null]
+  isPrimary boolean [default: false]
+  createdAt timestamp [default: `now()`]
+}
+
+Table EscalationLog {
+  id varchar [pk]
+  incidentId varchar [ref: > Incident.id, not null]
+  level int [not null]
+  notifyType varchar [not null]
+  targetContact varchar [not null]
+  targetUserId varchar
+  targetName varchar
+  status varchar [not null]
+  callSid varchar
+  attemptedAt timestamp [not null]
+  respondedAt timestamp
+  notes text
+}
+
+// ═══════════════════════════════════════
+// COMMUNICATION & SUPPORT
+// ═══════════════════════════════════════
+
+Table WorkNote {
+  id varchar [pk]
+  content text [not null]
+  isInternal boolean [default: false]
+  authorId varchar [ref: > User.id, not null]
+  source varchar [default: 'MANUAL', note: 'MANUAL|AI|SYSTEM|SLACK']
+  incidentId varchar [ref: > Incident.id]
+  changeId varchar [ref: > Change.id]
+  problemId varchar [ref: > Problem.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table Activity {
+  id varchar [pk]
+  action varchar [not null]
+  description text
+  oldValue text
+  newValue text
+  userId varchar [ref: > User.id]
+  incidentId varchar [ref: > Incident.id]
+  changeId varchar [ref: > Change.id]
+  problemId varchar [ref: > Problem.id]
+  configItemId varchar [ref: > ConfigurationItem.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table Attachment {
+  id varchar [pk]
+  filename varchar [not null]
+  originalName varchar [not null]
+  mimeType varchar [not null]
+  size int [not null]
+  path varchar [not null]
+  incidentId varchar [ref: > Incident.id]
+  changeId varchar [ref: > Change.id]
+  problemId varchar [ref: > Problem.id]
+  uploadedById varchar [ref: > User.id, not null]
+  createdAt timestamp [default: `now()`]
+}
+
+Table Notification {
+  id varchar [pk]
+  userId varchar [ref: > User.id, not null]
+  type varchar [not null, note: 'INCIDENT|CHANGE|PROBLEM|ALERT|SLA|SYSTEM']
+  title varchar [not null]
+  message text [not null]
+  link varchar
+  isRead boolean [default: false]
+  readAt timestamp
+  channel varchar [default: 'WEB']
+  createdAt timestamp [default: `now()`]
+}
+
+Table AuditLog {
+  id varchar [pk]
+  organizationId varchar [ref: > Organization.id]
+  userId varchar [ref: > User.id]
+  action varchar [not null]
+  resourceType varchar [not null]
+  resourceId varchar [not null]
+  changes json
+  ipAddress varchar
+  userAgent varchar
+  severity varchar [default: 'INFO']
+  status varchar [default: 'SUCCESS']
+  createdAt timestamp [default: `now()`]
+
+  indexes {
+    organizationId
+    userId
+    action
+    (resourceType, resourceId)
+    createdAt
+  }
+}
+
+Table EmailQueue {
+  id varchar [pk]
+  to varchar [not null]
+  subject varchar [not null]
+  body text [not null]
+  templateId varchar
+  templateData json
+  status varchar [default: 'PENDING', note: 'PENDING|SENT|FAILED']
+  priority int [default: 5]
+  attempts int [default: 0]
+  lastError text
+  sentAt timestamp
+  scheduledAt timestamp
+  createdAt timestamp [default: `now()`]
+}
+
+Table SMSLog {
+  id varchar [pk]
+  recipient varchar [not null]
+  message text [not null]
+  provider varchar [not null, note: 'TWILIO|MSG91|KALEYRA']
+  status varchar [not null]
+  messageId varchar
+  cost float
+  direction varchar [default: 'OUTBOUND']
+  incidentId varchar [ref: > Incident.id]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table VoiceCallLog {
+  id varchar [pk]
+  callSid varchar
+  direction varchar [not null, note: 'INBOUND|OUTBOUND']
+  callerNumber varchar
+  callerName varchar
+  handler varchar [default: 'AI_BOT', note: 'AI_BOT|HUMAN|IVR']
+  duration int
+  status varchar
+  recordingUrl varchar
+  transcript text
+  sentiment varchar
+  linkedIncidentId varchar
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+// ═══════════════════════════════════════
+// INTEGRATIONS
+// ═══════════════════════════════════════
+
+Table Integration {
+  id varchar [pk]
+  name varchar [not null]
+  type varchar [not null, note: 'SLACK|SERVICENOW|PROMETHEUS|GRAFANA|LOKI|EMAIL|TWILIO|WEBHOOK|K8S|STACKSTORM|PAGERDUTY|APPRISE']
+  status varchar [default: 'INACTIVE']
+  config text
+  lastSyncAt timestamp
+  errorMessage text
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table IntegrationWebhook {
+  id varchar [pk]
+  integrationId varchar [ref: > Integration.id, not null]
+  name varchar [not null]
+  url varchar [not null]
+  secret varchar
+  events varchar [not null]
+  isActive boolean [default: true]
+  lastTriggered timestamp
+  createdAt timestamp [default: `now()`]
+}
+
+Table SlackIntegration {
+  id varchar [pk]
+  workspaceId varchar
+  workspaceName varchar
+  botToken varchar
+  channelId varchar
+  channelName varchar
+  webhookUrl varchar
+  isActive boolean [default: true]
+  organizationId varchar [ref: > Organization.id]
+  createdAt timestamp [default: `now()`]
+}
+
+Table ScheduledJob {
+  id varchar [pk]
+  name varchar [unique, not null]
+  description text
+  cronPattern varchar [not null]
+  isActive boolean [default: true]
+  lastRunAt timestamp
+  nextRunAt timestamp
+  lastStatus varchar
+  lastError text
+  createdAt timestamp [default: `now()`]
+}
+
+// ═══════════════════════════════════════
+// NOTIFICATION PREFERENCES
+// ═══════════════════════════════════════
+
+Table NotificationPreference {
+  id varchar [pk]
+  userId varchar [ref: > User.id, not null]
+  type varchar [not null]
+  channel varchar [not null]
+  enabled boolean [default: true]
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+}
+
+Table OrgApiKey {
+  id varchar [pk]
+  organizationId varchar [not null]
+  name varchar [not null]
+  keyHash varchar [not null]
+  prefix varchar [not null]
+  permissions text
+  isActive boolean [default: true]
+  expiresAt timestamp
+  lastUsedAt timestamp
+  createdAt timestamp [default: `now()`]
+}
