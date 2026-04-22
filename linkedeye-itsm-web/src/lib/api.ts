@@ -1,0 +1,86 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  withCredentials: true, // Send httpOnly cookies with every request
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
+});
+
+// Request interceptor: attach Bearer token + org header
+api.interceptors.request.use((config) => {
+  try {
+    const stored = localStorage.getItem('linkedeye-auth');
+    if (stored) {
+      const { state } = JSON.parse(stored);
+      if (state?.accessToken) config.headers['Authorization'] = `Bearer ${state.accessToken}`;
+      if (state?.selectedOrgId) config.headers['X-Organization-Id'] = state.selectedOrgId;
+    }
+  } catch {}
+  return config;
+});
+
+// Response interceptor: handle 401 refresh
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (v: unknown) => void; reject: (r: unknown) => void }> = [];
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach(({ resolve, reject }) => error ? reject(error) : resolve(token));
+  failedQueue = [];
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    // MFA enforcement: redirect to MFA setup if org requires it
+    if (error.response?.status === 403 && error.response?.data?.code === 'MFA_REQUIRED') {
+      if (window.location.pathname !== '/settings/mfa') {
+        window.location.href = '/settings/mfa?required=true';
+      }
+      return Promise.reject(error);
+    }
+
+    const originalRequest = error.config;
+    if (error.response?.status !== 401 || originalRequest._retry) return Promise.reject(error);
+
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then(() => api(originalRequest));
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      const stored = localStorage.getItem('linkedeye-auth');
+      const refreshToken = stored ? JSON.parse(stored)?.state?.refreshToken : null;
+      const refreshRes = await axios.post('/api/v1/auth/refresh', {}, {
+        withCredentials: true,
+        headers: refreshToken ? { 'Authorization': `Bearer ${refreshToken}` } : {},
+      });
+
+      // Save new tokens from refresh response
+      const newAccess = refreshRes.data?.data?.accessToken;
+      const newRefresh = refreshRes.data?.data?.refreshToken;
+      if (newAccess && stored) {
+        const parsed = JSON.parse(stored);
+        parsed.state.accessToken = newAccess;
+        if (newRefresh) parsed.state.refreshToken = newRefresh;
+        localStorage.setItem('linkedeye-auth', JSON.stringify(parsed));
+      }
+
+      processQueue(null);
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError);
+      localStorage.removeItem('linkedeye-auth');
+      window.location.href = '/login';
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+);
+
+export default api;
