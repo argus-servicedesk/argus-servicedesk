@@ -1,8 +1,8 @@
-// LinkedEye ITSM — Database Schema for dbdocs.io
+// Argus Service Desk — Database Schema for dbdocs.io
 // Generated from Prisma schema
 // Run: npx dbdocs build docs/schema.dbml
 
-Project LinkedEyeITSM {
+Project ArgusServiceDesk {
   database_type: 'PostgreSQL'
   Note: 'Multi-tenant ITIL-aligned IT Service Management Platform'
 }
