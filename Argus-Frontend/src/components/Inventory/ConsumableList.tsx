@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// LinkedEye ITSM — Consumables Inventory Page
+// Argus Service Desk — Consumables Inventory Page
 // Fetches from /api/v1/consumables with stock management
 // ═══════════════════════════════════════════════════════════
 

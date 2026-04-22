@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 
-const DEFAULT_NAMESPACES = ['linkedeye-inc', 'kube-system', 'default'];
+const DEFAULT_NAMESPACES = ['argus', 'kube-system', 'default'];
 const TABS = ['Overview', 'Pods', 'Deployments', 'Events', 'Services', 'Logs', 'Assets'] as const;
 type Tab = typeof TABS[number];
 
@@ -100,7 +100,7 @@ function highlightSearch(text: string, search: string) {
 // ═════════════════════════════════════════════════════════════════════════════
 export default function K8sClusterDashboard() {
   const [tab, setTab] = useState<Tab>('Overview');
-  const [namespace, setNamespace] = useState('linkedeye-inc');
+  const [namespace, setNamespace] = useState('argus');
   const { selectedOrgId, user } = useAuthStore();
   const isSuperAdmin = user?.role === 'ADMIN' && !user?.organizationId;
 
@@ -126,8 +126,8 @@ export default function K8sClusterDashboard() {
   // Derive namespace list dynamically from cluster overview (fallback to defaults)
   const discoveredNamespaces = overviewData?.namespaces
     ? Object.keys(overviewData.namespaces).sort((a, b) => {
-        // Pin linkedeye-inc first, then kube-system, then alphabetical
-        const priority = ['linkedeye-inc', 'kube-system', 'default'];
+        // Pin argus first, then kube-system, then alphabetical
+        const priority = ['argus', 'kube-system', 'default'];
         const ai = priority.indexOf(a), bi = priority.indexOf(b);
         if (ai !== -1 && bi !== -1) return ai - bi;
         if (ai !== -1) return -1;

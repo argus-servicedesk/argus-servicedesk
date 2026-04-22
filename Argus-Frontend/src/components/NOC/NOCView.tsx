@@ -295,7 +295,7 @@ export default function NOCView() {
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2.5">
               <Eye className="w-4 h-4" style={{ color: '#93c5fd' }} />
-              <span className="text-[12px] font-black tracking-[0.25em] uppercase" style={{ color: '#ffffff' }}>LINKEDEYE NOC</span>
+              <span className="text-[12px] font-black tracking-[0.25em] uppercase" style={{ color: '#ffffff' }}>ARGUS NOC</span>
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded" style={{
                 background: systemOK ? 'rgba(110,231,183,0.2)' : 'rgba(255,77,106,0.2)',
                 color: systemOK ? '#6EE7B7' : '#FF4D6A',

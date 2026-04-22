@@ -1,8 +1,8 @@
-# LinkedEye ITSM — Database Schema Documentation
+# Argus Service Desk — Database Schema Documentation
 
 ## Overview
 
-LinkedEye ITSM uses **PostgreSQL 16** with **Prisma ORM**. The schema supports multi-tenant ITIL-aligned service management with 40+ tables organized into 8 domains.
+Argus Service Desk uses **PostgreSQL 16** with **Prisma ORM**. The schema supports multi-tenant ITIL-aligned service management with 40+ tables organized into 8 domains.
 
 | Domain | Tables | Description |
 |--------|--------|-------------|

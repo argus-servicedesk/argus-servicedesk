@@ -151,7 +151,7 @@ export default function LogExplorer() {
     const txt = filteredLogs.map(l => `${formatNanoTs(l.timestamp)}  ${l.message}`).join('\n');
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(new Blob([txt], { type: 'text/plain' })),
-      download: `linkedeye-logs-${new Date().toISOString().slice(0, 19)}.txt`,
+      download: `argus-logs-${new Date().toISOString().slice(0, 19)}.txt`,
     });
     a.click();
   };
@@ -308,7 +308,7 @@ export default function LogExplorer() {
             { label: 'Errors only', q: '{} |= "error"' },
             { label: 'Warnings', q: '{} |= "warn"' },
             { label: 'kube-system', q: '{namespace="kube-system"}' },
-            { label: 'linkedeye-inc', q: '{namespace="linkedeye-inc"}' },
+            { label: 'argus', q: '{namespace="argus"}' },
           ].map(p => (
             <button
               key={p.q}

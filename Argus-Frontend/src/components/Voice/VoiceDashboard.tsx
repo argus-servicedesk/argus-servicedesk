@@ -117,7 +117,7 @@ function AIAgentTab() {
   }, []);
 
   useEffect(() => {
-    const token = (() => { try { return JSON.parse(localStorage.getItem('linkedeye-auth') || '{}')?.state?.token; } catch { return null; } })();
+    const token = (() => { try { return JSON.parse(localStorage.getItem('argus-auth') || '{}')?.state?.token; } catch { return null; } })();
 
     const voiceSocket = io(window.location.origin, {
       path: '/socket.io/',
@@ -136,7 +136,7 @@ function AIAgentTab() {
     voiceSocket.on('disconnect', () => setIsConnected(false));
 
     voiceSocket.on('session-ready', (data: { session_id: string }) => {
-      console.log('[LinkedEye] Session:', data.session_id);
+      console.log('[Argus] Session:', data.session_id);
     });
 
     voiceSocket.on('transcript', (data: { text: string }) => {
@@ -264,7 +264,7 @@ function AIAgentTab() {
           </div>
           <div>
             <h3 className="text-sm font-display font-bold" style={{ color: '#0f172a' }}>Argus AI Agent</h3>
-            <p className="text-[10px]" style={{ color: '#94a3b8' }}>GPT-4.1 &middot; Real-time voice &middot; ITSM tools</p>
+            <p className="text-[10px]" style={{ color: '#94a3b8' }}>GPT-4.1 &middot; Real-time voice &middot; Service Desk tools</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

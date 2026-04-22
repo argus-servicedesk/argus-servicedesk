@@ -250,7 +250,7 @@ export default function LoginPage() {
             >
               ARGUS
             </h1>
-            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise ITSM Platform</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise Service Desk Platform</p>
           </div>
 
           {/* Form card */}

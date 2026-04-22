@@ -1,5 +1,5 @@
 // ===============================================================
-// LinkedEye ITSM -- Consumable Detail Page
+// Argus Service Desk -- Consumable Detail Page
 // Fetches from /api/v1/consumables/:id with usage logs
 // ===============================================================
 

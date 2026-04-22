@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// LinkedEye ITSM — useAuth Hook
+// Argus Service Desk — useAuth Hook
 // Ergonomic wrapper over authStore + TanStack Query mutations
 // for profile update and password change.
 // ═══════════════════════════════════════════════════════════

@@ -16,7 +16,7 @@ interface IntegrationDef {
   icon: any;
   description: string;
   color: string;
-  category: 'monitoring' | 'itsm' | 'communication' | 'automation' | 'cloud';
+  category: 'monitoring' | 'service_desk' | 'communication' | 'automation' | 'cloud';
   dashboardRoute?: string;
 }
 
@@ -30,12 +30,12 @@ const INTEGRATION_DEFS: IntegrationDef[] = [
   { type: 'DATADOG', name: 'Datadog', icon: Eye, description: 'Infrastructure & APM monitoring', color: 'fuchsia', category: 'monitoring' },
   { type: 'NEW_RELIC', name: 'New Relic', icon: Search, description: 'Full-stack observability platform', color: 'emerald', category: 'monitoring' },
   { type: 'ELASTICSEARCH', name: 'Elasticsearch', icon: Database, description: 'Search & log analytics engine', color: 'amber', category: 'monitoring' },
-  // ── ITSM & Incident Management ──
-  { type: 'PAGERDUTY', name: 'PagerDuty', icon: Bell, description: 'Incident response & on-call management', color: 'emerald', category: 'itsm', dashboardRoute: '/pagerduty' },
-  { type: 'SERVICENOW', name: 'ServiceNow', icon: Globe, description: 'ITSM sync & ticket mirroring', color: 'violet', category: 'itsm' },
-  { type: 'JIRA', name: 'Jira', icon: Bug, description: 'Issue tracking & project management', color: 'violet', category: 'itsm' },
-  { type: 'OPSGENIE', name: 'OpsGenie', icon: Shield, description: 'Alert routing & escalation policies', color: 'crimson', category: 'itsm' },
-  { type: 'REDMINE', name: 'Redmine', icon: GitBranch, description: 'Project management & bug tracking', color: 'crimson', category: 'itsm' },
+  // ── Service Desk & Incident Management ──
+  { type: 'PAGERDUTY', name: 'PagerDuty', icon: Bell, description: 'Incident response & on-call management', color: 'emerald', category: 'service_desk', dashboardRoute: '/pagerduty' },
+  { type: 'SERVICENOW', name: 'ServiceNow', icon: Globe, description: 'Service Desk sync & ticket mirroring', color: 'violet', category: 'service_desk' },
+  { type: 'JIRA', name: 'Jira', icon: Bug, description: 'Issue tracking & project management', color: 'violet', category: 'service_desk' },
+  { type: 'OPSGENIE', name: 'OpsGenie', icon: Shield, description: 'Alert routing & escalation policies', color: 'crimson', category: 'service_desk' },
+  { type: 'REDMINE', name: 'Redmine', icon: GitBranch, description: 'Project management & bug tracking', color: 'crimson', category: 'service_desk' },
   // ── Communication & Notifications ──
   { type: 'SLACK', name: 'Slack', icon: MessageSquare, description: 'Team notifications & incident channels', color: 'amber', category: 'communication' },
   { type: 'APPRISE', name: 'Apprise', icon: Radio, description: 'Multi-channel push notifications', color: 'fuchsia', category: 'communication' },
@@ -107,7 +107,7 @@ const statusConfig: Record<string, { icon: any; label: string; color: string; bg
 const CATEGORIES = [
   { key: 'all', label: 'All Integrations' },
   { key: 'monitoring', label: 'Monitoring' },
-  { key: 'itsm', label: 'ITSM' },
+  { key: 'service_desk', label: 'Service Desk' },
   { key: 'communication', label: 'Communication' },
   { key: 'automation', label: 'Automation' },
   { key: 'cloud', label: 'Cloud & Infra' },
@@ -276,7 +276,7 @@ export default function IntegrationHub() {
           <div className="flex items-center gap-2 mt-3 ml-[42px]">
             {[
               { label: 'Monitoring', count: integrations.filter(i => i.category === 'monitoring').length, active: integrations.filter(i => i.category === 'monitoring' && i.status === 'ACTIVE').length },
-              { label: 'ITSM', count: integrations.filter(i => i.category === 'itsm').length, active: integrations.filter(i => i.category === 'itsm' && i.status === 'ACTIVE').length },
+              { label: 'Service Desk', count: integrations.filter(i => i.category === 'service_desk').length, active: integrations.filter(i => i.category === 'service_desk' && i.status === 'ACTIVE').length },
               { label: 'Comms', count: integrations.filter(i => i.category === 'communication').length, active: integrations.filter(i => i.category === 'communication' && i.status === 'ACTIVE').length },
               { label: 'Automation', count: integrations.filter(i => i.category === 'automation').length, active: integrations.filter(i => i.category === 'automation' && i.status === 'ACTIVE').length },
               { label: 'Cloud', count: integrations.filter(i => i.category === 'cloud').length, active: integrations.filter(i => i.category === 'cloud' && i.status === 'ACTIVE').length },
@@ -576,11 +576,11 @@ export default function IntegrationHub() {
                         </div>
                         <div className="p-3 rounded-lg font-mono text-[9px] space-y-1 leading-relaxed" style={{ background: 'rgba(99,102,241,0.03)', border: '1px solid rgba(99,102,241,0.06)', color: '#94a3b8' }}>
                           <div className="text-[10px] font-semibold font-sans mb-1.5" style={{ color: '#64748b' }}>How to create a read-only service account token:</div>
-                          <div>kubectl create serviceaccount linkedeye-reader -n kube-system</div>
-                          <div>kubectl create clusterrolebinding linkedeye-reader \</div>
+                          <div>kubectl create serviceaccount argus-reader -n kube-system</div>
+                          <div>kubectl create clusterrolebinding argus-reader \</div>
                           <div className="pl-4">--clusterrole=view \</div>
-                          <div className="pl-4">--serviceaccount=kube-system:linkedeye-reader</div>
-                          <div>kubectl -n kube-system create token linkedeye-reader</div>
+                          <div className="pl-4">--serviceaccount=kube-system:argus-reader</div>
+                          <div>kubectl -n kube-system create token argus-reader</div>
                         </div>
                         <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Or use Basic Auth (fallback)</div>
                         <div className="grid grid-cols-2 gap-3">

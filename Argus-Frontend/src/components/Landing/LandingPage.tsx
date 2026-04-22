@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   LinkedEye — Enterprise ITSM Platform Landing Page
-   Inspired by: linkedeye.watsapp.finspot.in + archon.finspot.in
+   Argus Service Desk — Enterprise Service Desk Platform Landing Page
+   Inspired by: argus.watsapp.finspot.in + archon.finspot.in
    Two-column hero, radar scanner, ambient blobs, glassmorphic cards
    ═══════════════════════════════════════════════════════════════════════════════ */
 
@@ -426,7 +426,7 @@ const STEPS = [
 const INTEGRATIONS = [
   { n: 'Prometheus', t: 'Monitoring', e: '🔥' }, { n: 'Grafana', t: 'Dashboards', e: '📊' },
   { n: 'Kubernetes', t: 'Orchestration', e: '☸️' }, { n: 'PagerDuty', t: 'On-Call', e: '📟' },
-  { n: 'Slack', t: 'Messaging', e: '💬' }, { n: 'ServiceNow', t: 'ITSM', e: '🎫' },
+  { n: 'Slack', t: 'Messaging', e: '💬' }, { n: 'ServiceNow', t: 'Service Desk', e: '🎫' },
   { n: 'Loki', t: 'Logging', e: '📋' }, { n: 'PostgreSQL', t: 'Database', e: '🐘' },
   { n: 'Redis', t: 'Cache', e: '🔴' }, { n: 'Ollama AI', t: 'LLM Engine', e: '🧠' },
   { n: 'StackStorm', t: 'Automation', e: '⚡' }, { n: 'Apprise', t: 'Notifications', e: '🔔' },
@@ -560,7 +560,7 @@ export default function LandingPage() {
               <div className="hero-left">
                 <div className="hero-badge">
                   <span className="hero-badge-dot" />
-                  AI-Powered ITSM Platform
+                  AI-Powered Service Desk Platform
                 </div>
                 <h1 className="hero-title">
                   Resolve Incidents<br />
@@ -810,7 +810,7 @@ export default function LandingPage() {
                 <div className="foot-ht">Company</div>
                 <ul className="foot-ul">
                   <li><a href="#">About</a></li>
-                  <li><a href="mailto:support@linkedeye-inc.com">Contact</a></li>
+                  <li><a href="mailto:support@argus.com">Contact</a></li>
                   <li><a href="#">Status Page</a></li>
                 </ul>
               </div>

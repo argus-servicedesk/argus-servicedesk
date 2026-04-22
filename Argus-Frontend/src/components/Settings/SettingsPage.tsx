@@ -607,10 +607,10 @@ export default function SettingsPage() {
           {/* ── SYSTEM ── */}
           {activeTab === 'system' && (
             <div className="space-y-6">
-              <Section title="Platform Information" description="Argus ITSM system details and version info">
+              <Section title="Platform Information" description="Argus Service Desk system details and version info">
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { icon: Eye,      label: 'Platform',     value: 'Argus ITSM' },
+                    { icon: Eye,      label: 'Platform',     value: 'Argus Service Desk' },
                     { icon: Globe,    label: 'API',          value: '/api/v1' },
                     { icon: Database, label: 'Database',     value: 'PostgreSQL 16.2' },
                     { icon: Database, label: 'Cache',        value: 'Redis 7.2' },
@@ -643,7 +643,7 @@ export default function SettingsPage() {
                     { label: 'Monitoring', desc: 'Prometheus + Grafana + Loki' },
                     { label: 'Orchestration', desc: 'K8s + StackStorm + n8n' },
                     { label: 'Communications', desc: 'Slack + Twilio + MSG91 + Apprise' },
-                    { label: 'ITSM', desc: 'PagerDuty + Jira + ServiceNow' },
+                    { label: 'Service Desk', desc: 'PagerDuty + Jira + ServiceNow' },
                   ].map(s => (
                     <div key={s.label} className="flex-1 p-3 rounded-xl" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.06)' }}>
                       <p className="text-xs font-semibold mb-0.5" style={{ color: '#0f172a' }}>{s.label}</p>

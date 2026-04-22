@@ -82,7 +82,7 @@ DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.postgresql")
 DATABASES = {
     "default": {
         "ENGINE": DB_ENGINE,
-        "NAME": os.getenv("DB_NAME", "linkedeye_itsm"),
+        "NAME": os.getenv("DB_NAME", "argus_servicedesk"),
         "USER": os.getenv("DB_USER", "postgres"),
         "PASSWORD": os.getenv("DB_PASSWORD", "postgres"),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
@@ -123,8 +123,8 @@ SIMPLE_JWT = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "LinkedEye ITSM Python API",
-    "DESCRIPTION": "Production-grade Python backend for LinkedEye ITSM React web.",
+    "TITLE": "Argus Service Desk Python API",
+    "DESCRIPTION": "Production-grade Python backend for Argus Service Desk.",
     "VERSION": "1.0.0",
 }
 

@@ -312,7 +312,7 @@ export default function DashboardOverview() {
   });
   const orgs: { id: string; name: string; environment: string }[] = orgsData?.data || [];
   const selectedOrg = selectedOrgId ? orgs.find((o) => o.id === selectedOrgId) : null;
-  const orgName = selectedOrg?.name || organization?.name || 'Argus ITSM';
+  const orgName = selectedOrg?.name || organization?.name || 'Argus Service Desk';
   const env = selectedOrg?.environment || organization?.environment || 'DEV';
 
   /* ── Data hooks ── */
@@ -996,7 +996,7 @@ export default function DashboardOverview() {
 
       {/* FOOTER */}
       <div className="text-center py-3 text-[10px] text-slate-400">
-        <span className="font-semibold text-slate-300">ARGUS ITSM</span>
+        <span className="font-semibold text-slate-300">ARGUS SERVICE DESK</span>
         <span className="mx-1.5 text-slate-200">&middot;</span>
         FinSpot Technology Solutions Pvt Ltd
         <span className="mx-1.5 text-slate-200">&middot;</span>

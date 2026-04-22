@@ -3,14 +3,16 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   withCredentials: true, // Send httpOnly cookies with every request
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Tenant-Id': 'argus',
+  },
 });
 
 // Request interceptor: attach Bearer token + org header
 api.interceptors.request.use((config) => {
   try {
-    const stored = localStorage.getItem('linkedeye-auth');
+    const stored = localStorage.getItem('argus-auth');
     if (stored) {
       const { state } = JSON.parse(stored);
       if (state?.accessToken) config.headers['Authorization'] = `Bearer ${state.accessToken}`;
@@ -53,28 +55,36 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const stored = localStorage.getItem('linkedeye-auth');
+      const stored = localStorage.getItem('argus-auth');
       const refreshToken = stored ? JSON.parse(stored)?.state?.refreshToken : null;
-      const refreshRes = await axios.post('/api/v1/auth/refresh', {}, {
-        withCredentials: true,
-        headers: refreshToken ? { 'Authorization': `Bearer ${refreshToken}` } : {},
-      });
+      const refreshRes = await axios.post('/api/v1/auth/refresh',
+        refreshToken ? { refresh: refreshToken } : {},
+        {
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
       // Save new tokens from refresh response
-      const newAccess = refreshRes.data?.data?.accessToken;
-      const newRefresh = refreshRes.data?.data?.refreshToken;
+      const newAccess = refreshRes.data?.access;
+      const newRefresh = refreshRes.data?.refresh;
       if (newAccess && stored) {
         const parsed = JSON.parse(stored);
         parsed.state.accessToken = newAccess;
         if (newRefresh) parsed.state.refreshToken = newRefresh;
-        localStorage.setItem('linkedeye-auth', JSON.stringify(parsed));
+        localStorage.setItem('argus-auth', JSON.stringify(parsed));
+      } else {
+        // If refresh failed, clear auth and redirect to login
+        localStorage.removeItem('argus-auth');
+        window.location.href = '/login';
+        return Promise.reject(new Error('Token refresh failed'));
       }
 
       processQueue(null);
       return api(originalRequest);
     } catch (refreshError) {
       processQueue(refreshError);
-      localStorage.removeItem('linkedeye-auth');
+      localStorage.removeItem('argus-auth');
       window.location.href = '/login';
       return Promise.reject(refreshError);
     } finally {

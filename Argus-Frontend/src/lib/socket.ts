@@ -5,7 +5,7 @@ let socket: Socket | null = null;
 
 function getToken(): string | null {
   try {
-    const stored = localStorage.getItem('linkedeye-auth');
+    const stored = localStorage.getItem('argus-auth');
     return stored ? JSON.parse(stored).state?.token : null;
   } catch {
     return null;

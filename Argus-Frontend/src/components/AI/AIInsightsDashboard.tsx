@@ -1535,7 +1535,7 @@ export default function AIInsightsDashboard() {
 
       {/* Footer */}
       <div className="text-center py-3 text-[11px]" style={{ color: '#94a3b8' }}>
-        AI Insights powered by OpenAI GPT-4o — AI Agent correlates Prometheus, PostgreSQL, Loki & ITSM data
+        AI Insights powered by OpenAI GPT-4o — AI Agent correlates Prometheus, PostgreSQL, Loki & Service Desk data
         <br />
         <span className="font-mono text-[10px]">Models auto-classify incidents, suggest resolutions, and detect infrastructure patterns</span>
       </div>

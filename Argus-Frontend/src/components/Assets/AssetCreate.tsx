@@ -357,7 +357,7 @@ export default function AssetCreate() {
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
                 Hostname
               </label>
-              <input type="text" placeholder="e.g. prod-api-01.linkedeye.local" {...styledRegister('hostname')} />
+              <input type="text" placeholder="e.g. prod-api-01.argus.local" {...styledRegister('hostname')} />
             </div>
           </div>
 

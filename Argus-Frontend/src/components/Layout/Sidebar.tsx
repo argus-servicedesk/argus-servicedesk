@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
+import { useState } from 'react';
 import {
   LayoutDashboard, AlertTriangle, GitBranch, Bug, Bell,
   Server, Network, Brain, Zap, BarChart3, Plug, Users, Cpu,
@@ -9,6 +10,7 @@ import {
   BookOpen, Clock, FileSearch, UserCircle, X, ScrollText, ShieldCheck,
   Printer, Smartphone, HardDrive, Package, MonitorSmartphone,
   ClipboardCheck, MapPin, ShoppingCart, ClipboardList, Globe,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
@@ -131,13 +133,28 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const userRole = user?.role || 'VIEWER';
-  const isSuperAdmin = userRole === 'ADMIN' && !user?.organizationId;
+  const isSuperAdmin = userRole === 'ADMIN' && !user?.organization;
   const initials = user
-    ? `${(user.firstName?.[0] || '').toUpperCase()}${(user.lastName?.[0] || '').toUpperCase()}`
+    ? `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
     : 'U';
 
   // On mobile, sidebar is always expanded (not collapsed)
   const showLabels = mobileOpen || !collapsed;
+
+  // State for expanded groups
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['OVERVIEW', 'SERVICE MANAGEMENT']));
+
+  const toggleGroup = (label: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
 
   return (
     <>
@@ -180,28 +197,16 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               <Eye className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
             {showLabels && (
-              <div className="flex items-center gap-2">
-                <span
-                  className="font-display font-bold text-[15px] tracking-tight"
-                  style={{
-                    background: 'linear-gradient(135deg, #c084fc, #f0abfc)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  LINKEDEYE
-                </span>
-                <span
-                  className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
-                  style={{
-                    color: '#c084fc',
-                    background: 'rgba(192,132,252,0.1)',
-                    border: '1px solid rgba(192,132,252,0.2)',
-                  }}
-                >
-                  ITSM
-                </span>
-              </div>
+              <span
+                className="font-display font-bold text-[15px] tracking-tight"
+                style={{
+                  background: 'linear-gradient(135deg, #c084fc, #f0abfc)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                Argus Service Desk
+              </span>
             )}
           </div>
           {/* Mobile close button */}
@@ -234,9 +239,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
             return (
               <div key={group.label}>
                 {showLabels ? (
-                  <div className="flex items-center gap-2 px-3 mb-1.5">
+                  <button
+                    onClick={() => toggleGroup(group.label)}
+                    className="flex items-center gap-2 px-3 mb-1.5 w-full cursor-pointer group"
+                  >
                     <span
-                      className="text-[9px] font-black tracking-[0.18em] uppercase whitespace-nowrap"
+                      className="text-[11px] font-black tracking-[0.18em] uppercase whitespace-nowrap"
                       style={{ color: 'rgba(255,255,255,0.25)' }}
                     >
                       {group.label}
@@ -245,7 +253,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                       className="flex-1 h-px"
                       style={{ background: 'rgba(255,255,255,0.06)' }}
                     />
-                  </div>
+                    {expandedGroups.has(group.label) ? (
+                      <ChevronUp className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.25)' }} />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.25)' }} />
+                    )}
+                  </button>
                 ) : (
                   <div
                     className="h-px mx-2 mb-2"
@@ -253,78 +266,80 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   />
                 )}
 
-                <div className="space-y-0.5">
-                  {visibleItems.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      className="block relative"
-                      onClick={() => onMobileClose?.()}
-                    >
-                      {({ isActive }) => (
-                        <div
-                          className={clsx(
-                            'flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 cursor-pointer group relative overflow-hidden',
-                            !showLabels && 'justify-center'
-                          )}
-                          style={
-                            isActive
-                              ? {
-                                  background: 'rgba(124,58,237,0.15)',
-                                  color: '#c084fc',
-                                }
-                              : {
-                                  color: 'rgba(255,255,255,0.45)',
-                                }
-                          }
-                          onMouseEnter={(e) => {
-                            if (!isActive) {
-                              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                              e.currentTarget.style.color = 'rgba(255,255,255,0.85)';
+                {expandedGroups.has(group.label) && (
+                  <div className="space-y-0.5">
+                    {visibleItems.map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        className="block relative"
+                        onClick={() => onMobileClose?.()}
+                      >
+                        {({ isActive }) => (
+                          <div
+                            className={clsx(
+                              'flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 cursor-pointer group relative overflow-hidden',
+                              !showLabels && 'justify-center'
+                            )}
+                            style={
+                              isActive
+                                ? {
+                                    background: 'rgba(124,58,237,0.15)',
+                                    color: '#c084fc',
+                                  }
+                                : {
+                                    color: 'rgba(255,255,255,0.45)',
+                                  }
                             }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isActive) {
-                              e.currentTarget.style.background = 'transparent';
-                              e.currentTarget.style.color = 'rgba(255,255,255,0.45)';
-                            }
-                          }}
-                        >
-                          {/* Active left accent bar */}
-                          {isActive && (
-                            <div
-                              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
-                              style={{
-                                background: 'linear-gradient(180deg, #7c3aed, #c084fc)',
-                                boxShadow: '0 0 8px rgba(124,58,237,0.5)',
-                              }}
+                            onMouseEnter={(e) => {
+                              if (!isActive) {
+                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                e.currentTarget.style.color = 'rgba(255,255,255,0.85)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isActive) {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.color = 'rgba(255,255,255,0.45)';
+                              }
+                            }}
+                          >
+                            {/* Active left accent bar */}
+                            {isActive && (
+                              <div
+                                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+                                style={{
+                                  background: 'linear-gradient(180deg, #7c3aed, #c084fc)',
+                                  boxShadow: '0 0 8px rgba(124,58,237,0.5)',
+                                }}
+                              />
+                            )}
+
+                            <item.icon
+                              className="w-[18px] h-[18px] shrink-0 transition-colors"
+                              style={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)' }}
                             />
-                          )}
 
-                          <item.icon
-                            className="w-[18px] h-[18px] shrink-0 transition-colors"
-                            style={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)' }}
-                          />
-
-                          {showLabels && (
-                            <>
-                              <span className="truncate flex-1">{item.label}</span>
-                              {item.badge && (
-                                <span
-                                  className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded"
-                                  style={getBadgeStyle(item.badge)}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
+                            {showLabels && (
+                              <>
+                                <span className="truncate flex-1">{item.label}</span>
+                                {item.badge && (
+                                  <span
+                                    className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded"
+                                    style={getBadgeStyle(item.badge)}
+                                  >
+                                    {item.badge}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -366,7 +381,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   className="text-[12px] font-semibold truncate"
                   style={{ color: 'rgba(255,255,255,0.9)' }}
                 >
-                  {user.firstName} {user.lastName}
+                  {user.first_name} {user.last_name}
                 </p>
                 <p className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>
                   {user.role}

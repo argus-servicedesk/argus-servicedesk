@@ -105,9 +105,9 @@ export default function ResetPasswordPage() {
               backgroundClip: 'text',
             }}
           >
-            LINKEDEYE
+            Argus Service Desk
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise ITSM Platform</p>
+          <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise Service Desk Platform</p>
         </div>
 
         {/* Card */}
@@ -262,7 +262,7 @@ export default function ResetPasswordPage() {
         </div>
 
         <p className="text-center text-[10px] mt-6 font-mono" style={{ color: '#94a3b8' }}>
-          LINKEDEYE &middot; FinSpot Technology Solutions Private Limited
+          Argus Service Desk &middot; FinSpot Technology Solutions Private Limited
         </p>
       </div>
 

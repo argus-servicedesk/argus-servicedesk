@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// LinkedEye ITSM — Software Inventory Page
+// Argus Service Desk — Software Inventory Page
 // Fetches from /api/v1/software with license statistics
 // ═══════════════════════════════════════════════════════════
 

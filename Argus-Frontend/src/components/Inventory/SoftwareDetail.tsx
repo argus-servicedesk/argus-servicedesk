@@ -1,5 +1,5 @@
 // ===============================================================
-// LinkedEye ITSM -- Software Detail Page
+// Argus Service Desk -- Software Detail Page
 // Fetches from /api/v1/software/:id with versions, licenses, installations
 // ===============================================================
 

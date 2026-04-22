@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// LinkedEye ITSM — Reusable Inventory Category Page
+// Argus Service Desk — Reusable Inventory Category Page
 // Handles single-type AND multi-type (combined) views
 // ═══════════════════════════════════════════════════════════
 

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════
-   LinkedEye ITSM — Developer Documentation
+   Argus Service Desk — Developer Documentation
    Datadog-Inspired Purple Gradient Theme
    Comprehensive API reference & integration guide
    ═══════════════════════════════════════════════════════════ */
@@ -193,7 +193,7 @@ function WarnBox({ title, children }: { title: string; children: React.ReactNode
 function IntroductionContent() {
   return (<>
     <Para>
-      Welcome to the <strong style={{ color: '#0f172a' }}>Argus ITSM API</strong>. Argus is an enterprise IT Service Management platform that provides a comprehensive REST API for managing Incidents, Changes, Problems, Alerts, Assets/CMDB, Teams, On-Call, and integrations with Prometheus, Grafana, Kubernetes, Slack, PagerDuty, and more.
+      Welcome to the <strong style={{ color: '#0f172a' }}>Argus Service Desk API</strong>. Argus is an enterprise IT Service Management platform that provides a comprehensive REST API for managing Incidents, Changes, Problems, Alerts, Assets/CMDB, Teams, On-Call, and integrations with Prometheus, Grafana, Kubernetes, Slack, PagerDuty, and more.
     </Para>
     <Heading>Base URL</Heading>
     <CodeBlock code={`${window.location.origin}/api/v1`} language="text" />
@@ -204,7 +204,7 @@ function IntroductionContent() {
     <Para>1. Authenticate to get an access token:</Para>
     <CodeBlock code={`curl -X POST ${window.location.origin}/api/v1/auth/login \\
   -H "Content-Type: application/json" \\
-  -d '{"email": "admin@linkedeye.io", "password": "your-password"}'`} />
+  -d '{"email": "admin@argus.com", "password": "your-password"}'`} />
     <Para>2. Use the token for subsequent requests:</Para>
     <CodeBlock code={`curl ${window.location.origin}/api/v1/incidents \\
   -H "Authorization: Bearer <accessToken>" \\
@@ -395,7 +395,7 @@ const AUTH_ENDPOINTS: Endpoint[] = [
     ],
     exampleRequest: `curl -X POST ${window.location.origin}/api/v1/auth/login \\
   -H "Content-Type: application/json" \\
-  -d '{"email": "admin@linkedeye.io", "password": "MyPassword123"}'`,
+  -d '{"email": "admin@argus.com", "password": "MyPassword123"}'`,
     exampleResponse: `{
   "success": true,
   "data": {
@@ -404,7 +404,7 @@ const AUTH_ENDPOINTS: Endpoint[] = [
     "expiresIn": "15m",
     "user": {
       "id": "uuid",
-      "email": "admin@linkedeye.io",
+      "email": "admin@argus.com",
       "firstName": "Admin",
       "lastName": "User",
       "role": "ADMIN",
@@ -431,7 +431,7 @@ const AUTH_ENDPOINTS: Endpoint[] = [
       { name: 'role', in: 'body', type: 'string', required: true, description: 'ADMIN | MANAGER | ENGINEER | OPERATOR | VIEWER' },
       { name: 'organizationId', in: 'body', type: 'string', required: false, description: 'Organization UUID' },
     ],
-    exampleResponse: `{ "success": true, "data": { "id": "uuid", "email": "new@linkedeye.io", "role": "ENGINEER" } }`,
+    exampleResponse: `{ "success": true, "data": { "id": "uuid", "email": "new@argus.com", "role": "ENGINEER" } }`,
   },
   {
     method: 'POST', path: '/api/v1/auth/refresh', auth: 'None',
@@ -450,7 +450,7 @@ const AUTH_ENDPOINTS: Endpoint[] = [
   "success": true,
   "data": {
     "id": "uuid",
-    "email": "admin@linkedeye.io",
+    "email": "admin@argus.com",
     "firstName": "Admin",
     "lastName": "User",
     "role": "ADMIN",
@@ -747,7 +747,7 @@ const WEBHOOK_ENDPOINTS: Endpoint[] = [
     { name: 'orgId', in: 'query', type: 'string', description: 'Organization UUID for tenant routing' },
     { name: 'orgSlug', in: 'query', type: 'string', description: 'Alternative: organization slug' },
   ]},
-  { method: 'POST', path: '/api/v1/webhooks/slack/commands', auth: 'None', description: 'Slack slash command handler (/linkedeye incident, /linkedeye status, etc.).' },
+  { method: 'POST', path: '/api/v1/webhooks/slack/commands', auth: 'None', description: 'Slack slash command handler (/argus incident, /argus status, etc.).' },
   { method: 'POST', path: '/api/v1/webhooks/slack/interactive', auth: 'None', description: 'Slack interactive payload handler (buttons, modals, dropdowns).' },
   { method: 'POST', path: '/api/v1/webhooks/servicenow', auth: 'None', description: 'ServiceNow bidirectional sync webhook.' },
   { method: 'POST', path: '/api/v1/webhooks/generic', auth: 'None', description: 'Generic webhook with flexible payload parsing. Use for custom integrations.' },
@@ -1113,7 +1113,7 @@ export default function DeveloperDocs() {
                 Argus Developer<br /><span style={{ color: '#6366f1' }}>Documentation</span>
               </h1>
               <p className="text-[14px] leading-relaxed max-w-2xl" style={{ color: '#64748b' }}>
-                Complete API reference for the Argus ITSM platform. 160+ endpoints across incidents, changes, problems, alerts, assets, teams, integrations, and AI-powered automation.
+                Complete API reference for the Argus Service Desk platform. 160+ endpoints across incidents, changes, problems, alerts, assets, teams, integrations, and AI-powered automation.
               </p>
               <div className="flex flex-wrap gap-3 mt-6">
                 {['REST API', 'JSON', 'JWT Auth', 'Multi-tenant', 'WebSocket'].map(tag => (
@@ -1144,7 +1144,7 @@ export default function DeveloperDocs() {
             {/* Footer */}
             <div className="mt-16 pt-8 pb-16 text-center" style={{ borderTop: '1px solid #e2e8f0' }}>
               <p className="text-[12px] font-mono" style={{ color: '#94a3b8' }}>
-                Argus ITSM API &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100
+                Argus Service Desk API &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100
               </p>
             </div>
           </div>

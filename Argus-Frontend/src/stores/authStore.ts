@@ -2,32 +2,28 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { disconnectSocket } from '../lib/socket';
 import { queryClient } from '../lib/queryClient';
+import api from '../lib/api';
 
 interface Organization {
   id: string;
   name: string;
   slug: string;
-  environment: string;
-  fqdn: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface User {
   id: string;
+  username: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  phone: string | null;
-  avatar: string | null;
+  first_name: string;
+  last_name: string;
   role: string;
-  status: string | null;
-  department: string | null;
-  jobTitle: string | null;
-  timezone: string | null;
-  mfaEnabled: boolean;
-  organizationId: string | null;
-  lastLogin: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
+  organization: any;
+  mfa_enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AuthState {
@@ -39,7 +35,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, mfaToken?: string) => Promise<{ requiresMfa?: boolean }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setUser: (user: User) => void;
   setSelectedOrg: (orgId: string | null) => void;
   checkAuth: () => Promise<void>;
@@ -55,47 +51,35 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password, mfaToken?) => {
         set({ isLoading: true });
         try {
-          const body: Record<string, string> = { email, password };
+          const body: Record<string, string> = { username: email, password };
           if (mfaToken) body.mfaToken = mfaToken;
 
-          const res = await fetch('/api/v1/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(body),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || 'Login failed');
-
-          // MFA challenge — user has MFA enabled but hasn't provided token yet
-          if (data.data?.requiresMfa) {
-            set({ isLoading: false });
-            return { requiresMfa: true };
-          }
+          const response = await api.post('/auth/login', body);
+          const { user, access, refresh } = response.data.data;
 
           set({
-            user: data.data.user,
-            organization: data.data.organization || null,
-            selectedOrgId: data.data.user?.organizationId || null,
-            accessToken: data.data.accessToken || null,
-            refreshToken: data.data.refreshToken || null,
+            user,
+            organization: user.organization || null,
+            selectedOrgId: user.organization?.id || null,
+            accessToken: access,
+            refreshToken: refresh,
             isAuthenticated: true,
             isLoading: false,
           });
           return {};
         } catch (err: any) {
           set({ isLoading: false });
-          throw new Error(err?.message || 'Invalid credentials');
+          throw new Error(err?.response?.data?.message || err?.message || 'Invalid credentials');
         }
       },
 
-      logout: () => {
-        const token = useAuthStore.getState().accessToken;
-        fetch('/api/v1/auth/logout', {
-          method: 'POST',
-          credentials: 'include',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        }).catch(() => {});
+      logout: async () => {
+        const refreshToken = useAuthStore.getState().refreshToken;
+        try {
+          await api.post('/auth/logout', { refresh: refreshToken });
+        } catch (error) {
+          console.error('Logout error:', error);
+        }
         disconnectSocket();
         queryClient.clear();
         set({
@@ -117,15 +101,12 @@ export const useAuthStore = create<AuthState>()(
         }
         set({ isLoading: true });
         try {
-          const res = await fetch('/api/v1/auth/me', {
-            credentials: 'include',
-            headers: { 'Authorization': `Bearer ${accessToken}` },
-          });
-          if (!res.ok) throw new Error();
-          const data = await res.json();
+          const response = await api.get('/auth/me');
+          const user = response.data.data;
           set({
-            user: data.data,
-            organization: data.data.organization || null,
+            user,
+            organization: user.organization || null,
+            selectedOrgId: user.organization?.id || null,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -134,36 +115,21 @@ export const useAuthStore = create<AuthState>()(
           const { refreshToken } = useAuthStore.getState();
           if (refreshToken) {
             try {
-              const refreshRes = await fetch('/api/v1/auth/refresh', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${refreshToken}`,
-                },
-              });
-              if (refreshRes.ok) {
-                const refreshData = await refreshRes.json();
-                const newToken = refreshData.data?.accessToken;
-                const newRefresh = refreshData.data?.refreshToken;
-                if (newToken) {
-                  set({ accessToken: newToken, ...(newRefresh ? { refreshToken: newRefresh } : {}) });
-                  // Retry /me with new token
-                  const retryRes = await fetch('/api/v1/auth/me', {
-                    credentials: 'include',
-                    headers: { 'Authorization': `Bearer ${newToken}` },
-                  });
-                  if (retryRes.ok) {
-                    const retryData = await retryRes.json();
-                    set({
-                      user: retryData.data,
-                      organization: retryData.data.organization || null,
-                      isAuthenticated: true,
-                      isLoading: false,
-                    });
-                    return;
-                  }
-                }
+              const refreshRes = await api.post('/auth/refresh', { refresh: refreshToken });
+              const { access, refresh } = refreshRes.data;
+              if (access) {
+                set({ accessToken: access, refreshToken: refresh });
+                // Retry /me with new token
+                const retryRes = await api.get('/auth/me');
+                const user = retryRes.data.data;
+                set({
+                  user,
+                  organization: user.organization || null,
+                  selectedOrgId: user.organization?.id || null,
+                  isAuthenticated: true,
+                  isLoading: false,
+                });
+                return;
               }
             } catch {}
           }
@@ -177,7 +143,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'linkedeye-auth',
+      name: 'argus-auth',
       partialize: (state) => ({
         user: state.user,
         organization: state.organization,

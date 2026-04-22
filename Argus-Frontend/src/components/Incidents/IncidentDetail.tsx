@@ -1812,7 +1812,7 @@ export default function IncidentDetail() {
                       <div>
                         <div className="flex items-center gap-2 mb-3">
                           <GitBranch size={14} className="text-amber-500" />
-                          <h4 className="text-xs font-bold uppercase tracking-wider font-display" style={{ color: '#0f172a' }}>Linked ITSM Records</h4>
+                          <h4 className="text-xs font-bold uppercase tracking-wider font-display" style={{ color: '#0f172a' }}>Linked Service Desk Records</h4>
                         </div>
                         <div className="space-y-2">
                           {incident.linkedChanges?.map((lc: any) => (

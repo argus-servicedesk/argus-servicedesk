@@ -1,11 +1,11 @@
-# LinkedEye ITSM Python API
+# Argus Service Desk Python API
 
-Production-grade Django + DRF backend for the React `linkedeye-itsm-web` app.
+Production-grade Django + DRF backend for the React `argus-servicedesk` app.
 
 ## Goals
 
 - Replace Node backend with Python backend.
-- Keep LinkedEye-style domain modules and endpoint surface under `/api/v1`.
+- Keep Argus-style domain modules and endpoint surface under `/api/v1`.
 - Support multi-tenant org context with `X-Organization-Id`.
 - Keep secrets in environment variables only.
 
@@ -21,7 +21,7 @@ Production-grade Django + DRF backend for the React `linkedeye-itsm-web` app.
 ## Quick Start
 
 ```bash
-cd linkedeye-itsm-api-py
+cd Argus-Backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt

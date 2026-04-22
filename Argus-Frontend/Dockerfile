@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════
-# LinkedEye ITSM — Frontend Dockerfile
+# Argus Service Desk — Frontend Dockerfile
 # ═══════════════════════════════════════════════════════════
 
 FROM node:20-alpine AS builder

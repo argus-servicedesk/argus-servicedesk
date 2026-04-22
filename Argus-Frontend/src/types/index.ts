@@ -1,4 +1,4 @@
-// LinkedEye ITSM Platform — TypeScript Type Definitions
+// Argus Service Desk — TypeScript Type Definitions
 // Matches Prisma schema. All date fields are ISO 8601 strings from API.
 
 // ── Enums ──

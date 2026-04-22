@@ -12,7 +12,7 @@ User = get_user_model()
 
 def _token_payload(user):
     refresh = RefreshToken.for_user(user)
-    return {"accessToken": str(refresh.access_token), "refreshToken": str(refresh)}
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
 class SignupView(APIView):
@@ -20,7 +20,8 @@ class SignupView(APIView):
 
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return failure(serializer.errors, status_code=400)
         user = serializer.save()
         return success(MeSerializer(user).data, "user created", 201)
 

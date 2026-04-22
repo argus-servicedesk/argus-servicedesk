@@ -135,7 +135,14 @@ export default function SignupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include', // Receive httpOnly cookies
-        body: JSON.stringify({ email, password, firstName, lastName }),
+        body: JSON.stringify({
+          username: email,
+          email,
+          password,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'ENGINEER',
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -215,7 +222,7 @@ export default function SignupPage() {
                     backgroundClip: 'text',
                   }}
                 >
-                  LINKEDEYE
+                  Argus Service Desk
                 </span>
               </div>
             </Link>
@@ -225,7 +232,7 @@ export default function SignupPage() {
           <div className="space-y-8 max-w-md">
             <div>
               <h2 className="font-display text-[32px] xl:text-[36px] font-bold leading-[1.15] tracking-tight" style={{ color: '#0f172a' }}>
-                Start Monitoring
+                Start Managing
                 <br />
                 <span
                   style={{
@@ -235,11 +242,11 @@ export default function SignupPage() {
                     backgroundClip: 'text',
                   }}
                 >
-                  Your Infrastructure
+                  Your IT Services
                 </span>
               </h2>
               <p className="text-[14px] mt-3 leading-relaxed max-w-sm" style={{ color: '#64748b' }}>
-                Create your free account and experience AI-powered IT service management in minutes.
+                Create your free account and experience enterprise IT service management in minutes.
               </p>
             </div>
 
@@ -315,9 +322,9 @@ export default function SignupPage() {
                 backgroundClip: 'text',
               }}
             >
-              LINKEDEYE
+              Argus Service Desk
             </h1>
-            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise ITSM Platform</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise Service Desk Platform</p>
           </div>
 
           {/* Form card */}
@@ -332,7 +339,7 @@ export default function SignupPage() {
             {/* Form header */}
             <div className="mb-6">
               <h2 className="font-display text-[22px] font-bold tracking-tight" style={{ color: '#0f172a' }}>Create your account</h2>
-              <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>Get started with LINKEDEYE in under a minute</p>
+              <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>Get started with Argus Service Desk in under a minute</p>
             </div>
 
             {/* Error banner */}
@@ -550,7 +557,7 @@ export default function SignupPage() {
 
           {/* Version footer */}
           <p className="text-center text-[10px] mt-5 font-mono" style={{ color: '#94a3b8' }}>
-            LINKEDEYE &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100 &middot; 9176772077
+            Argus Service Desk &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100 &middot; 9176772077
           </p>
         </div>
       </div>

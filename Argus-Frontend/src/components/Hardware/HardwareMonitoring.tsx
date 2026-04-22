@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// LinkedEye ITSM — Hardware Monitoring Dashboard
+// Argus Service Desk — Hardware Monitoring Dashboard
 // Multi-vendor fleet: Cisco, Huawei, Arista, Fortigate, Dell,
 // HPE, Aruba, Barracuda, NetApp + iDRAC/iLO servers
 // ═══════════════════════════════════════════════════════════

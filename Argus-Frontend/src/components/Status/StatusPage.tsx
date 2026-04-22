@@ -359,7 +359,7 @@ export default function StatusPage() {
         <p className="text-xs" style={{ color: '#94a3b8' }}>
           Last updated {relativeTime(data.lastUpdated)} &nbsp;·&nbsp;
           Powered by{' '}
-          <Link to="/" className="hover:underline" style={{ color: '#6366f1' }}>Argus ITSM</Link>
+          <Link to="/" className="hover:underline" style={{ color: '#6366f1' }}>Argus Service Desk</Link>
           {data.org.fqdn && (
             <>
               {' '}·{' '}

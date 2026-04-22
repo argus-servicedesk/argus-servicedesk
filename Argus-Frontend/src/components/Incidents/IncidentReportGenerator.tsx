@@ -1,6 +1,6 @@
 /**
  * Incident Report Generator Component
- * LinkedEye ITSM Platform
+ * Argus Service Desk Platform
  *
  * - PDF download with professional formatting
  * - JSON export for integrations
@@ -75,11 +75,11 @@ const FORMAT_OPTIONS = [
   { id: 'json' as ReportFormat, label: 'JSON Export', description: 'Structured data for integrations',    icon: Code2    },
 ];
 
-// ── Auth helper (matches linkedeye-auth Zustand persist key) ─────────────────────
+// ── Auth helper (matches argus-auth Zustand persist key) ─────────────────────
 
 function getAuthToken(): string {
   try {
-    const stored = localStorage.getItem('linkedeye-auth');
+    const stored = localStorage.getItem('argus-auth');
     if (stored) return JSON.parse(stored).state?.token ?? '';
   } catch { /* ignore */ }
   return '';
