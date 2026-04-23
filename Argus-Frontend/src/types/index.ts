@@ -20,8 +20,8 @@ export type ClosureCode = 'SUCCESSFUL' | 'FAILED' | 'PARTIAL';
 export type ProblemState = 'NEW' | 'INVESTIGATION' | 'RCA_IN_PROGRESS' | 'KNOWN_ERROR' | 'RESOLVED' | 'CLOSED';
 export type ApprovalState = 'PENDING' | 'APPROVED' | 'REJECTED';
 
-export type CIType = 'SERVER' | 'KUBERNETES_CLUSTER' | 'DATABASE' | 'APPLICATION' | 'NETWORK' | 'STORAGE' | 'CONTAINER' | 'VM' | 'LOAD_BALANCER';
-export type CIStatus = 'LIVE' | 'MAINTENANCE' | 'DECOMMISSIONED' | 'PLANNED';
+export type CIType = 'SERVER' | 'KUBERNETES_CLUSTER' | 'DATABASE' | 'APPLICATION' | 'NETWORK' | 'NETWORK_DEVICE' | 'SWITCH' | 'ROUTER' | 'FIREWALL' | 'STORAGE' | 'CONTAINER' | 'VM' | 'LOAD_BALANCER' | 'SOFTWARE' | 'END_USER_DEVICE' | 'MONITOR' | 'PERIPHERAL' | 'SIMCARD' | 'PHONE' | 'PRINTER' | 'RACK_UNIT' | 'PDU' | 'ENCLOSURE' | 'CABLE' | 'UPS';
+export type CIStatus = 'LIVE' | 'MAINTENANCE' | 'DECOMMISSIONED' | 'PLANNED' | 'IN_STOCK' | 'RESERVED' | 'DISPOSED';
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
 export type AlertStatus = 'FIRING' | 'RESOLVED' | 'ACKNOWLEDGED' | 'SILENCED';
@@ -229,6 +229,9 @@ export interface ConfigurationItem {
   storage: string | null;
   os: string | null;
   osVersion: string | null;
+  serviceName: string | null;
+  managementIpAddress: string | null;
+  environment: string | null;
   ownerId: string | null;
   supportGroupId: string | null;
   vendor: string | null;
@@ -243,10 +246,15 @@ export interface ConfigurationItem {
   prometheusJob: string | null;
   grafanaDashboard: string | null;
   lokiLabels: string | null;
+  healthScore: number | null;
+  lastSeenAt: string | null;
+  externalId: string | null;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   owner?: User | null;
   supportGroup?: Team | null;
+  site?: { id: string; name: string; environment: string } | null;
 }
 
 export interface Alert {
