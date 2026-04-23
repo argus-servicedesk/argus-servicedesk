@@ -33,6 +33,7 @@ interface FormData {
   model: string;
   location: string;
   ipAddress: string;
+  physicalIpAddress: string;
   hostname: string;
   os: string;
   osVersion: string;
@@ -40,13 +41,34 @@ interface FormData {
   memory: string;
   storage: string;
   supportGroupId: string;
+  environment: string;
   monitoringEnabled: boolean;
+  metricsManagementInterfaces: boolean;
+  ilo: boolean;
+  iloUsername: string;
+  iloPassword: string;
+  iloIp: string;
+  idrac: boolean;
+  idracPort: string;
+  nodeExporter: boolean;
+  nodeExporterPort: string;
+  windowsExporter: boolean;
+  windowsExporterPort: string;
+  snmp: boolean;
+  snmpVersion: string;
+  snmpCommunityString: string;
+  snmpUsername: string;
+  snmpSecurityLevel: string;
+  snmpAuthMethod: string;
+  snmpAuthPassword: string;
+  snmpPrivacyMethod: string;
+  snmpPrivacyPassword: string;
 }
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
 const CI_TYPES: { value: CIType; label: string }[] = [
-  { value: 'SERVER', label: 'Server' },
+  { value: 'SERVER', label: 'Physical Server' },
   { value: 'KUBERNETES_CLUSTER', label: 'Kubernetes Cluster' },
   { value: 'DATABASE', label: 'Database' },
   { value: 'APPLICATION', label: 'Application' },
@@ -101,6 +123,7 @@ export default function AssetCreate() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     defaultValues: {
@@ -114,6 +137,7 @@ export default function AssetCreate() {
       model: '',
       location: '',
       ipAddress: '',
+      physicalIpAddress: '',
       hostname: '',
       os: '',
       osVersion: '',
@@ -121,9 +145,39 @@ export default function AssetCreate() {
       memory: '',
       storage: '',
       supportGroupId: '',
+      environment: 'DEV',
       monitoringEnabled: false,
+      metricsManagementInterfaces: false,
+      ilo: false,
+      iloUsername: '',
+      iloPassword: '',
+      iloIp: '',
+      idrac: false,
+      idracPort: '',
+      nodeExporter: false,
+      nodeExporterPort: '',
+      windowsExporter: false,
+      windowsExporterPort: '',
+      snmp: false,
+      snmpVersion: 'v2c',
+      snmpCommunityString: '',
+      snmpUsername: '',
+      snmpSecurityLevel: '',
+      snmpAuthMethod: '',
+      snmpAuthPassword: '',
+      snmpPrivacyMethod: '',
+      snmpPrivacyPassword: '',
     },
   });
+
+  const selectedType = watch('type');
+  const metricsEnabled = watch('metricsManagementInterfaces');
+  const iloEnabled = watch('ilo');
+  const idracEnabled = watch('idrac');
+  const nodeExporterEnabled = watch('nodeExporter');
+  const windowsExporterEnabled = watch('windowsExporter');
+  const snmpEnabled = watch('snmp');
+  const snmpVersion = watch('snmpVersion');
 
   // Helper: wraps register() to merge purple focus/blur styling with RHF validation.
   // Returns all register props + style + merged onFocus/onBlur in a single spread.
@@ -361,22 +415,50 @@ export default function AssetCreate() {
             </div>
           </div>
 
-          {/* OS | OS Version */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                OS
-              </label>
-              <input type="text" placeholder="e.g. Ubuntu, RHEL, Windows Server" {...styledRegister('os')} />
-            </div>
+          {/* Physical server IPAddress - only for VM */}
+          {selectedType === 'VM' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  Physical server IPAddress
+                </label>
+                <input type="text" placeholder="e.g. 192.168.1.100" {...styledRegister('physicalIpAddress')} />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                OS Version
-              </label>
-              <input type="text" placeholder="e.g. 22.04 LTS" {...styledRegister('osVersion')} />
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  OS
+                </label>
+                <input type="text" placeholder="e.g. Ubuntu, RHEL, Windows Server" {...styledRegister('os')} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  OS Version
+                </label>
+                <input type="text" placeholder="e.g. 22.04 LTS" {...styledRegister('osVersion')} />
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* OS | OS Version - for non-VM types */}
+          {selectedType !== 'VM' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  OS
+                </label>
+                <input type="text" placeholder="e.g. Ubuntu, RHEL, Windows Server" {...styledRegister('os')} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  OS Version
+                </label>
+                <input type="text" placeholder="e.g. 22.04 LTS" {...styledRegister('osVersion')} />
+              </div>
+            </div>
+          )}
 
           {/* ── Section: Support & Monitoring ──────────────────────────── */}
           <div style={{ borderTop: '1px solid rgba(99,102,241,0.12)' }} />
@@ -384,7 +466,7 @@ export default function AssetCreate() {
             Support & Monitoring
           </h3>
 
-          {/* Support Group (half width) */}
+          {/* Support Group | Environment */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
@@ -399,34 +481,301 @@ export default function AssetCreate() {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                Environment
+              </label>
+              <select {...styledRegister('environment')}>
+                <option value="DEV" style={{ background: '#ffffff', color: '#0f172a' }}>DEV</option>
+                <option value="UAT" style={{ background: '#ffffff', color: '#0f172a' }}>UAT</option>
+                <option value="PROD" style={{ background: '#ffffff', color: '#0f172a' }}>PROD</option>
+              </select>
+            </div>
           </div>
 
-          {/* Monitoring Enabled (toggle-style checkbox) */}
-          <div>
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  {...register('monitoringEnabled')}
-                />
-                <div
-                  className="w-10 h-5 rounded-full transition-colors peer-checked:bg-transparent"
-                  style={{ background: '#cbd5e1' }}
-                />
-                <div
-                  className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5"
-                  style={{ background: '#94a3b8' }}
-                />
-              </div>
-              <span className="text-sm font-medium transition-colors" style={{ color: '#6366f1' }}>
-                Monitoring Enabled
-              </span>
-            </label>
-            <p className="text-xs mt-1 ml-[52px]" style={{ color: '#94a3b8' }}>
-              Enable Prometheus/Grafana monitoring for this asset
-            </p>
+          {/* Monitoring Enabled | Metrics & Management Interfaces */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Monitoring Enabled (toggle-style checkbox) */}
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    {...register('monitoringEnabled')}
+                  />
+                  <div
+                    className="w-10 h-5 rounded-full transition-colors bg-slate-300 peer-checked:bg-indigo-500"
+                  />
+                  <div
+                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-5 shadow-sm"
+                  />
+                </div>
+                <span className="text-sm font-medium transition-colors" style={{ color: '#6366f1' }}>
+                  Monitoring Enabled
+                </span>
+              </label>
+              <p className="text-xs mt-1 ml-[52px]" style={{ color: '#94a3b8' }}>
+                Enable Prometheus/Grafana monitoring for this asset
+              </p>
+            </div>
+
+            {/* Metrics & Management Interfaces (toggle-style checkbox) */}
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    {...register('metricsManagementInterfaces')}
+                  />
+                  <div
+                    className="w-10 h-5 rounded-full transition-colors bg-slate-300 peer-checked:bg-indigo-500"
+                  />
+                  <div
+                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-5 shadow-sm"
+                  />
+                </div>
+                <span className="text-sm font-medium transition-colors" style={{ color: '#6366f1' }}>
+                  Metrics & Management Interfaces
+                </span>
+              </label>
+              <p className="text-xs mt-1 ml-[52px]" style={{ color: '#94a3b8' }}>
+                Enable metrics collection and management interfaces for this asset
+              </p>
+            </div>
           </div>
+
+          {/* Metrics Options - only show when Metrics & Management Interfaces is enabled */}
+          {metricsEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" {...register('ilo')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                <span className="text-sm" style={{ color: '#64748b' }}>ILO</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" {...register('idrac')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                <span className="text-sm" style={{ color: '#64748b' }}>IDRAC</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" {...register('nodeExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                <span className="text-sm" style={{ color: '#64748b' }}>Node-Exporter</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" {...register('windowsExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                <span className="text-sm" style={{ color: '#64748b' }}>Windows-Exporter</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" {...register('snmp')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                <span className="text-sm" style={{ color: '#64748b' }}>SNMP</span>
+              </label>
+            </div>
+          )}
+
+          {/* ILO Configuration - only show when ILO is enabled */}
+          {iloEnabled && (
+            <div className="rounded-lg p-4" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold" style={{ color: '#6366f1' }}>ILO Configuration</h4>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                >
+                  Validate
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    ILO Username
+                  </label>
+                  <input type="text" placeholder="Enter ILO username" {...styledRegister('iloUsername')} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    ILO Password
+                  </label>
+                  <input type="password" placeholder="Enter ILO password" {...styledRegister('iloPassword')} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    ILO IP
+                  </label>
+                  <input type="text" placeholder="e.g. 192.168.1.100" {...styledRegister('iloIp')} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* IDRAC Configuration - only show when IDRAC is enabled */}
+          {idracEnabled && (
+            <div className="rounded-lg p-4" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold" style={{ color: '#6366f1' }}>IDRAC Configuration</h4>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                >
+                  Validate
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  IDRAC Port
+                </label>
+                <input type="text" placeholder="e.g. 9137" {...styledRegister('idracPort')} />
+              </div>
+            </div>
+          )}
+
+          {/* Node-Exporter Configuration - only show when Node-Exporter is enabled */}
+          {nodeExporterEnabled && (
+            <div className="rounded-lg p-4" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold" style={{ color: '#6366f1' }}>Node-Exporter Configuration</h4>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                >
+                  Validate
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  Node-Exporter Port
+                </label>
+                <input type="text" placeholder="e.g. 9100" {...styledRegister('nodeExporterPort')} />
+              </div>
+            </div>
+          )}
+
+          {/* Windows-Exporter Configuration - only show when Windows-Exporter is enabled */}
+          {windowsExporterEnabled && (
+            <div className="rounded-lg p-4" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold" style={{ color: '#6366f1' }}>Windows-Exporter Configuration</h4>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                >
+                  Validate
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  Windows-Exporter Port
+                </label>
+                <input type="text" placeholder="e.g. 9182" {...styledRegister('windowsExporterPort')} />
+              </div>
+            </div>
+          )}
+
+          {/* SNMP Configuration - only show when SNMP is enabled */}
+          {snmpEnabled && (
+            <div className="rounded-lg p-4" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold" style={{ color: '#6366f1' }}>SNMP Configuration</h4>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                >
+                  Validate
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  SNMP Version
+                </label>
+                <select {...styledRegister('snmpVersion')}>
+                  <option value="v2c" style={{ background: '#ffffff', color: '#0f172a' }}>v2c</option>
+                  <option value="v3" style={{ background: '#ffffff', color: '#0f172a' }}>v3</option>
+                </select>
+              </div>
+              {snmpVersion === 'v2c' && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    Community String
+                  </label>
+                  <input type="text" placeholder="e.g. public" {...styledRegister('snmpCommunityString')} />
+                </div>
+              )}
+              {snmpVersion === 'v3' && (
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Username
+                      </label>
+                      <input type="text" placeholder="Enter username" {...styledRegister('snmpUsername')} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Security Level
+                      </label>
+                      <select {...styledRegister('snmpSecurityLevel')}>
+                        <option value="" style={{ background: '#ffffff', color: '#94a3b8' }}>Select...</option>
+                        <option value="noAuthNoPriv" style={{ background: '#ffffff', color: '#0f172a' }}>noAuthNoPriv</option>
+                        <option value="authNoPriv" style={{ background: '#ffffff', color: '#0f172a' }}>authNoPriv</option>
+                        <option value="authPriv" style={{ background: '#ffffff', color: '#0f172a' }}>authPriv</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Authentication Method
+                      </label>
+                      <select {...styledRegister('snmpAuthMethod')}>
+                        <option value="" style={{ background: '#ffffff', color: '#94a3b8' }}>Select...</option>
+                        <option value="MD5" style={{ background: '#ffffff', color: '#0f172a' }}>MD5</option>
+                        <option value="SHA" style={{ background: '#ffffff', color: '#0f172a' }}>SHA</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Authentication Password
+                      </label>
+                      <input type="password" placeholder="Enter auth password" {...styledRegister('snmpAuthPassword')} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Privacy Method
+                      </label>
+                      <select {...styledRegister('snmpPrivacyMethod')}>
+                        <option value="" style={{ background: '#ffffff', color: '#94a3b8' }}>Select...</option>
+                        <option value="DES" style={{ background: '#ffffff', color: '#0f172a' }}>DES</option>
+                        <option value="AES" style={{ background: '#ffffff', color: '#0f172a' }}>AES</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                        Privacy Password
+                      </label>
+                      <input type="password" placeholder="Enter privacy password" {...styledRegister('snmpPrivacyPassword')} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Divider */}
           <div style={{ borderTop: '1px solid rgba(99,102,241,0.12)' }} />
