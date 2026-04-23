@@ -79,6 +79,9 @@ const SoftwareDetail = lazy(() => import('./components/Inventory/SoftwareDetail'
 const HardwareMonitoring = lazy(() => import('./components/Hardware/HardwareMonitoring'));
 const NotificationCenter = lazy(() => import('./components/Notifications/NotificationCenter'));
 const BODEODDashboard = lazy(() => import('./components/BOD/BODEODDashboard'));
+const DomainDashboard = lazy(() => import('./components/Domain/DomainDashboard'));
+const EODDashboard = lazy(() => import('./components/EOD/EODDashboard'));
+const OMSDashboard = lazy(() => import('./components/OMS/OMSDashboard'));
 const SiteManagement = lazy(() => import('./components/Settings/SiteManagement'));
 const ILLBandwidthDashboard = lazy(() => import('./components/ILLBandwidth/ILLBandwidthDashboard'));
 const CatalogList = lazy(() => import('./components/Catalog/CatalogList'));
@@ -210,6 +213,9 @@ export default function App() {
         <Route path="/pagerduty" element={<Suspense fallback={<LoadingFallback />}><PagerDutyDashboard /></Suspense>} />
         <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><APMDashboard /></Suspense>} />
         <Route path="/bod-eod" element={<Suspense fallback={<LoadingFallback />}><BODEODDashboard /></Suspense>} />
+        <Route path="/domain" element={<Suspense fallback={<LoadingFallback />}><DomainDashboard /></Suspense>} />
+        <Route path="/eod" element={<Suspense fallback={<LoadingFallback />}><EODDashboard /></Suspense>} />
+        <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><OMSDashboard /></Suspense>} />
         <Route path="/ill-bandwidth" element={<Suspense fallback={<LoadingFallback />}><ILLBandwidthDashboard /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
         <Route path="/settings/mfa" element={<Suspense fallback={<LoadingFallback />}><MFASetup /></Suspense>} />

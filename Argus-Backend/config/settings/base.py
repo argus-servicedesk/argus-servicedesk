@@ -43,6 +43,11 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.webhooks",
     "apps.status",
+    "apps.apm",
+    "apps.domain",
+    "apps.eod",
+    "apps.illbandwidth",
+    "apps.oms",
 ]
 
 MIDDLEWARE = [
