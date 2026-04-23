@@ -126,7 +126,8 @@ export default function DeviceDiagram({ templateId, ipAddress, onPortClick }: De
 
     // Make SVG responsive
     svg.setAttribute('width', '100%');
-    svg.setAttribute('height', 'auto');
+    svg.removeAttribute('height');
+    svg.style.height = 'auto';
     svg.style.maxWidth = '100%';
     svg.style.display = 'block';
 

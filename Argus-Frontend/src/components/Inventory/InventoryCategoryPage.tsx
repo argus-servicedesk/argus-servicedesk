@@ -12,6 +12,7 @@ import {
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import api from '../../lib/api';
+import { normalizeAssetResponse } from '../../hooks/useAssets';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -61,12 +62,12 @@ function formatDate(dateStr: string): string {
 
 function resolveOwner(asset: Asset): string {
   if (asset.assignedUser) {
-    return `${asset.assignedUser.firstName} ${asset.assignedUser.lastName}`.trim() || '--';
+    return `${asset.assignedUser.firstName} ${asset.assignedUser.lastName}`.trim() || 'N/A';
   }
   if (asset.owner && typeof asset.owner === 'object') {
-    return `${(asset.owner as any).firstName ?? ''} ${(asset.owner as any).lastName ?? ''}`.trim() || '--';
+    return `${(asset.owner as any).firstName ?? ''} ${(asset.owner as any).lastName ?? ''}`.trim() || 'N/A';
   }
-  return (asset.owner as string) || '--';
+  return (asset.owner as string) || 'N/A';
 }
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; dot: string }> = {
@@ -117,8 +118,8 @@ export default function InventoryCategoryPage({
         const params = new URLSearchParams({ type: typesToFetch[0], page: String(page), pageSize: String(pageSize) });
         if (statusFilter !== 'ALL') params.append('status', statusFilter);
         if (search.trim()) params.append('search', search.trim());
-        const { data } = await api.get(`/assets?${params}`);
-        return data;
+        const { data } = await api.get(`/assets/?${params}`);
+        return normalizeAssetResponse(data);
       }
 
       // Multi-type: fetch each type and merge
@@ -127,8 +128,8 @@ export default function InventoryCategoryPage({
           const params = new URLSearchParams({ type: t, page: String(page), pageSize: String(pageSize) });
           if (statusFilter !== 'ALL') params.append('status', statusFilter);
           if (search.trim()) params.append('search', search.trim());
-          const { data } = await api.get(`/assets?${params}`);
-          return data;
+          const { data } = await api.get(`/assets/?${params}`);
+          return normalizeAssetResponse(data);
         })
       );
       const merged = results.flatMap(r => Array.isArray(r?.data) ? r.data : []);
@@ -335,15 +336,15 @@ export default function InventoryCategoryPage({
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           <span className="text-xs font-mono" style={{ color: '#64748b' }}>
-                            {asset.hostname || asset.ipAddress || '--'}
+                            {asset.hostname || asset.ipAddress || 'N/A'}
                           </span>
                         </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
-                          <span className="text-xs" style={{ color: '#64748b' }}>{asset.location || '--'}</span>
+                          <span className="text-xs" style={{ color: '#64748b' }}>{asset.location || 'N/A'}</span>
                         </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <span className="text-xs" style={{ color: '#64748b' }}>
-                            {[asset.manufacturer, asset.model].filter(Boolean).join(' / ') || '--'}
+                            {[asset.manufacturer, asset.model].filter(Boolean).join(' / ') || 'N/A'}
                           </span>
                         </td>
                         <td className="px-4 py-3 hidden xl:table-cell">

@@ -459,12 +459,12 @@ export default function AssetDashboard() {
                       </td>
                       <td style={{ padding: '6px 12px' }}>
                         <span style={{ fontSize: 11, fontFamily: T.mono, color: T.textSecondary }}>
-                          {asset.ipAddress || '--'}
+                           {asset.ipAddress || 'N/A'}
                         </span>
                       </td>
                       <td style={{ padding: '6px 12px' }}>
                         <span style={{ fontSize: 11, fontFamily: T.mono, color: T.textMuted }}>
-                          {asset.hostname || '--'}
+                           {asset.hostname || 'N/A'}
                         </span>
                       </td>
                       <td style={{ padding: '6px 12px' }}>

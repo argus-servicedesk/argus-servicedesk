@@ -65,8 +65,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/alerts', icon: Bell, label: 'Alerts & Events' },
       { to: '/oncall', icon: Phone, label: 'On-Call' },
-      { to: '/escalation', icon: GitMerge, label: 'Escalations' },
-      { to: '/sla', icon: Clock, label: 'SLA Policies' },
+      { to: '/escalations', icon: GitMerge, label: 'Escalations' },
+      { to: '/sla-policies', icon: Clock, label: 'SLA Policies' },
       { to: '/maintenance', icon: CalendarClock, label: 'Maintenance' },
       { to: '/bod-eod', icon: ClipboardCheck, label: 'BOD / EOD' },
       { to: '/noc', icon: Monitor, label: 'NOC View', badge: 'LIVE', superAdminOnly: true },
@@ -85,8 +85,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: 'AI & AUTOMATION',
     items: [
-      { to: '/ai-insights', icon: Brain, label: 'AIOps', badge: 'AI' },
-      { to: '/automation', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/aiops', icon: Brain, label: 'AIOps', badge: 'AI' },
+      { to: '/runbooks', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
       { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
       { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'MANAGER'] },
     ],

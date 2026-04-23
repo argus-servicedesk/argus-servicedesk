@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Bell, LogOut, User, ChevronRight, CheckCheck, Menu } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { useUnreadCount, useNotifications, useMarkAsRead, useMarkAllAsRead } from '../../hooks/useNotifications';
+import api from '../../lib/api';
 
 const routeTitles: Record<string, string> = {
   '/': 'Dashboard',
@@ -27,7 +29,9 @@ const routeTitles: Record<string, string> = {
   '/profile': 'My Profile',
   '/oncall': 'On-Call Schedule',
   '/escalation': 'Escalation Policies',
+  '/escalations': 'Escalation Policies',
   '/sla': 'SLA Management',
+  '/sla-policies': 'SLA Management',
   '/maintenance': 'Maintenance Windows',
   '/bod-eod': 'Daily Operations Checklist',
   '/noc': 'NOC Dashboard',
@@ -36,7 +40,9 @@ const routeTitles: Record<string, string> = {
   '/k8s': 'Infrastructure',
   '/logs': 'Log Explorer',
   '/ai-insights': 'AIOps Insights',
+  '/aiops': 'AIOps Insights',
   '/automation': 'Runbook Automation',
+  '/runbooks': 'Runbook Automation',
   '/knowledge-base': 'Knowledge Base',
   '/audit': 'Audit Logs',
   '/notifications': 'Notifications',
@@ -52,6 +58,8 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Light-themed notification styles
 const notifStyles: Record<string, { bg: string; border: string; titleColor: string; textColor: string }> = {
@@ -132,8 +140,10 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuthStore();
-  const initials = user ? `${(user.firstName?.[0] || '').toUpperCase()}${(user.lastName?.[0] || '').toUpperCase()}` : 'U';
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'User';
+  const firstName = (user as any)?.first_name ?? (user as any)?.firstName ?? '';
+  const lastName = (user as any)?.last_name ?? (user as any)?.lastName ?? '';
+  const initials = user ? `${(firstName?.[0] || '').toUpperCase()}${(lastName?.[0] || '').toUpperCase()}` : 'U';
+  const displayName = user ? `${firstName} ${lastName}`.trim() : 'User';
   const displayRole = user?.role || 'User';
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -147,6 +157,21 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const notifications          = notifData?.data?.notifications ?? [];
 
   const pathSegments = location.pathname.split('/').filter(Boolean);
+  const incidentIdFromPath =
+    pathSegments[0] === 'incidents' && pathSegments[1] && pathSegments[1] !== 'create'
+      ? pathSegments[1]
+      : '';
+
+  const isIncidentDetailPath = UUID_RE.test(incidentIdFromPath);
+  const { data: incidentNumberCrumb } = useQuery({
+    queryKey: ['header-incident-number', incidentIdFromPath],
+    queryFn: async () => {
+      const { data } = await api.get(`/incidents/${incidentIdFromPath}/`);
+      return data?.data?.number || incidentIdFromPath;
+    },
+    enabled: isIncidentDetailPath,
+    staleTime: 60000,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -193,7 +218,9 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
                   className={clsx(i === pathSegments.length - 1 ? 'font-semibold' : 'font-normal')}
                   style={{ color: i === pathSegments.length - 1 ? '#0f172a' : '#64748b' }}
                 >
-                  {seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')}
+                  {pathSegments[0] === 'incidents' && i === 1 && isIncidentDetailPath
+                    ? incidentNumberCrumb ?? 'Incident'
+                    : seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')}
                 </span>
               </span>
             ))
@@ -276,7 +303,7 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
                     No notifications yet
                   </div>
                 ) : (
-                  notifications.slice(0, 15).map((n) => (
+                  notifications.slice(0, 15).map((n: any) => (
                     <NotifItem
                       key={n.id}
                       notification={n}

@@ -262,11 +262,11 @@ function SystemInfoCard({ sysInfo, asset }: { sysInfo: any; asset: any }) {
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {[
-          ['Hostname', sysInfo.hostname || asset.hostname || '-'],
+          ['Hostname', sysInfo.hostname || asset.hostname || 'N/A'],
           ['OS', `${sysInfo.os || '-'} ${sysInfo.architecture || ''}`],
           ['Kernel', sysInfo.kernel || '-'],
           ['Architecture', sysInfo.architecture || '-'],
-          ['IP Address', asset.ipAddress || '-'],
+          ['IP Address', asset.ipAddress || 'N/A'],
           ['Uptime', sysInfo.uptimeSeconds ? formatUptime(sysInfo.uptimeSeconds) : '-'],
         ].map(([label, value]) => (
           <div key={label as string} className="rounded-lg p-3" style={subtleBg}>
@@ -538,6 +538,11 @@ function DiskIOCard({ diskIO }: { diskIO: any[] }) {
     );
   }
 
+  const asNumber = (value: unknown, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
   return (
     <div style={glassCard} className="p-5">
       <h3 className="text-sm font-semibold mb-4 flex items-center gap-2" style={{ color: '#6366f1' }}>
@@ -559,7 +564,16 @@ function DiskIOCard({ diskIO }: { diskIO: any[] }) {
           </thead>
           <tbody>
             {diskIO.map((d: any) => {
-              const utilColor = d.threshold === 'critical' ? '#FCA5A5' : d.threshold === 'warning' ? '#FCD34D' : '#6EE7B7';
+              const readMBps = asNumber(d.readMBps);
+              const writeMBps = asNumber(d.writeMBps);
+              const readsPerSec = asNumber(d.readsPerSec, readMBps);
+              const writesPerSec = asNumber(d.writesPerSec, writeMBps);
+              const iops = asNumber(d.iops, readsPerSec + writesPerSec);
+              const readLatencyMs = asNumber(d.readLatencyMs);
+              const writeLatencyMs = asNumber(d.writeLatencyMs);
+              const utilizationPct = Math.min(100, Math.max(0, asNumber(d.utilizationPct)));
+              const threshold = d.threshold || (utilizationPct >= 90 ? 'critical' : utilizationPct >= 75 ? 'warning' : 'healthy');
+              const utilColor = threshold === 'critical' ? '#FCA5A5' : threshold === 'warning' ? '#FCD34D' : '#6EE7B7';
               const latWarn = (ms: number) => ms > 20 ? '#FCA5A5' : ms > 10 ? '#FCD34D' : '#6366f1';
               return (
                 <tr key={d.device} className="transition-colors" style={{ borderBottom: '1px solid rgba(99,102,241,0.06)' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -569,17 +583,17 @@ function DiskIOCard({ diskIO }: { diskIO: any[] }) {
                       <span className="font-mono font-medium" style={{ color: '#0f172a' }}>{d.device}</span>
                     </div>
                   </td>
-                  <td className="py-2.5 px-2 text-right font-mono font-medium" style={{ color: '#0f172a' }}>{d.iops.toFixed(0)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: '#059669' }}>{d.readsPerSec.toFixed(1)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: '#6366f1' }}>{d.writesPerSec.toFixed(1)}</td>
-                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: latWarn(d.readLatencyMs) }}>{d.readLatencyMs.toFixed(2)} ms</td>
-                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: latWarn(d.writeLatencyMs) }}>{d.writeLatencyMs.toFixed(2)} ms</td>
+                  <td className="py-2.5 px-2 text-right font-mono font-medium" style={{ color: '#0f172a' }}>{iops.toFixed(0)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: '#059669' }}>{readsPerSec.toFixed(1)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: '#6366f1' }}>{writesPerSec.toFixed(1)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: latWarn(readLatencyMs) }}>{readLatencyMs.toFixed(2)} ms</td>
+                  <td className="py-2.5 px-2 text-right font-mono" style={{ color: latWarn(writeLatencyMs) }}>{writeLatencyMs.toFixed(2)} ms</td>
                   <td className="py-2.5 px-2 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(99,102,241,0.12)' }}>
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, d.utilizationPct)}%`, background: d.threshold === 'critical' ? '#EF4444' : d.threshold === 'warning' ? '#D97706' : '#10B981' }} />
+                        <div className="h-full rounded-full" style={{ width: `${utilizationPct}%`, background: threshold === 'critical' ? '#EF4444' : threshold === 'warning' ? '#D97706' : '#10B981' }} />
                       </div>
-                      <span className="font-mono font-bold" style={{ color: utilColor }}>{d.utilizationPct}%</span>
+                      <span className="font-mono font-bold" style={{ color: utilColor }}>{utilizationPct.toFixed(1)}%</span>
                     </div>
                   </td>
                 </tr>
@@ -677,6 +691,7 @@ function MetricsHistorySection({ assetId }: { assetId: string }) {
                   </span>
                 </span>
               </div>
+              <div style={{ width: '100%', minWidth: 0, minHeight: 140 }}>
               <ResponsiveContainer width="100%" height={140}>
                 <AreaChart data={chart.data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <defs>
@@ -697,6 +712,7 @@ function MetricsHistorySection({ assetId }: { assetId: string }) {
                   <Area type="monotone" dataKey="v" stroke={chart.color} strokeWidth={1.5} fill={`url(#grad-${chart.key})`} dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
+              </div>
             </div>
           );
         })}
@@ -872,7 +888,7 @@ export default function AssetDetail() {
               </div>
               <h1 className="text-xl font-display font-bold" style={{ color: '#ffffff' }}>{asset.name || '-'}</h1>
               <div className="flex items-center gap-4 mt-3 text-sm flex-wrap" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                <span className="flex items-center gap-1.5"><Network size={14} /> {asset.ipAddress || '-'}</span>
+                <span className="flex items-center gap-1.5"><Network size={14} /> {asset.ipAddress || 'N/A'}</span>
                 {(live?.systemInfo?.hostname || asset.hostname) && (
                   <span className="flex items-center gap-1.5 font-mono text-xs"><Server size={14} /> {live?.systemInfo?.hostname || asset.hostname}</span>
                 )}

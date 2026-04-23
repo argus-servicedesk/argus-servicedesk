@@ -327,7 +327,7 @@ export default function DashboardOverview() {
   const { data: onCallData } = useOnCallOverview();
   const { data: problemsData } = useQuery({
     queryKey: ['problems', 'dashboard'],
-    queryFn: async () => { const { data } = await api.get('/problems?page=1&pageSize=5'); return data; },
+    queryFn: async () => { const { data } = await api.get('/problems/?page=1&limit=5'); return data; },
     staleTime: 60000,
   });
 
@@ -409,7 +409,7 @@ export default function DashboardOverview() {
   /* ── Infra ── */
   const { data: infraData } = useQuery({
     queryKey: ['dashboard', 'infra-metrics'],
-    queryFn: async () => { const { data } = await api.get('/ai/infrastructure-metrics'); return data; },
+    queryFn: async () => { const { data } = await api.get('/ai/infrastructure-metrics/'); return data; },
     staleTime: 30000, retry: 1,
   });
   const infraMetrics = useMemo(() => {
@@ -550,7 +550,7 @@ export default function DashboardOverview() {
             { label: 'Firing Alerts', value: firingAlerts, sub: `${critCount} critical`, icon: <Radio size={16} />, color: '#E11D48', route: '/alerts' },
             { label: 'SLA Compliance', value: `${slaCompliance}%`, sub: slaBreached > 0 ? `${slaBreached} breached` : 'On track', icon: <ShieldCheck size={16} />, color: '#059669', route: '/sla' },
             { label: 'Active Changes', value: openChanges, sub: `${upcomingChanges.length} planned`, icon: <GitMerge size={16} />, color: '#4F46E5', route: '/changes' },
-            { label: 'Total Assets', value: totalAssets, sub: `${assetsByType.length} categories`, icon: <Database size={16} />, color: '#0891B2', route: '/assets' },
+            { label: 'Total Assets', value: totalAssets, sub: `${assetsByType.length} types`, icon: <Database size={16} />, color: '#0891B2', route: '/assets' },
           ].map(item => (
             <div key={item.label} onClick={() => navigate(item.route)}
               className="rounded-xl border border-slate-200 bg-white p-3.5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group">

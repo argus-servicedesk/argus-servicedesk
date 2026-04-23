@@ -61,7 +61,9 @@ function guessCategory(article: KBArticle): string {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const date = new Date(iso);
+  if (!iso || Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function rcaSnippet(rca: any): string {

@@ -369,15 +369,15 @@ export default function AssetList() {
                 <div className="space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
                     <span style={{ color: '#94a3b8' }}>IP</span>
-                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.ipAddress}</span>
+                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.ipAddress || 'N/A'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span style={{ color: '#94a3b8' }}>Location</span>
-                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.location}</span>
+                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.location || 'N/A'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span style={{ color: '#94a3b8' }}>Datacenter</span>
-                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.datacenter}</span>
+                    <span className="font-mono" style={{ color: '#64748b' }}>{asset.datacenter || 'N/A'}</span>
                   </div>
                 </div>
               </div>
@@ -448,12 +448,12 @@ export default function AssetList() {
                         <StatusBadge status={asset.status} />
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs font-mono" style={{ color: '#64748b' }}>{asset.ipAddress}</span>
+                        <span className="text-xs font-mono" style={{ color: '#64748b' }}>{asset.ipAddress || 'N/A'}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div>
-                          <span className="text-xs" style={{ color: '#64748b' }}>{asset.location}</span>
-                          <p className="text-[10px]" style={{ color: '#94a3b8' }}>{asset.datacenter}</p>
+                          <span className="text-xs" style={{ color: '#64748b' }}>{asset.location || 'N/A'}</span>
+                          <p className="text-[10px]" style={{ color: '#94a3b8' }}>{asset.datacenter || 'N/A'}</p>
                         </div>
                       </td>
                       <td className="px-4 py-3">

@@ -149,6 +149,7 @@ export default function App() {
         <Route path="/oncall" element={<Suspense fallback={<LoadingFallback />}><OnCallDashboard /></Suspense>} />
         <Route path="/oncall-calendar" element={<Suspense fallback={<LoadingFallback />}><OnCallCalendar /></Suspense>} />
         <Route path="/escalation" element={<Suspense fallback={<LoadingFallback />}><EscalationPolicyBuilder /></Suspense>} />
+        <Route path="/escalations" element={<Suspense fallback={<LoadingFallback />}><EscalationPolicyBuilder /></Suspense>} />
         <Route path="/maintenance" element={<Suspense fallback={<LoadingFallback />}><MaintenanceWindowScheduler /></Suspense>} />
         <Route path="/noc" element={<Suspense fallback={<LoadingFallback />}><NOCView /></Suspense>} />
         <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><AlertList /></Suspense>} />
@@ -187,7 +188,9 @@ export default function App() {
         <Route path="/network" element={<Suspense fallback={<LoadingFallback />}><NetworkTopology /></Suspense>} />
         <Route path="/metrics" element={<Suspense fallback={<LoadingFallback />}><MetricsDashboard /></Suspense>} />
         <Route path="/ai-insights" element={<Suspense fallback={<LoadingFallback />}><AIInsightsDashboard /></Suspense>} />
+        <Route path="/aiops" element={<Suspense fallback={<LoadingFallback />}><AIInsightsDashboard /></Suspense>} />
         <Route path="/automation" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
+        <Route path="/runbooks" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
         <Route path="/users" element={
           <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
             <Suspense fallback={<LoadingFallback />}><UserList /></Suspense>
@@ -224,6 +227,7 @@ export default function App() {
         <Route path="/kb/create" element={<Suspense fallback={<LoadingFallback />}><KBArticleCreate /></Suspense>} />
         <Route path="/kb/:id" element={<Suspense fallback={<LoadingFallback />}><KBArticleDetail /></Suspense>} />
         <Route path="/sla" element={<Suspense fallback={<LoadingFallback />}><SLAPolicyPage /></Suspense>} />
+        <Route path="/sla-policies" element={<Suspense fallback={<LoadingFallback />}><SLAPolicyPage /></Suspense>} />
         <Route path="/audit" element={
           <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
             <Suspense fallback={<LoadingFallback />}><AuditLogViewer /></Suspense>
