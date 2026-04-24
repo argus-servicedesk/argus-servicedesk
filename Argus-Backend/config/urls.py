@@ -129,6 +129,7 @@ urlpatterns = [
     path("api/v1/eod/", include("apps.eod.urls")),
     path("api/v1/ill-bandwidth/", include("apps.illbandwidth.urls")),
     path("api/v1/oms/", include("apps.oms.urls")),
+    path("api/v1/workflow/", include("apps.workflow.urls")),
     path("api/v1/webhooks/", include("apps.webhooks.urls")),
     path("api/v1/status/", include("apps.status.urls")),
     path("api/v1/status", include("apps.status.urls")),

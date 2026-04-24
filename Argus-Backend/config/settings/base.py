@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "apps.eod",
     "apps.illbandwidth",
     "apps.oms",
+    "apps.workflow",
 ]
 
 MIDDLEWARE = [
