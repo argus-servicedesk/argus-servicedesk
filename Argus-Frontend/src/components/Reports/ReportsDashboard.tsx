@@ -53,9 +53,11 @@ function fmt(n: number | null | undefined, suffix = ''): string {
 }
 
 function fmtMttr(mins: number | null | undefined): string {
-  if (mins == null) return '\u2013';
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  const value = Number(mins);
+  if (!Number.isFinite(value) || value < 0) return '\u2013';
+  const rounded = Math.round(value);
+  if (rounded < 60) return `${rounded}m`;
+  return `${Math.floor(rounded / 60)}h ${rounded % 60}m`;
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
@@ -707,6 +709,10 @@ function TeamsSection({ period }: { period: Period }) {
 
   const teams: any[] = Array.isArray(data?.data?.teams) ? data.data.teams : [];
   const maxIncidents = Math.max(...teams.map(t => t.incident_count || 0), 1);
+  const teamsWithMttr = teams.filter((t) => Number.isFinite(Number(t.avg_mttr_minutes)) && Number(t.avg_mttr_minutes) > 0);
+  const bestMttr = teamsWithMttr.length > 0
+    ? Math.min(...teamsWithMttr.map((t) => Number(t.avg_mttr_minutes)))
+    : null;
 
   if (!isLoading && teams.length === 0) return <EmptySection title="Team Performance" />;
 
@@ -718,7 +724,7 @@ function TeamsSection({ period }: { period: Period }) {
           { label: 'Total Teams', value: teams.length.toString(), icon: Users, color: 'bg-indigo-500' },
           { label: 'Total Assigned', value: fmt(teams.reduce((s, t) => s + (t.incident_count || 0), 0)), icon: AlertTriangle, color: 'bg-amber-500' },
           { label: 'Total Resolved', value: fmt(teams.reduce((s, t) => s + (t.resolved_count || 0), 0)), icon: CheckCircle2, color: 'bg-emerald-500' },
-          { label: 'Best MTTR', value: fmtMttr(Math.min(...teams.filter(t => t.avg_mttr_minutes).map(t => t.avg_mttr_minutes))), icon: Clock, color: 'bg-violet-500' },
+          { label: 'Best MTTR', value: fmtMttr(bestMttr), icon: Clock, color: 'bg-violet-500' },
         ].map(k => <KpiCard key={k.label} {...k} sub="" loading={isLoading} />)}
       </div>
 
@@ -802,11 +808,11 @@ function TeamsSection({ period }: { period: Period }) {
       </ChartCard>
 
       {/* MTTR comparison bar */}
-      {teams.filter(t => t.avg_mttr_minutes).length > 0 && (
+      {teamsWithMttr.length > 0 && (
         <ChartCard title="MTTR Comparison Across Teams" subtitle="Lower is better (minutes)">
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={teams.filter(t => t.avg_mttr_minutes)} layout="vertical"
+              <BarChart data={teamsWithMttr} layout="vertical"
                 margin={{ top: 0, right: 30, left: 80, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false}
@@ -814,7 +820,7 @@ function TeamsSection({ period }: { period: Period }) {
                 <YAxis dataKey="team_name" type="category" tick={{ fontSize: 10, fill: '#0f172a' }} tickLine={false} axisLine={false} width={78} />
                 <Tooltip {...TT} formatter={(v: any) => [fmtMttr(v), 'Avg MTTR']} />
                 <Bar dataKey="avg_mttr_minutes" radius={[0, 6, 6, 0]} barSize={14}>
-                  {teams.map((_: any, i: number) => (
+                  {teamsWithMttr.map((_: any, i: number) => (
                     <Cell key={i} fill={`hsl(${270 - i * 15}, 70%, ${55 + i * 5}%)`} />
                   ))}
                 </Bar>

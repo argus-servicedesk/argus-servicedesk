@@ -3,18 +3,20 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success, failure
 from .models import Incident, WorkNote, Activity, Attachment
 from .serializers import IncidentSerializer, IncidentCreateSerializer, IncidentUpdateSerializer, WorkNoteSerializer
 
 
-class IncidentListCreateView(generics.ListCreateAPIView):
+class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['state', 'priority', 'category', 'assigned_to']
+    queryset = Incident.objects.all()
     
     def get_queryset(self):
-        queryset = Incident.objects.filter(organization_id=self.request.organization_id)
+        queryset = super().get_queryset()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -42,21 +44,24 @@ class IncidentListCreateView(generics.ListCreateAPIView):
         return success(IncidentSerializer(incident).data, "incident created", 201)
 
 
-class IncidentDetailView(generics.RetrieveUpdateAPIView):
+class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = Incident.objects.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems')
+    queryset = Incident.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return IncidentUpdateSerializer
         return IncidentSerializer
 
+    def get_queryset(self):
+        return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems')
+
 
 class IncidentStatsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        queryset = Incident.objects.filter(organization_id=request.organization_id)
+        queryset = Incident.objects.filter(organization=request.organization)
         
         stats = {
             'total': queryset.count(),

@@ -1,19 +1,25 @@
+from django.db.models import Q
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q
+
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success
+from apps.incidents.models import Incident
+
 from .models import Team, TeamMember
-from .serializers import TeamSerializer, TeamCreateSerializer, TeamUpdateSerializer, TeamMemberSerializer
+from .serializers import TeamCreateSerializer, TeamMemberSerializer, TeamSerializer, TeamUpdateSerializer
 
 
-class TeamListCreateView(generics.ListCreateAPIView):
+class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['is_active']
+    queryset = Team.objects.all()
     
     def get_queryset(self):
-        queryset = Team.objects.filter(organization_id=self.request.organization_id)
+        queryset = super().get_queryset()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -40,14 +46,17 @@ class TeamListCreateView(generics.ListCreateAPIView):
         return success(TeamSerializer(team).data, "team created", 201)
 
 
-class TeamDetailView(generics.RetrieveUpdateAPIView):
+class TeamDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = Team.objects.select_related('manager').prefetch_related('members')
+    queryset = Team.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return TeamUpdateSerializer
         return TeamSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related('manager').prefetch_related('members')
 
 
 class TeamMemberCreateView(generics.CreateAPIView):
@@ -57,3 +66,117 @@ class TeamMemberCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         team_id = self.kwargs.get('team_id')
         serializer.save(team_id=team_id)
+
+
+def _member_payload(member):
+    user = member.user
+    first_name = getattr(user, "first_name", "") or getattr(user, "firstName", "")
+    last_name = getattr(user, "last_name", "") or getattr(user, "lastName", "")
+    return {
+        "id": str(member.id),
+        "user": {
+            "id": str(user.id),
+            "firstName": first_name,
+            "lastName": last_name,
+            "email": user.email,
+            "role": user.role,
+        },
+        "team": {"id": str(member.team_id), "name": member.team.name},
+        "isPrimary": member.role == "LEAD",
+    }
+
+
+class OnCallOverviewView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        teams = Team.objects.filter(organization=request.organization, is_active=True).prefetch_related("members__user")
+        schedules = []
+        covered = 0
+        for team in teams:
+            primary_member = team.members.select_related("user").order_by("joined_at").first()
+            if primary_member:
+                covered += 1
+                schedules.append(_member_payload(primary_member))
+
+        return success(
+            {
+                "schedules": schedules,
+                "stats": {
+                    "activeSchedules": len(schedules),
+                    "onCallNow": len(schedules),
+                    "escalations": 0,
+                    "teamsCovered": covered,
+                },
+            }
+        )
+
+
+class TeamOnCallView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        team = Team.objects.filter(id=team_id, organization=request.organization).first()
+        if not team:
+            return success({"schedules": []})
+        members = team.members.select_related("user").order_by("joined_at")
+        return success({"schedules": [_member_payload(member) for member in members]})
+
+    def post(self, request, team_id):
+        return success(
+            {
+                "teamId": team_id,
+                "userId": request.data.get("userId"),
+                "startTime": request.data.get("startTime"),
+                "endTime": request.data.get("endTime"),
+                "isPrimary": bool(request.data.get("isPrimary", True)),
+                "createdAt": timezone.now().isoformat(),
+            },
+            "on-call schedule created",
+            201,
+        )
+
+
+class TeamOnCallHistoryView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        team = Team.objects.filter(id=team_id, organization=request.organization).first()
+        if not team:
+            return success({"entries": []})
+        members = team.members.select_related("user").order_by("-joined_at")
+        entries = [
+            {
+                "id": str(member.id),
+                "user": _member_payload(member)["user"],
+                "role": member.role,
+                "joinedAt": member.joined_at.isoformat(),
+            }
+            for member in members
+        ]
+        return success(
+            {"entries": entries},
+            status_code=200,
+        )
+
+
+class TeamEscalationView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        team = Team.objects.filter(id=team_id, organization=request.organization).first()
+        if not team:
+            return success({"levels": []})
+        members = list(team.members.select_related("user").order_by("joined_at"))
+        levels = []
+        for idx, member in enumerate(members[:3], start=1):
+            payload = _member_payload(member)["user"]
+            levels.append(
+                {
+                    "level": idx,
+                    "name": f"L{idx}",
+                    "user": payload,
+                    "delayMinutes": 15 * idx,
+                }
+            )
+        return success({"teamId": str(team.id), "levels": levels})

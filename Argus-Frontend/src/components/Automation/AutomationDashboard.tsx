@@ -421,6 +421,7 @@ export default function AutomationDashboard() {
   const notifsList = (notifications || []) as NotificationRule[];
   const executions = (execData?.executions || []) as PipelineExecution[];
   const totalExecs = execData?.total || 0;
+  const pipelineApiUnavailable = Boolean(statusError);
 
   // ── Mutations ──
   const togglePipeline = useTogglePipeline();
@@ -450,26 +451,6 @@ export default function AutomationDashboard() {
       return true;
     });
   }, [executions, statusFilter, searchQuery]);
-
-  // ── Error state ──
-  if (statusError) {
-    return (
-      <div className="animate-fade-in relative -m-6 p-6 min-h-screen"
-        style={{ background: '#F8FAFC' }}>
-        <HeroBanner pipelineEnabled={false} canManage={false} onToggle={() => {}} toggling={false} uptime={0} orgName={heroOrgName} orgEnv={heroEnv} isGlobalView={isGlobalView} />
-        <div className="h-0.5 -mt-5 mb-4" style={{ background: 'linear-gradient(90deg, #7C3AED, #8B5CF6, #A78BFA, transparent)' }} />
-        <div className="text-center py-16 rounded-2xl" style={{ background: D.surface, border: `1px solid ${D.border}` }}>
-          <AlertTriangle size={40} className="mx-auto mb-3" style={{ color: '#D97706' }} />
-          <p className="font-medium mb-2" style={{ color: D.text }}>Failed to load pipeline status</p>
-          <p className="text-xs mb-4" style={{ color: D.text2 }}>The Agent Pipeline API may be unreachable</p>
-          <button onClick={() => refetchStatus()} className="px-4 py-2 text-sm font-medium rounded-xl transition-colors"
-            style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
-            <RefreshCw size={14} className="inline mr-1.5" /> Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="animate-fade-in relative -m-6 p-6 min-h-screen"
@@ -501,6 +482,28 @@ export default function AutomationDashboard() {
         isGlobalView={isGlobalView}
       />
       <div className="h-0.5 -mt-5 mb-4" style={{ background: 'linear-gradient(90deg, #7C3AED, #8B5CF6, #A78BFA, transparent)' }} />
+
+      {pipelineApiUnavailable && (
+        <div className="mb-4 rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
+          style={{ background: D.surface, border: `1px solid ${D.border}` }}>
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: 'rgba(217,119,6,0.12)' }}>
+              <AlertTriangle size={16} style={{ color: '#D97706' }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: D.text }}>Pipeline API not configured</p>
+              <p className="text-xs mt-0.5" style={{ color: D.text2 }}>
+                Runbook automation is available in the UI, but the backend agent endpoints are not responding yet.
+              </p>
+            </div>
+          </div>
+          <button onClick={() => refetchStatus()} className="px-4 py-2 text-sm font-medium rounded-xl transition-colors"
+            style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.25)' }}>
+            <RefreshCw size={14} className="inline mr-1.5" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* ══ MAIN TABS ══ */}
       <div className="flex items-center gap-2 mb-5">

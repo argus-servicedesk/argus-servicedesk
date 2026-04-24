@@ -1,9 +1,15 @@
 import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from apps.organizations.models import Organization
 
 User = get_user_model()
+
+
+class ActiveCIManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().exclude(status=ConfigurationItem.Status.DECOMMISSIONED)
 
 
 class ConfigurationItem(models.Model):
@@ -111,9 +117,13 @@ class ConfigurationItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = ActiveCIManager()
+    all_objects = models.Manager()
+
     class Meta:
         db_table = "configuration_items"
         ordering = ["name"]
+        default_manager_name = "objects"
         indexes = [
             models.Index(fields=["type", "status"]),
             models.Index(fields=["hostname"]),
@@ -123,6 +133,52 @@ class ConfigurationItem(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.type})"
+
+    def delete(self, *args, **kwargs):
+        raise NotImplementedError(
+            "ConfigurationItems cannot be hard deleted. Set status to DECOMMISSIONED instead."
+        )
+
+
+class ConfigurationItemHistory(models.Model):
+    class ChangeSource(models.TextChoices):
+        USER = "user", "User"
+        WORKER = "worker", "Worker"
+        IMPORT = "import", "Import"
+        SYSTEM = "system", "System"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    configuration_item = models.ForeignKey(
+        ConfigurationItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="history_entries",
+    )
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="configuration_item_history")
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="configuration_item_history_entries",
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    change_source = models.CharField(
+        max_length=20,
+        choices=ChangeSource.choices,
+        default=ChangeSource.SYSTEM,
+    )
+    field_name = models.CharField(max_length=100)
+    old_value = models.TextField(blank=True)
+    new_value = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "configuration_item_history"
+        ordering = ["-changed_at"]
+
+    def __str__(self):
+        return f"{self.configuration_item_id} {self.field_name} @ {self.changed_at.isoformat()}"
 
 
 class AssetSite(models.Model):

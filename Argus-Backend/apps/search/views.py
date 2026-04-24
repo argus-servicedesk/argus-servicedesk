@@ -7,20 +7,12 @@ from apps.assets.models import ConfigurationItem
 from apps.changes.models import Change
 from apps.common.responses import success
 from apps.incidents.models import Incident
-from apps.organizations.models import Organization
 from apps.problems.models import Problem
 from apps.teams.models import Team
 
 
-def _request_org_id(request):
-    org_id = getattr(request, "organization_id", None) or getattr(
-        request.user, "organization_id", None
-    )
-    if org_id:
-        return str(org_id)
-
-    organization = Organization.objects.filter(is_active=True).order_by("created_at").first()
-    return str(organization.id) if organization else None
+def _request_organization(request):
+    return getattr(request, "organization", None)
 
 
 def _limit(request):
@@ -50,7 +42,7 @@ class SearchView(APIView):
     def get(self, request):
         query = (request.query_params.get("q") or request.query_params.get("query") or "").strip()
         limit = _limit(request)
-        org_id = _request_org_id(request)
+        organization = _request_organization(request)
 
         groups = {
             "incidents": [],
@@ -61,11 +53,11 @@ class SearchView(APIView):
             "teams": [],
         }
 
-        if not query or not org_id:
+        if not query or organization is None:
             return success({"query": query, "total": 0, "results": [], "groups": groups})
 
         incidents = (
-            Incident.objects.filter(organization_id=org_id)
+            Incident.objects.filter(organization=organization)
             .filter(
                 Q(number__icontains=query)
                 | Q(short_description__icontains=query)
@@ -95,7 +87,7 @@ class SearchView(APIView):
         ]
 
         problems = (
-            Problem.objects.filter(organization_id=org_id)
+            Problem.objects.filter(organization=organization)
             .filter(
                 Q(number__icontains=query)
                 | Q(short_description__icontains=query)
@@ -118,7 +110,7 @@ class SearchView(APIView):
         ]
 
         changes = (
-            Change.objects.filter(organization_id=org_id)
+            Change.objects.filter(organization=organization)
             .filter(
                 Q(number__icontains=query)
                 | Q(short_description__icontains=query)
@@ -142,7 +134,7 @@ class SearchView(APIView):
         ]
 
         assets = (
-            ConfigurationItem.objects.filter(organization_id=org_id)
+            ConfigurationItem.objects.filter(organization=organization)
             .filter(
                 Q(name__icontains=query)
                 | Q(hostname__icontains=query)
@@ -168,7 +160,7 @@ class SearchView(APIView):
         ]
 
         alerts = (
-            Alert.objects.filter(organization_id=org_id)
+            Alert.objects.filter(organization=organization)
             .filter(
                 Q(alert_id__icontains=query)
                 | Q(name__icontains=query)
@@ -191,7 +183,7 @@ class SearchView(APIView):
         ]
 
         teams = (
-            Team.objects.filter(organization_id=org_id)
+            Team.objects.filter(organization=organization)
             .filter(
                 Q(name__icontains=query)
                 | Q(description__icontains=query)

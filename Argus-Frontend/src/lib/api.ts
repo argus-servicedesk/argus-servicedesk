@@ -5,7 +5,6 @@ const api = axios.create({
   withCredentials: true, // Send httpOnly cookies with every request
   headers: {
     'Content-Type': 'application/json',
-    'X-Tenant-Id': 'argus',
   },
 });
 

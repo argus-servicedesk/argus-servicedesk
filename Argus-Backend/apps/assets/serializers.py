@@ -105,7 +105,7 @@ class ConfigurationItemCreateSerializer(CamelCaseInputMixin, serializers.ModelSe
 
     def create(self, validated_data):
         request = self.context['request']
-        validated_data['organization_id'] = getattr(request, "organization_id", None) or request.user.organization_id
+        validated_data['organization'] = getattr(request, "organization", None)
         return super().create(validated_data)
 
 

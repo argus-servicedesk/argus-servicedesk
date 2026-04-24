@@ -72,7 +72,9 @@ const riskStyle: Record<Risk, React.CSSProperties> = {
 const riskWeight: Record<Risk, number> = { HIGH: 1, MEDIUM: 2, LOW: 3 };
 
 function formatShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function getDisplayName(requestedBy: string | { firstName?: string; lastName?: string } | null): string {

@@ -23,6 +23,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.pagination import DefaultPagination
 from apps.common.responses import failure, success
 from apps.incidents.models import WorkNote
@@ -43,22 +44,15 @@ logger = logging.getLogger(__name__)
 
 class OrgScopedMixin:
     """Restrict every queryset to the current organisation.
-    Falls back to request.user.organization if header is missing.
     """
 
-    def _org_id(self) -> str | None:
-        org_id = getattr(self.request, "organization_id", None)
-        if not org_id:
-            # Fallback to user's own org
-            user_org = getattr(self.request.user, "organization", None)
-            if user_org:
-                return str(user_org.id)
-        return org_id
+    def _organization(self):
+        return getattr(self.request, "organization", None)
 
 
 # ─── List / Create ────────────────────────────────────────────────────────────
 
-class ProblemListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
+class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreateAPIView):
     """
     GET  /problems/   — paginated list with search + filter
     POST /problems/   — create new problem
@@ -68,14 +62,15 @@ class ProblemListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["state", "priority", "category", "assigned_to"]
     pagination_class = DefaultPagination
+    queryset = Problem.objects.all()
 
     def get_queryset(self):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return Problem.objects.none()
 
         qs = (
-            Problem.objects.filter(organization_id=org_id)
+            super().get_queryset()
             .select_related(
                 "assigned_to",
                 "created_by",
@@ -104,7 +99,7 @@ class ProblemListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         try:
-            if not self._org_id():
+            if self._organization() is None:
                 return failure("Organisation context required.", status_code=400)
             qs = self.filter_queryset(self.get_queryset())
             page = self.paginate_queryset(qs)
@@ -119,7 +114,7 @@ class ProblemListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         try:
-            if not self._org_id():
+            if self._organization() is None:
                 return failure("Organisation context required.", status_code=400)
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
@@ -136,7 +131,7 @@ class ProblemListCreateView(OrgScopedMixin, generics.ListCreateAPIView):
 
 # ─── Detail / Update ──────────────────────────────────────────────────────────
 
-class ProblemDetailView(OrgScopedMixin, generics.RetrieveUpdateAPIView):
+class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdateAPIView):
     """
     GET   /problems/<uuid>/  — full detail
     PATCH /problems/<uuid>/  — partial update (state transitions validated)
@@ -144,13 +139,14 @@ class ProblemDetailView(OrgScopedMixin, generics.RetrieveUpdateAPIView):
 
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "patch", "head", "options"]
+    queryset = Problem.objects.all()
 
     def get_queryset(self):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return Problem.objects.none()
         return (
-            Problem.objects.filter(organization_id=org_id)
+            super().get_queryset()
             .select_related(
                 "assigned_to",
                 "created_by",
@@ -208,12 +204,12 @@ class ProblemStatsView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return failure("Organisation context required.", status_code=400)
 
         try:
-            qs = Problem.objects.filter(organization_id=org_id)
+            qs = Problem.objects.filter(organization=organization)
 
             # Aggregate state counts in a single query
             state_rows = qs.values("state").annotate(n=Count("id"))
@@ -270,13 +266,11 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return failure("Organisation context required.", status_code=400)
 
-        problem = (
-            Problem.objects.filter(id=pk, organization_id=org_id).first()
-        )
+        problem = Problem.objects.filter(id=pk, organization=organization).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
 
@@ -327,11 +321,11 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization_id=org_id).first()
+        problem = Problem.objects.filter(id=pk, organization=organization).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
 
@@ -359,11 +353,11 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        org_id = self._org_id()
-        if not org_id:
+        organization = self._organization()
+        if organization is None:
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization_id=org_id).first()
+        problem = Problem.objects.filter(id=pk, organization=organization).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
 

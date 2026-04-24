@@ -125,7 +125,9 @@ function getInitials(name?: string): string {
 
 function timeSince(date: string | undefined): string {
   if (!date) return '--';
-  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  const ts = new Date(date).getTime();
+  if (!Number.isFinite(ts)) return 'Unknown';
+  const seconds = Math.floor((Date.now() - ts) / 1000);
   if (seconds < 0) return 'just now';
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
@@ -139,12 +141,16 @@ function timeSince(date: string | undefined): string {
 
 function formatDate(date: string | undefined): string {
   if (!date) return '--';
-  return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const parsed = new Date(date);
+  if (!Number.isFinite(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatDateTime(date: string | undefined): string {
   if (!date) return '--';
-  return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const parsed = new Date(date);
+  if (!Number.isFinite(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 const P_COLORS: Record<string, { bg: string; text: string; border: string; stripe: string; label: string }> = {
@@ -562,7 +568,7 @@ export default function DashboardOverview() {
                 </div>
               </div>
               <div className="text-2xl font-bold font-mono text-slate-900 leading-none mb-1">
-                {dashLoading ? <span className="text-sm text-slate-300">--</span> : item.value}
+                {dashLoading ? <div className="h-6 w-16 rounded-md bg-slate-100 animate-pulse" /> : item.value}
               </div>
               <span className="text-[10px] text-slate-400">{item.sub}</span>
             </div>

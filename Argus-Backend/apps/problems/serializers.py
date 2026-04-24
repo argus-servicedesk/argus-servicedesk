@@ -175,26 +175,23 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict) -> dict:
         request = self.context["request"]
-        org_id = (
-            getattr(request, "organization_id", None)
-            or getattr(request.user, "organization_id", None)
-        )
-        if not org_id:
+        organization = getattr(request, "organization", None)
+        if organization is None:
             return attrs
 
         assignment_group = attrs.get("assignment_group")
         assigned_to = attrs.get("assigned_to")
         related_change = attrs.get("related_change")
 
-        if assignment_group and str(assignment_group.organization_id) != str(org_id):
+        if assignment_group and assignment_group.organization_id != organization.id:
             raise serializers.ValidationError(
                 {"assignment_group": "Selected team does not belong to your organisation."}
             )
-        if assigned_to and str(assigned_to.organization_id) != str(org_id):
+        if assigned_to and assigned_to.organization_id != organization.id:
             raise serializers.ValidationError(
                 {"assigned_to": "Selected user does not belong to your organisation."}
             )
-        if related_change and str(related_change.organization_id) != str(org_id):
+        if related_change and related_change.organization_id != organization.id:
             raise serializers.ValidationError(
                 {"related_change": "Selected change does not belong to your organisation."}
             )
@@ -202,17 +199,7 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Problem:
         request = self.context["request"]
-        org = getattr(request.user, "organization", None)
-
-        # Fallback: try org from request header if user has no org set
-        if org is None:
-            org_id = getattr(request, "organization_id", None)
-            if org_id:
-                from apps.organizations.models import Organization
-                try:
-                    org = Organization.objects.get(id=org_id)
-                except Organization.DoesNotExist:
-                    pass
+        org = getattr(request, "organization", None)
 
         if org is None:
             raise serializers.ValidationError(

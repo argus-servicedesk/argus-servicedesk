@@ -172,3 +172,15 @@ class IncidentProblem(models.Model):
 
     class Meta:
         db_table = "incident_problems"
+
+
+class UnmatchedAlert(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    raw_payload = models.JSONField()
+    received_at = models.DateTimeField(auto_now_add=True)
+    alert_name = models.CharField(max_length=255)
+    reason = models.CharField(max_length=255)
+
+    class Meta:
+        db_table = "unmatched_alerts"
+        ordering = ["-received_at"]

@@ -50,24 +50,30 @@ function riskStyle(risk: string) {
 }
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('en-IN', {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function ChangeCalendar() {
   const today = new Date();
   const navigate = useNavigate();
-  const [year, setYear]   = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [view, setView]   = useState<'month' | 'week'>('month');
   const [selected, setSelected] = useState<Change | null>(null);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
 
   const { data, isLoading } = useChanges({ limit: 500, page: 1 });
   const changes: Change[] = data?.data || [];
@@ -82,10 +88,11 @@ export default function ChangeCalendar() {
   }, [year, month]);
 
   const weekStart = useMemo(() => {
-    const d = new Date(year, month, 1);
+    const d = new Date(currentDate);
+    d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - d.getDay());
     return d;
-  }, [year, month]);
+  }, [currentDate]);
 
   const weekCells = useMemo(() => {
     const cells: Date[] = [];
@@ -114,8 +121,38 @@ export default function ChangeCalendar() {
     return map;
   }, [changes]);
 
-  function prevMonth() { month === 0 ? (setMonth(11), setYear(y => y - 1)) : setMonth(m => m - 1); }
-  function nextMonth() { month === 11 ? (setMonth(0), setYear(y => y + 1)) : setMonth(m => m + 1); }
+  function prevPeriod() {
+    if (view === 'week') {
+      setCurrentDate((prev) => {
+        const next = new Date(prev);
+        next.setDate(next.getDate() - 7);
+        return next;
+      });
+      return;
+    }
+    setCurrentDate(new Date(year, month - 1, 1));
+  }
+
+  function nextPeriod() {
+    if (view === 'week') {
+      setCurrentDate((prev) => {
+        const next = new Date(prev);
+        next.setDate(next.getDate() + 7);
+        return next;
+      });
+      return;
+    }
+    setCurrentDate(new Date(year, month + 1, 1));
+  }
+
+  const headerLabel = useMemo(() => {
+    if (view === 'month') return `${MONTH_NAMES[month]} ${year}`;
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 6);
+    const startLabel = weekStart.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    const endLabel = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `${startLabel} - ${endLabel}`;
+  }, [view, month, year, weekStart]);
 
   const activeCells = view === 'month' ? monthCells : weekCells;
 
@@ -195,14 +232,13 @@ export default function ChangeCalendar() {
 
       {/* ── Month Navigation ── */}
       <div className="bg-white mx-4 mt-4 rounded-t-xl border border-b-0 border-slate-200 px-5 py-3 flex items-center justify-between">
-        <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+        <button onClick={prevPeriod} className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2 select-none">
-          <span className="text-lg font-bold text-slate-900">{MONTH_NAMES[month]}</span>
-          <span className="text-lg font-bold text-slate-400">{year}</span>
+          <span className="text-lg font-bold text-slate-900">{headerLabel}</span>
         </div>
-        <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+        <button onClick={nextPeriod} className="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>

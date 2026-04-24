@@ -71,7 +71,10 @@ const stateDarkStyle: Record<ProblemState, React.CSSProperties> = {
 const priorityWeight: Record<Priority, number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
 
 function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return 'Unknown';
+  const diff = Date.now() - ts;
+  if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

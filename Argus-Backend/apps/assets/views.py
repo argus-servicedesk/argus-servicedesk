@@ -12,6 +12,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import failure, success
 from apps.organizations.models import Organization
 from .bootstrap import bootstrap_inventory_if_demo
@@ -44,40 +45,27 @@ class AssetOrgMixin:
     permission_classes = [IsAuthenticated]
 
     def org_id(self):
-        org_id = getattr(self.request, "organization_id", None)
-        if org_id:
-            return str(org_id)
+        organization = getattr(self.request, "organization", None)
+        if organization is None:
+            raise PermissionDenied("Organization access denied")
+        return str(organization.id)
 
-        user_org_id = getattr(self.request.user, "organization_id", None)
-        if user_org_id:
-            return str(user_org_id)
-
-        org = Organization.objects.filter(is_active=True).order_by("created_at").first()
-        if org is None:
-            org, _ = Organization.objects.get_or_create(
-                name="Default Organization",
-                defaults={"slug": "default-organization", "is_active": True},
-            )
-            if not org.is_active:
-                org.is_active = True
-                org.save(update_fields=["is_active", "updated_at"])
-
-        self.request.user.organization = org
-        self.request.user.save(update_fields=["organization", "updated_at"])
-        self.request.organization_id = str(org.id)
-        return str(org.id)
+    def organization(self):
+        organization = getattr(self.request, "organization", None)
+        if organization is None:
+            raise PermissionDenied("Organization access denied")
+        return organization
 
 
-class ConfigurationItemListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class ConfigurationItemListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
+    queryset = ConfigurationItem.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['type', 'status', 'category', 'site', 'environment']
 
     def get_queryset(self):
         org_id = self.org_id()
-        if not org_id:
-            return ConfigurationItem.objects.none()
         self._ensure_default_seed(org_id)
-        queryset = ConfigurationItem.objects.filter(organization_id=org_id)
+        queryset = super().get_queryset().select_related('owner', 'support_group', 'site', 'organization')
 
         search = self.request.query_params.get('search')
         if search:
@@ -98,7 +86,7 @@ class ConfigurationItemListCreateView(AssetOrgMixin, generics.ListCreateAPIView)
                 | Q(site__name__icontains=search)
             )
 
-        return queryset.select_related('owner', 'support_group', 'site', 'organization')
+        return queryset
 
     def _ensure_default_seed(self, org_id):
         org = Organization.objects.filter(id=org_id).first()
@@ -118,9 +106,11 @@ class ConfigurationItemListCreateView(AssetOrgMixin, generics.ListCreateAPIView)
         return success(ConfigurationItemSerializer(ci).data, "configuration item created", 201)
 
 
-class ConfigurationItemDetailView(AssetOrgMixin, generics.RetrieveUpdateAPIView):
+class ConfigurationItemDetailView(AssetOrgMixin, OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
+    queryset = ConfigurationItem.objects.all()
+
     def get_queryset(self):
-        return ConfigurationItem.objects.filter(organization_id=self.org_id()).select_related(
+        return super().get_queryset().select_related(
             'owner', 'support_group', 'site', 'organization'
         )
 
@@ -170,59 +160,61 @@ class AssetTypesView(APIView):
         )
 
 
-class AssetSiteListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class AssetSiteListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
     serializer_class = AssetSiteSerializer
+    queryset = AssetSite.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['environment', 'status']
-
-    def get_queryset(self):
-        return AssetSite.objects.filter(organization_id=self.org_id())
 
     def perform_create(self, serializer):
         name = serializer.validated_data.get("name")
         slug = serializer.validated_data.get("slug") or slugify(name)
-        serializer.save(organization_id=self.org_id(), slug=slug)
+        serializer.save(organization=self.request.organization, slug=slug)
 
 
-class AssetCatalogListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class AssetCatalogListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
     serializer_class = AssetCatalogSerializer
+    queryset = AssetCatalog.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['category', 'is_active']
 
     def get_queryset(self):
-        org_id = self.org_id()
-        return AssetCatalog.objects.filter(Q(organization_id=org_id) | Q(organization__isnull=True))
+        queryset = super().get_queryset()
+        return AssetCatalog.objects.filter(Q(pk__in=queryset.values("pk")) | Q(organization__isnull=True))
 
     def perform_create(self, serializer):
-        serializer.save(organization_id=self.org_id())
+        serializer.save(organization=self.request.organization)
 
 
-class AssetManagementEndpointListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class AssetManagementEndpointListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
     serializer_class = AssetManagementEndpointSerializer
+    queryset = AssetManagementEndpoint.objects.all()
+    organization_lookup = "configuration_item__organization"
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['protocol', 'is_active']
 
     def get_configuration_item(self):
-        return ConfigurationItem.objects.get(id=self.kwargs["pk"], organization_id=self.org_id())
+        return ConfigurationItem.objects.get(id=self.kwargs["pk"], organization=self.request.organization)
 
     def get_queryset(self):
-        return AssetManagementEndpoint.objects.filter(configuration_item=self.get_configuration_item())
+        return super().get_queryset().filter(configuration_item=self.get_configuration_item())
 
     def perform_create(self, serializer):
         serializer.save(configuration_item=self.get_configuration_item())
 
 
-class AssetRelationshipListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class AssetRelationshipListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
     serializer_class = AssetRelationshipSerializer
+    queryset = AssetRelationship.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['relationship_type']
 
     def get_configuration_item(self):
-        return ConfigurationItem.objects.get(id=self.kwargs["pk"], organization_id=self.org_id())
+        return ConfigurationItem.objects.get(id=self.kwargs["pk"], organization=self.request.organization)
 
     def get_queryset(self):
         ci = self.get_configuration_item()
-        return AssetRelationship.objects.filter(Q(source_ci=ci) | Q(target_ci=ci)).select_related(
+        return super().get_queryset().filter(Q(source_ci=ci) | Q(target_ci=ci)).select_related(
             'source_ci', 'target_ci', 'created_by'
         )
 
@@ -233,7 +225,7 @@ class AssetRelationshipListCreateView(AssetOrgMixin, generics.ListCreateAPIView)
         org_id = self.org_id()
         if str(source_ci.organization_id) != org_id or str(target_ci.organization_id) != org_id:
             raise serializers.ValidationError("Related assets must belong to the current organization.")
-        serializer.save(organization_id=org_id, source_ci=source_ci, created_by=self.request.user)
+        serializer.save(organization=self.request.organization, source_ci=source_ci, created_by=self.request.user)
 
 
 def _asset_summary(asset):
@@ -271,7 +263,7 @@ def _now_iso():
 
 class AssetCompatibilityMixin(AssetOrgMixin):
     def get_asset(self, pk):
-        return ConfigurationItem.objects.filter(organization_id=self.org_id()).select_related(
+        return ConfigurationItem.objects.filter(organization=self.request.organization).select_related(
             "owner", "support_group", "site", "organization"
         ).get(id=pk)
 
@@ -309,14 +301,14 @@ class AssetRelationshipCompatView(AssetCompatibilityMixin, APIView):
         if not target_id or not relationship_type:
             return failure("targetAssetId and type are required", status_code=400)
 
-        target = ConfigurationItem.objects.filter(id=target_id, organization_id=self.org_id()).first()
+        target = ConfigurationItem.objects.filter(id=target_id, organization=self.request.organization).first()
         if target is None:
             return failure("target asset not found", status_code=404)
         if target.id == asset.id:
             return failure("target asset must be different from source asset", status_code=400)
 
         relationship, _ = AssetRelationship.objects.get_or_create(
-            organization_id=self.org_id(),
+            organization=self.request.organization,
             source_ci=asset,
             target_ci=target,
             relationship_type=relationship_type,
@@ -337,7 +329,7 @@ class AssetRelationshipDeleteCompatView(AssetCompatibilityMixin, APIView):
         deleted, _ = AssetRelationship.objects.filter(
             Q(source_ci=asset) | Q(target_ci=asset),
             id=relationship_id,
-            organization_id=self.org_id(),
+            organization=self.request.organization,
         ).delete()
         if not deleted:
             return failure("relationship not found", status_code=404)
@@ -464,7 +456,7 @@ class AssetConnectionsView(AssetCompatibilityMixin, APIView):
     def get(self, request, pk):
         asset = self.get_asset(pk)
         connections = AssetPortConnection.objects.filter(
-            Q(source_ci=asset) | Q(target_ci=asset), organization_id=self.org_id()
+            Q(source_ci=asset) | Q(target_ci=asset), organization=self.request.organization
         )
         return success(AssetPortConnectionSerializer(connections, many=True).data)
 
@@ -474,7 +466,7 @@ class AssetConnectionsView(AssetCompatibilityMixin, APIView):
         payload.setdefault("source_ci", str(asset.id))
         serializer = AssetPortConnectionSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        connection = serializer.save(organization_id=self.org_id())
+        connection = serializer.save(organization=self.request.organization)
         return success(AssetPortConnectionSerializer(connection).data, "connection saved", 201)
 
 
@@ -522,8 +514,8 @@ class AssetVendorDetailView(AssetOrgMixin, APIView):
 class AssetTopologyView(AssetOrgMixin, APIView):
     def get(self, request):
         org_id = self.org_id()
-        assets = ConfigurationItem.objects.filter(organization_id=org_id).select_related('site')
-        relationships = AssetRelationship.objects.filter(organization_id=org_id)
+        assets = ConfigurationItem.objects.filter(organization=request.organization).select_related('site')
+        relationships = AssetRelationship.objects.filter(organization=request.organization)
 
         nodes = [
             {
@@ -553,7 +545,7 @@ class AssetTopologyView(AssetOrgMixin, APIView):
 
 class AssetLiveMetricsView(AssetOrgMixin, APIView):
     def get_asset(self, pk):
-        return ConfigurationItem.objects.filter(organization_id=self.org_id()).prefetch_related(
+        return ConfigurationItem.objects.filter(organization=self.request.organization).prefetch_related(
             "management_endpoints"
         ).select_related("site").get(id=pk)
 
@@ -570,7 +562,7 @@ class AssetLiveMetricsView(AssetOrgMixin, APIView):
 
 class AssetMetricsHistoryView(AssetOrgMixin, APIView):
     def get(self, request, pk):
-        asset = ConfigurationItem.objects.filter(organization_id=self.org_id()).prefetch_related(
+        asset = ConfigurationItem.objects.filter(organization=request.organization).prefetch_related(
             "management_endpoints"
         ).select_related("site").get(id=pk)
         duration = request.query_params.get("duration", "6h")
@@ -579,7 +571,7 @@ class AssetMetricsHistoryView(AssetOrgMixin, APIView):
 
 class AssetLiveStatusSyncView(AssetOrgMixin, APIView):
     def post(self, request):
-        queryset = ConfigurationItem.objects.filter(organization_id=self.org_id(), monitoring_enabled=True)
+        queryset = ConfigurationItem.objects.filter(organization=request.organization, monitoring_enabled=True)
         asset_ids = request.data.get("asset_ids")
         if asset_ids:
             queryset = queryset.filter(id__in=asset_ids)
@@ -602,13 +594,14 @@ class AssetPrometheusConfigView(AssetOrgMixin, APIView):
         return success({"path": str(path), "content": content}, "prometheus config generated")
 
 
-class AssetPortConnectionListCreateView(AssetOrgMixin, generics.ListCreateAPIView):
+class AssetPortConnectionListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):
     serializer_class = AssetPortConnectionSerializer
+    queryset = AssetPortConnection.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'source_ci', 'target_ci']
 
     def get_queryset(self):
-        queryset = AssetPortConnection.objects.filter(organization_id=self.org_id())
+        queryset = super().get_queryset()
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(
@@ -622,7 +615,7 @@ class AssetPortConnectionListCreateView(AssetOrgMixin, generics.ListCreateAPIVie
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(organization_id=self.org_id())
+        serializer.save(organization=self.request.organization)
 
 
 class AssetPortConnectionImportView(AssetOrgMixin, APIView):
@@ -635,24 +628,22 @@ class AssetPortConnectionImportView(AssetOrgMixin, APIView):
         for row in rows:
             serializer = AssetPortConnectionSerializer(data=row)
             serializer.is_valid(raise_exception=True)
-            created.append(serializer.save(organization_id=self.org_id()))
+            created.append(serializer.save(organization=self.request.organization))
 
         return success(AssetPortConnectionSerializer(created, many=True).data, "port connections imported", 201)
 
 
 class AssetPortConnectionExportView(AssetOrgMixin, APIView):
     def get(self, request):
-        rows = AssetPortConnection.objects.filter(organization_id=self.org_id())
+        rows = AssetPortConnection.objects.filter(organization=request.organization)
         return success(AssetPortConnectionSerializer(rows, many=True).data)
 
 
-class AssetDiscoveryResultListView(AssetOrgMixin, generics.ListAPIView):
+class AssetDiscoveryResultListView(AssetOrgMixin, OrgQuerysetMixin, generics.ListAPIView):
     serializer_class = AssetDiscoveryResultSerializer
+    queryset = AssetDiscoveryResult.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'asset_type', 'site']
-
-    def get_queryset(self):
-        return AssetDiscoveryResult.objects.filter(organization_id=self.org_id())
 
 
 class AssetDiscoveryScanView(AssetOrgMixin, APIView):
@@ -680,7 +671,7 @@ class AssetDiscoveryScanView(AssetOrgMixin, APIView):
 
         site = None
         if site_id:
-            site = AssetSite.objects.filter(id=site_id, organization_id=self.org_id()).first()
+            site = AssetSite.objects.filter(id=site_id, organization=request.organization).first()
             if site is None:
                 return failure("site not found", status_code=404)
 
@@ -689,7 +680,7 @@ class AssetDiscoveryScanView(AssetOrgMixin, APIView):
             current = ipaddress.ip_address(int(start_ip) + offset)
             probed = AssetDiscoveryService.probe_host(str(current), asset_type=asset_type)
             result = AssetDiscoveryResult.objects.create(
-                organization_id=self.org_id(),
+                organization=request.organization,
                 site=site,
                 scan_range_start=str(start_ip),
                 scan_range_end=str(end_ip),
@@ -703,13 +694,11 @@ class AssetDiscoveryScanView(AssetOrgMixin, APIView):
         return success(AssetDiscoveryResultSerializer(results, many=True).data, "discovery scan recorded", 201)
 
 
-class AssetOnboardingListView(AssetOrgMixin, generics.ListAPIView):
+class AssetOnboardingListView(AssetOrgMixin, OrgQuerysetMixin, generics.ListAPIView):
     serializer_class = AssetOnboardingRecordSerializer
+    queryset = AssetOnboardingRecord.objects.all()
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'site']
-
-    def get_queryset(self):
-        return AssetOnboardingRecord.objects.filter(organization_id=self.org_id())
 
 
 class AssetOnboardView(AssetOrgMixin, APIView):
@@ -717,14 +706,14 @@ class AssetOnboardView(AssetOrgMixin, APIView):
         discovery_result = None
         discovery_id = request.data.get("discovery_result") or request.data.get("discoveryResultId")
         if discovery_id:
-            discovery_result = AssetDiscoveryResult.objects.filter(id=discovery_id, organization_id=self.org_id()).first()
+            discovery_result = AssetDiscoveryResult.objects.filter(id=discovery_id, organization=request.organization).first()
             if discovery_result is None:
                 return failure("discovery_result not found", status_code=404)
 
         site_id = request.data.get("site") or request.data.get("siteId")
         if not site_id and discovery_result and discovery_result.site_id:
             site_id = str(discovery_result.site_id)
-        site = AssetSite.objects.filter(id=site_id, organization_id=self.org_id()).first() if site_id else None
+        site = AssetSite.objects.filter(id=site_id, organization=request.organization).first() if site_id else None
 
         name = request.data.get("name") or request.data.get("hostname") or (discovery_result.hostname if discovery_result else None)
         ip_address = request.data.get("ip_address") or request.data.get("ipAddress") or (str(discovery_result.ip_address) if discovery_result else None)
@@ -733,7 +722,7 @@ class AssetOnboardView(AssetOrgMixin, APIView):
             return failure("name or hostname is required", status_code=400)
 
         ci = ConfigurationItem.objects.create(
-            organization_id=self.org_id(),
+            organization=request.organization,
             site=site,
             name=name,
             type=asset_type,
@@ -748,7 +737,7 @@ class AssetOnboardView(AssetOrgMixin, APIView):
         )
 
         record = AssetOnboardingRecord.objects.create(
-            organization_id=self.org_id(),
+            organization=request.organization,
             configuration_item=ci,
             discovery_result=discovery_result,
             site=site,

@@ -2,18 +2,20 @@ from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success
 from .models import Change, Approval
 from .serializers import ChangeSerializer, ChangeCreateSerializer, ChangeUpdateSerializer, ApprovalSerializer
 
 
-class ChangeListCreateView(generics.ListCreateAPIView):
+class ChangeListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['state', 'type', 'risk_level', 'category']
+    queryset = Change.objects.all()
     
     def get_queryset(self):
-        queryset = Change.objects.filter(organization_id=self.request.organization_id)
+        queryset = super().get_queryset()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -41,14 +43,17 @@ class ChangeListCreateView(generics.ListCreateAPIView):
         return success(ChangeSerializer(change).data, "change created", 201)
 
 
-class ChangeDetailView(generics.RetrieveUpdateAPIView):
+class ChangeDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = Change.objects.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('approvals', 'affected_cis')
+    queryset = Change.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return ChangeUpdateSerializer
         return ChangeSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('approvals', 'affected_cis')
 
 
 class ApprovalCreateView(generics.CreateAPIView):

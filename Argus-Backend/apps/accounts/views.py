@@ -4,7 +4,6 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.organizations.models import Organization
 from apps.common.responses import failure, success
 from .serializers import MeSerializer, SignupSerializer, UserSerializer
 
@@ -17,21 +16,7 @@ def _token_payload(user):
 
 
 def _ensure_user_organization(user):
-    if getattr(user, "organization_id", None):
-        return
-
-    org = Organization.objects.filter(is_active=True).order_by("created_at").first()
-    if org is None:
-        org, _ = Organization.objects.get_or_create(
-            name="Default Organization",
-            defaults={"slug": "default-organization", "is_active": True},
-        )
-        if not org.is_active:
-            org.is_active = True
-            org.save(update_fields=["is_active", "updated_at"])
-
-    user.organization = org
-    user.save(update_fields=["organization", "updated_at"])
+    return getattr(user, "organization_id", None) is not None
 
 
 class SignupView(APIView):
@@ -42,7 +27,8 @@ class SignupView(APIView):
         if not serializer.is_valid():
             return failure(serializer.errors, status_code=400)
         user = serializer.save()
-        _ensure_user_organization(user)
+        if not _ensure_user_organization(user):
+            return failure("user must belong to an organization", status_code=400)
         return success(MeSerializer(user).data, "user created", 201)
 
 
@@ -84,7 +70,9 @@ class LoginView(APIView):
         if not user:
             return failure("invalid credentials", status_code=401)
 
-        _ensure_user_organization(user)
+        if not _ensure_user_organization(user):
+            return failure("user does not have organization access", status_code=403)
+
         payload = _token_payload(user)
         return success({"user": MeSerializer(user).data, **payload}, "login successful")
 
@@ -120,27 +108,14 @@ class RefreshView(TokenRefreshView):
 
 
 class UserListView(APIView):
-    """
-    GET /auth/users/
-    Returns all users in the same organisation.
-    Falls back to request.user.organization if X-Organization-Id header is absent.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        _ensure_user_organization(request.user)
-        # Prefer header, fall back to user's own org
-        org_id = getattr(request, "organization_id", None)
-        if not org_id:
-            user_org = getattr(request.user, "organization", None)
-            if user_org:
-                org_id = str(user_org.id)
+        organization = getattr(request, "organization", None)
+        if organization is None:
+            return failure("organization access denied", status_code=403)
 
-        if not org_id:
-            return success([])  # No org context — return empty list gracefully
-
-        users = (
-            User.objects.filter(organization_id=org_id)
-            .order_by("first_name", "last_name")
+        users = User.objects.filter(organization=organization).order_by(
+            "first_name", "last_name"
         )
         return success(UserSerializer(users, many=True).data)

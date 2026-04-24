@@ -1,20 +1,23 @@
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q
+
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success
+
 from .models import Notification
 from .serializers import NotificationSerializer, NotificationUpdateSerializer
-from django.utils import timezone
 
 
-class NotificationListView(generics.ListAPIView):
+class NotificationListView(OrgQuerysetMixin, generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['type', 'is_read', 'channel']
+    queryset = Notification.objects.all()
     
     def get_queryset(self):
-        queryset = Notification.objects.filter(user=self.request.user, organization_id=self.request.organization_id)
+        queryset = super().get_queryset().filter(user=self.request.user)
         return queryset.select_related('user')
     
     def get_serializer_class(self):
@@ -22,19 +25,44 @@ class NotificationListView(generics.ListAPIView):
     
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
+        unread_count = queryset.filter(is_read=False).count()
+
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        notifications = [
+            {
+                "id": item["id"],
+                "type": item["type"],
+                "title": item["title"],
+                "message": item["message"],
+                "link": item["link"],
+                "isRead": item["is_read"],
+                "readAt": item["read_at"],
+                "channel": item["channel"],
+                "createdAt": item["created_at"],
+            }
+            for item in serializer.data
+        ]
+        response = self.get_paginated_response({"notifications": notifications, "unreadCount": unread_count})
+        if "pagination" in response.data:
+            response.data["pagination"]["total"] = response.data["pagination"].pop("count", 0)
+            limit = self.paginator.get_page_size(request) or 25
+            total = response.data["pagination"]["total"]
+            response.data["pagination"]["pages"] = max((total + limit - 1) // limit, 1) if total else 0
+        return response
 
 
-class NotificationDetailView(generics.RetrieveUpdateAPIView):
+class NotificationDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = Notification.objects.select_related('user')
+    queryset = Notification.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return NotificationUpdateSerializer
         return NotificationSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().filter(user=self.request.user).select_related("user")
     
     def perform_update(self, serializer):
         if serializer.validated_data.get('is_read') and not self.object.is_read:
@@ -48,8 +76,37 @@ class MarkAllReadView(generics.GenericAPIView):
     def post(self, request):
         Notification.objects.filter(
             user=request.user, 
-            organization_id=request.organization_id,
+            organization=request.organization,
             is_read=False
         ).update(is_read=True, read_at=timezone.now())
         
         return success(message="all notifications marked as read")
+
+
+class UnreadCountView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        count = Notification.objects.filter(
+            user=request.user,
+            organization=request.organization,
+            is_read=False,
+        ).count()
+        return success({"count": count})
+
+
+class MarkNotificationReadView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        notification = Notification.objects.filter(
+            pk=pk,
+            user=request.user,
+            organization=request.organization,
+        ).first()
+        if notification:
+            notification.is_read = True
+            if notification.read_at is None:
+                notification.read_at = timezone.now()
+            notification.save(update_fields=["is_read", "read_at"])
+        return success(message="notification marked as read")
