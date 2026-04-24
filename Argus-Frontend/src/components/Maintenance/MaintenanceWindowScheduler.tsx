@@ -138,7 +138,7 @@ export default function MaintenanceWindowScheduler() {
   const windows: Change[] = data?.data || [];
 
   const create = useMutation({
-    mutationFn: () => api.post('/changes', {
+    mutationFn: () => api.post('/changes/', {
       ...form,
       shortDescription: form.shortDescription || 'Maintenance Window',
       riskLevel: 'LOW',

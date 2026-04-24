@@ -145,14 +145,30 @@ function getBadgeStyle(badge: string): React.CSSProperties {
   };
 }
 
+function buildDisplayName(user: any): string {
+  const first = user?.first_name ?? user?.firstName ?? '';
+  const last = user?.last_name ?? user?.lastName ?? '';
+  const fullName = `${first} ${last}`.trim();
+  if (fullName) return fullName;
+  if (user?.username) return user.username;
+  if (user?.email) return String(user.email).split('@')[0];
+  return 'User';
+}
+
+function buildInitials(label: string): string {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('');
+  return initials || 'U';
+}
+
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const userRole = user?.role || 'VIEWER';
   const isSuperAdmin = userRole === 'ADMIN' && !user?.organization;
-  const initials = user
-    ? `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
-    : 'U';
+  const displayName = buildDisplayName(user);
+  const initials = buildInitials(displayName);
 
   // On mobile, sidebar is always expanded (not collapsed)
   const showLabels = mobileOpen || !collapsed;
@@ -460,7 +476,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   className="text-[12px] font-semibold truncate"
                   style={{ color: 'rgba(255,255,255,0.9)' }}
                 >
-                  {user.first_name} {user.last_name}
+                  {displayName}
                 </p>
                 <p className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>
                   {user.role}

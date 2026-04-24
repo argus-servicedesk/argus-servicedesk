@@ -9,6 +9,7 @@ from django.utils.text import slugify
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers
 from rest_framework import generics, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -119,6 +120,10 @@ class ConfigurationItemDetailView(AssetOrgMixin, OrgQuerysetMixin, generics.Retr
             return ConfigurationItemUpdateSerializer
         return ConfigurationItemSerializer
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return success(self.get_serializer(instance).data)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -131,6 +136,7 @@ class ConfigurationItemDetailView(AssetOrgMixin, OrgQuerysetMixin, generics.Retr
 class ConfigurationItemStatsView(AssetOrgMixin, generics.GenericAPIView):
     def get(self, request):
         org_id = self.org_id()
+        self._ensure_default_seed(org_id)
         queryset = ConfigurationItem.objects.filter(organization_id=org_id)
 
         stats = {
@@ -144,6 +150,12 @@ class ConfigurationItemStatsView(AssetOrgMixin, generics.GenericAPIView):
         }
 
         return success(stats)
+
+    def _ensure_default_seed(self, org_id):
+        org = Organization.objects.filter(id=org_id).first()
+        if org is None:
+            return
+        bootstrap_inventory_if_demo(org)
 
 
 class AssetTypesView(APIView):

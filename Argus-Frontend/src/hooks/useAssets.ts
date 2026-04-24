@@ -94,7 +94,18 @@ export function denormalizeAssetPayload(input: Record<string, unknown>): Record<
 
 export function normalizeAssetResponse(response: any): any {
   if ('data' in response) {
-    return { ...response, data: normalizeAssetPayload(response.data) };
+    const total = Number(response?.pagination?.count ?? response?.pagination?.total ?? response?.data?.length ?? 0);
+    return {
+      ...response,
+      data: normalizeAssetPayload(response.data),
+      pagination: response?.pagination
+        ? {
+            ...response.pagination,
+            total,
+            pages: Number(response.pagination.pages ?? Math.max(1, Math.ceil(total / Math.max(Number(response.pagination.limit ?? 25), 1)))),
+          }
+        : undefined,
+    };
   }
   return normalizeAssetPayload(response);
 }

@@ -58,7 +58,7 @@ export default function PortalIncidentCreate() {
 
   const createIncident = useMutation({
     mutationFn: async (data: IncidentFormData) => {
-      const res = await api.post('/incidents', data);
+      const res = await api.post('/incidents/', data);
       return res.data;
     },
     onSuccess: (res: any) => {
