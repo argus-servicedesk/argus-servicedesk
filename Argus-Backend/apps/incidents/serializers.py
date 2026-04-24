@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem
+from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem, IncidentChange
 from apps.accounts.serializers import UserSerializer
 from apps.organizations.serializers import OrganizationSerializer
 
@@ -14,7 +14,31 @@ class IncidentProblemSerializer(serializers.ModelSerializer):
 
     def get_problem(self, obj):
         if obj.problem:
-            return {'id': str(obj.problem.id), 'number': obj.problem.number, 'short_description': obj.problem.short_description}
+            return {
+                'id': str(obj.problem.id),
+                'number': obj.problem.number,
+                'short_description': obj.problem.short_description,
+                'state': obj.problem.state,
+            }
+        return None
+
+
+class IncidentChangeSerializer(serializers.ModelSerializer):
+    change = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IncidentChange
+        fields = ['id', 'change', 'notes']
+        read_only_fields = ['id']
+
+    def get_change(self, obj):
+        if obj.change:
+            return {
+                'id': str(obj.change.id),
+                'number': obj.change.number,
+                'short_description': obj.change.short_description,
+                'state': obj.change.state,
+            }
         return None
 
 
@@ -55,6 +79,7 @@ class IncidentSerializer(serializers.ModelSerializer):
     activities = ActivitySerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
     linked_problems = IncidentProblemSerializer(many=True, read_only=True)
+    linked_changes = IncidentChangeSerializer(many=True, read_only=True)
 
     class Meta:
         model = Incident
@@ -66,7 +91,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             'sla_target_response', 'sla_target_resolution', 'source',
             'source_alert_id', 'source_alert_name', 'resolved_at', 'closed_at',
             'resolution_code', 'resolution_notes', 'organization',
-            'work_notes', 'activities', 'attachments', 'linked_problems', 'created_at', 'updated_at'
+            'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at']
 
@@ -94,6 +119,13 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         from django.utils import timezone
         import random
         import string
+
+        priority_matrix = {
+            "ENTERPRISE": {"CRITICAL": "P1", "HIGH": "P1", "MEDIUM": "P2", "LOW": "P3"},
+            "DEPARTMENT": {"CRITICAL": "P1", "HIGH": "P2", "MEDIUM": "P2", "LOW": "P3"},
+            "TEAM": {"CRITICAL": "P2", "HIGH": "P2", "MEDIUM": "P3", "LOW": "P4"},
+            "INDIVIDUAL": {"CRITICAL": "P2", "HIGH": "P3", "MEDIUM": "P4", "LOW": "P4"},
+        }
         
         # Generate incident number
         year = timezone.now().year
@@ -103,6 +135,9 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         validated_data['number'] = number
         validated_data['created_by'] = self.context['request'].user
         validated_data['organization'] = getattr(self.context['request'], "organization", None) or self.context['request'].user.organization
+        impact = validated_data.get("impact", Incident.Impact.TEAM)
+        urgency = validated_data.get("urgency", Incident.Urgency.MEDIUM)
+        validated_data["priority"] = priority_matrix.get(impact, priority_matrix["TEAM"]).get(urgency, "P3")
         
         return super().create(validated_data)
 

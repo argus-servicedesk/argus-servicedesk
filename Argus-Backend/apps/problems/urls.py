@@ -16,7 +16,9 @@ from django.urls import path
 
 from .views import (
     ProblemAiRcaView,
+    ProblemChangeLinkView,
     ProblemDetailView,
+    ProblemIncidentLinkView,
     ProblemListCreateView,
     ProblemRcaPatchView,
     ProblemStatsView,
@@ -32,6 +34,8 @@ urlpatterns = [
     path("<uuid:pk>/", ProblemDetailView.as_view(), name="problem-detail"),
     # Work Notes
     path("<uuid:pk>/notes/", ProblemWorkNoteView.as_view(), name="problem-notes"),
+    path("<uuid:pk>/incidents/", ProblemIncidentLinkView.as_view(), name="problem-link-incident"),
+    path("<uuid:pk>/changes/", ProblemChangeLinkView.as_view(), name="problem-link-change"),
     # AI RCA
     path("<uuid:pk>/ai-rca/", ProblemAiRcaView.as_view(), name="problem-ai-rca"),
     # RCA Patch

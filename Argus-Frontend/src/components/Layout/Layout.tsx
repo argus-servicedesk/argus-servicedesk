@@ -44,7 +44,7 @@ export default function Layout() {
       >
         <Header onMenuToggle={() => setMobileOpen(!mobileOpen)} />
         <main className="p-4 sm:p-6 min-h-[calc(100vh-3.5rem)]">
-          <Outlet />
+          <Outlet key={location.pathname} />
         </main>
       </div>
     </div>

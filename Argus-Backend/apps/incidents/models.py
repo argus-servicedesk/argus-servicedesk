@@ -174,6 +174,31 @@ class IncidentProblem(models.Model):
         db_table = "incident_problems"
 
 
+class IncidentChange(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    incident = models.ForeignKey(
+        'incidents.Incident',
+        on_delete=models.CASCADE,
+        related_name='linked_changes',
+    )
+    change = models.ForeignKey(
+        'changes.Change',
+        on_delete=models.CASCADE,
+        related_name='linked_incidents',
+    )
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "incident_changes"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["incident", "change"],
+                name="uniq_incident_change_link",
+            )
+        ]
+
+
 class UnmatchedAlert(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     raw_payload = models.JSONField()

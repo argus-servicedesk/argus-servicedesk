@@ -7,8 +7,19 @@ interface Props {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isLoading, hasHydrated } = useAuthStore();
   const location = useLocation();
+
+  if (!hasHydrated || isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-signal/30 border-t-signal rounded-full animate-spin" />
+          <span className="text-sm text-gray-500 font-mono">Checking session...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
