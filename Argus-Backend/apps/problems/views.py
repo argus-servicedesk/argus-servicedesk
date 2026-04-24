@@ -23,10 +23,11 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
+from apps.changes.models import Change
 from apps.common.mixins import OrgQuerysetMixin
 from apps.common.pagination import DefaultPagination
 from apps.common.responses import failure, success
-from apps.incidents.models import WorkNote
+from apps.incidents.models import Activity, Incident, IncidentProblem, WorkNote
 
 from .models import Problem
 from .serializers import (
@@ -306,6 +307,120 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
 
 
 # ─── AI RCA ───────────────────────────────────────────────────────────────────
+
+class ProblemIncidentLinkView(OrgScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        organization = self._organization()
+        if organization is None:
+            return failure("Organisation context required.", status_code=400)
+
+        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        if not problem:
+            return failure("Problem not found.", status_code=404)
+
+        incident_id = request.data.get("incident_id") or request.data.get("incidentId")
+        if not incident_id:
+            return failure("incident_id is required", status_code=400)
+
+        incident = Incident.objects.filter(id=incident_id, organization=organization).first()
+        if not incident:
+            return failure("Incident not found.", status_code=404)
+
+        link_type = request.data.get("link_type") or request.data.get("linkType") or IncidentProblem.LinkType.RELATED
+        if link_type not in IncidentProblem.LinkType.values:
+            return failure("Invalid link type.", status_code=400)
+
+        notes = request.data.get("notes")
+        link, created = IncidentProblem.objects.get_or_create(
+            incident=incident,
+            problem=problem,
+            defaults={"link_type": link_type, "notes": notes},
+        )
+        if not created:
+            changed = False
+            if link.link_type != link_type:
+                link.link_type = link_type
+                changed = True
+            if notes is not None and link.notes != notes:
+                link.notes = notes
+                changed = True
+            if changed:
+                link.save(update_fields=["link_type", "notes"])
+
+        Activity.objects.create(
+            action="INCIDENT_LINKED",
+            description=f"Linked incident {incident.number}",
+            user=request.user,
+            incident=incident,
+            problem=problem,
+        )
+
+        problem = (
+            Problem.objects.filter(id=problem.id)
+            .select_related(
+                "assigned_to",
+                "created_by",
+                "assignment_group",
+                "related_change",
+                "organization",
+            )
+            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .first()
+        )
+        return success(
+            ProblemSerializer(problem).data,
+            "incident linked to problem" if created else "problem incident link updated",
+            201 if created else 200,
+        )
+
+
+class ProblemChangeLinkView(OrgScopedMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        organization = self._organization()
+        if organization is None:
+            return failure("Organisation context required.", status_code=400)
+
+        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        if not problem:
+            return failure("Problem not found.", status_code=404)
+
+        change_id = request.data.get("change_id") or request.data.get("changeId")
+        if not change_id:
+            return failure("change_id is required", status_code=400)
+
+        change = Change.objects.filter(id=change_id, organization=organization).first()
+        if not change:
+            return failure("Change not found.", status_code=404)
+
+        if problem.related_change_id != change.id:
+            problem.related_change = change
+            problem.save(update_fields=["related_change", "updated_at"])
+            Activity.objects.create(
+                action="CHANGE_LINKED",
+                description=f"Linked change {change.number}",
+                user=request.user,
+                problem=problem,
+                change=change,
+            )
+
+        problem = (
+            Problem.objects.filter(id=problem.id)
+            .select_related(
+                "assigned_to",
+                "created_by",
+                "assignment_group",
+                "related_change",
+                "organization",
+            )
+            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .first()
+        )
+        return success(ProblemSerializer(problem).data, "change linked to problem")
+
 
 class ProblemAiRcaView(OrgScopedMixin, APIView):
     """

@@ -23,8 +23,19 @@ class OrganizationContextMiddleware:
         "/api/schema/",
         "/api/docs/",
         "/api/v1/health",
-        "/api/v1/auth/",
     )
+    EXEMPT_PATHS = {
+        "/api/v1/auth",
+        "/api/v1/auth/",
+        "/api/v1/auth/login",
+        "/api/v1/auth/login/",
+        "/api/v1/auth/signup",
+        "/api/v1/auth/signup/",
+        "/api/v1/auth/register",
+        "/api/v1/auth/register/",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/refresh/",
+    }
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -35,7 +46,7 @@ class OrganizationContextMiddleware:
         request.organization_id = None
 
         path = request.path or ""
-        if any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES):
+        if path in self.EXEMPT_PATHS or any(path.startswith(prefix) for prefix in self.EXEMPT_PREFIXES):
             return self.get_response(request)
 
         user = getattr(request, "user", None)

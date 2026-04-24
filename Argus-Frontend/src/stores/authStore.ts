@@ -47,10 +47,12 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  hasHydrated: boolean;
   login: (email: string, password: string, mfaToken?: string) => Promise<{ requiresMfa?: boolean }>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
   setSelectedOrg: (orgId: string | null) => void;
+  setHasHydrated: (value: boolean) => void;
   checkAuth: () => Promise<void>;
 }
 
@@ -87,7 +89,7 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null, organization: null, selectedOrgId: null,
       accessToken: null, refreshToken: null,
-      isAuthenticated: false, isLoading: false,
+      isAuthenticated: false, isLoading: false, hasHydrated: false,
 
       login: async (email, password, mfaToken?) => {
         set({ isLoading: true });
@@ -101,7 +103,7 @@ export const useAuthStore = create<AuthState>()(
 
           // Resolve org — could be nested object or just an id
           const orgObj = user.organization || null;
-          const orgId = orgObj?.id || null;
+          const orgId = user.organizationId || orgObj?.id || null;
 
           set({
             user,
@@ -111,6 +113,7 @@ export const useAuthStore = create<AuthState>()(
             refreshToken: refresh,
             isAuthenticated: true,
             isLoading: false,
+            hasHydrated: true,
           });
           return {};
         } catch (err: any) {
@@ -132,17 +135,19 @@ export const useAuthStore = create<AuthState>()(
           user: null, organization: null, selectedOrgId: null,
           accessToken: null, refreshToken: null,
           isAuthenticated: false,
+          hasHydrated: true,
         });
       },
 
-      setUser: (user) => set({ user: normalizeUser(user), isAuthenticated: true }),
+      setUser: (user) => set({ user: normalizeUser(user), isAuthenticated: true, hasHydrated: true }),
       setSelectedOrg: (orgId) => set({ selectedOrgId: orgId }),
+      setHasHydrated: (value) => set({ hasHydrated: value }),
 
       checkAuth: async () => {
         const { accessToken } = useAuthStore.getState();
         // Skip if no token stored — user hasn't logged in
         if (!accessToken) {
-          set({ isAuthenticated: false, isLoading: false });
+          set({ isAuthenticated: false, isLoading: false, hasHydrated: true });
           return;
         }
         set({ isLoading: true });
@@ -152,9 +157,10 @@ export const useAuthStore = create<AuthState>()(
           set({
             user,
             organization: user.organization || null,
-            selectedOrgId: user.organization?.id || null,
+            selectedOrgId: user.organization?.id || user.organizationId || null,
             isAuthenticated: true,
             isLoading: false,
+            hasHydrated: true,
           });
         } catch {
           // Token expired — try refresh before giving up
@@ -172,9 +178,10 @@ export const useAuthStore = create<AuthState>()(
                 set({
                   user,
                   organization: user.organization || null,
-                  selectedOrgId: user.organization?.id || null,
+                  selectedOrgId: user.organization?.id || user.organizationId || null,
                   isAuthenticated: true,
                   isLoading: false,
+                  hasHydrated: true,
                 });
                 return;
               }
@@ -184,7 +191,7 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: null, organization: null, selectedOrgId: null,
             accessToken: null, refreshToken: null,
-            isAuthenticated: false, isLoading: false,
+            isAuthenticated: false, isLoading: false, hasHydrated: true,
           });
         }
       },
@@ -199,6 +206,9 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

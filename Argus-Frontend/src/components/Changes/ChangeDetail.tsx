@@ -105,7 +105,7 @@ function formatPersonName(value: unknown): string {
 // ─── State Transitions ──────────────────────────────────────────────────────
 
 const CHANGE_TRANSITIONS: Record<string, string[]> = {
-  NEW:          ['ASSESSMENT', 'CANCELLED'],
+  NEW:          ['ASSESSMENT', 'APPROVAL', 'CANCELLED'],
   ASSESSMENT:   ['APPROVAL', 'CANCELLED'],
   APPROVAL:     ['SCHEDULED', 'CANCELLED'],
   SCHEDULED:    ['IMPLEMENTING', 'CANCELLED'],

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   Eye, EyeOff, Shield, Zap, ArrowRight, Activity,
   Server, Bell, Brain, Lock, ChevronRight,
@@ -52,7 +52,9 @@ function StatPill({ value, label }: { value: string; label: string }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, isAuthenticated } = useAuthStore();
+  const redirectPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -64,8 +66,8 @@ export default function LoginPage() {
   const [mfaToken, setMfaToken] = useState('');
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard', { replace: true });
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(redirectPath, { replace: true });
+  }, [isAuthenticated, navigate, redirectPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +82,7 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      navigate('/dashboard');
+      navigate(redirectPath, { replace: true });
     } catch (err: any) {
       setError(err?.message || 'Invalid credentials. Please try again.');
       setShake(true);

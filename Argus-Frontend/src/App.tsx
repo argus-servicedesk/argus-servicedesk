@@ -120,10 +120,13 @@ function HomeRoute() {
 
 export default function App() {
   const checkAuth = useAuthStore((s) => s.checkAuth);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    if (hasHydrated) {
+      checkAuth();
+    }
+  }, [checkAuth, hasHydrated]);
 
   return (
     <Routes>

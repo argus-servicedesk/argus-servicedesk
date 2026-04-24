@@ -276,13 +276,27 @@ export default function IncidentCreate() {
   });
   const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: async () => { const { data } = await api.get('/auth/users'); return data; },
+    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
     staleTime: 60000,
   });
 
   const teams: { id: string; name: string }[] = teamsData?.data || [];
   const configItems: { id: string; name: string }[] = assetsData?.data || [];
-  const users: { id: string; firstName: string; lastName: string }[] = usersData?.data || [];
+  const users = ((usersData?.data || []) as any[]).map((user) => {
+    const firstName = user.firstName || user.first_name || '';
+    const lastName = user.lastName || user.last_name || '';
+    const displayName =
+      [firstName, lastName].filter(Boolean).join(' ').trim() ||
+      user.email ||
+      user.username ||
+      'Unknown user';
+    return {
+      id: user.id,
+      firstName,
+      lastName,
+      displayName,
+    };
+  });
 
   const {
     register, handleSubmit, watch, setValue,
@@ -313,7 +327,7 @@ export default function IncidentCreate() {
 
   const onSubmit = async (data: IncidentFormData) => {
     try {
-      await createIncident.mutateAsync({ ...data, priority, state: 'NEW' });
+      await createIncident.mutateAsync({ ...data });
       toast.success('Incident created successfully');
       navigate('/incidents');
     } catch (err: any) {
@@ -588,7 +602,7 @@ export default function IncidentCreate() {
                   <FieldLabel>Assigned To</FieldLabel>
                   <select className="inc-select" {...register('assignedToId')}>
                     <option value="">Select a user...</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.displayName}</option>)}
                   </select>
                   {users.length === 0 && (
                     <p className="mt-1.5 text-[10px] flex items-center gap-1" style={{ color: TEXT2 }}>
