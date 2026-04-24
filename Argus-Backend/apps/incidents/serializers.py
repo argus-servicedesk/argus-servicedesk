@@ -102,7 +102,7 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         
         validated_data['number'] = number
         validated_data['created_by'] = self.context['request'].user
-        validated_data['organization'] = self.context['request'].user.organization
+        validated_data['organization'] = getattr(self.context['request'], "organization", None) or self.context['request'].user.organization
         
         return super().create(validated_data)
 

@@ -79,6 +79,9 @@ const SoftwareDetail = lazy(() => import('./components/Inventory/SoftwareDetail'
 const HardwareMonitoring = lazy(() => import('./components/Hardware/HardwareMonitoring'));
 const NotificationCenter = lazy(() => import('./components/Notifications/NotificationCenter'));
 const BODEODDashboard = lazy(() => import('./components/BOD/BODEODDashboard'));
+const DomainDashboard = lazy(() => import('./components/Domain/DomainDashboard'));
+const EODDashboard = lazy(() => import('./components/EOD/EODDashboard'));
+const OMSDashboard = lazy(() => import('./components/OMS/OMSDashboard'));
 const SiteManagement = lazy(() => import('./components/Settings/SiteManagement'));
 const ILLBandwidthDashboard = lazy(() => import('./components/ILLBandwidth/ILLBandwidthDashboard'));
 const CatalogList = lazy(() => import('./components/Catalog/CatalogList'));
@@ -149,6 +152,7 @@ export default function App() {
         <Route path="/oncall" element={<Suspense fallback={<LoadingFallback />}><OnCallDashboard /></Suspense>} />
         <Route path="/oncall-calendar" element={<Suspense fallback={<LoadingFallback />}><OnCallCalendar /></Suspense>} />
         <Route path="/escalation" element={<Suspense fallback={<LoadingFallback />}><EscalationPolicyBuilder /></Suspense>} />
+        <Route path="/escalations" element={<Suspense fallback={<LoadingFallback />}><EscalationPolicyBuilder /></Suspense>} />
         <Route path="/maintenance" element={<Suspense fallback={<LoadingFallback />}><MaintenanceWindowScheduler /></Suspense>} />
         <Route path="/noc" element={<Suspense fallback={<LoadingFallback />}><NOCView /></Suspense>} />
         <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><AlertList /></Suspense>} />
@@ -187,7 +191,9 @@ export default function App() {
         <Route path="/network" element={<Suspense fallback={<LoadingFallback />}><NetworkTopology /></Suspense>} />
         <Route path="/metrics" element={<Suspense fallback={<LoadingFallback />}><MetricsDashboard /></Suspense>} />
         <Route path="/ai-insights" element={<Suspense fallback={<LoadingFallback />}><AIInsightsDashboard /></Suspense>} />
+        <Route path="/aiops" element={<Suspense fallback={<LoadingFallback />}><AIInsightsDashboard /></Suspense>} />
         <Route path="/automation" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
+        <Route path="/runbooks" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
         <Route path="/users" element={
           <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
             <Suspense fallback={<LoadingFallback />}><UserList /></Suspense>
@@ -207,6 +213,9 @@ export default function App() {
         <Route path="/pagerduty" element={<Suspense fallback={<LoadingFallback />}><PagerDutyDashboard /></Suspense>} />
         <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><APMDashboard /></Suspense>} />
         <Route path="/bod-eod" element={<Suspense fallback={<LoadingFallback />}><BODEODDashboard /></Suspense>} />
+        <Route path="/domain" element={<Suspense fallback={<LoadingFallback />}><DomainDashboard /></Suspense>} />
+        <Route path="/eod" element={<Suspense fallback={<LoadingFallback />}><EODDashboard /></Suspense>} />
+        <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><OMSDashboard /></Suspense>} />
         <Route path="/ill-bandwidth" element={<Suspense fallback={<LoadingFallback />}><ILLBandwidthDashboard /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
         <Route path="/settings/mfa" element={<Suspense fallback={<LoadingFallback />}><MFASetup /></Suspense>} />
@@ -224,6 +233,7 @@ export default function App() {
         <Route path="/kb/create" element={<Suspense fallback={<LoadingFallback />}><KBArticleCreate /></Suspense>} />
         <Route path="/kb/:id" element={<Suspense fallback={<LoadingFallback />}><KBArticleDetail /></Suspense>} />
         <Route path="/sla" element={<Suspense fallback={<LoadingFallback />}><SLAPolicyPage /></Suspense>} />
+        <Route path="/sla-policies" element={<Suspense fallback={<LoadingFallback />}><SLAPolicyPage /></Suspense>} />
         <Route path="/audit" element={
           <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
             <Suspense fallback={<LoadingFallback />}><AuditLogViewer /></Suspense>

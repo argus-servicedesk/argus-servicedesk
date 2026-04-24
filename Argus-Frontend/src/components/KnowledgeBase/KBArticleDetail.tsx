@@ -61,21 +61,27 @@ function KBArticleDetail() {
 
   const article: KBArticle | undefined = articleData?.data;
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', {
+  const formatDate = (d: string) => {
+    const date = new Date(d);
+    if (!d || Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
     });
+  };
 
-  const formatDateTime = (d: string) =>
-    new Date(d).toLocaleString('en-US', {
+  const formatDateTime = (d: string) => {
+    const date = new Date(d);
+    if (!d || Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
     });
+  };
 
   const handleStateChange = (newState: KBArticleState) => {
     if (!id) return;

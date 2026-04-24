@@ -30,7 +30,7 @@ class TeamCreateSerializer(serializers.ModelSerializer):
         fields = ['name', 'description', 'email', 'slack_channel', 'manager', 'is_active']
 
     def create(self, validated_data):
-        validated_data['organization'] = self.context['request'].user.organization
+        validated_data['organization'] = self.context['request'].organization
         return super().create(validated_data)
 
 

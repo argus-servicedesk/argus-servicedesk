@@ -78,8 +78,11 @@ function KBArticleList() {
     });
   });
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const formatDate = (d: string) => {
+    const date = new Date(d);
+    if (!d || Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: COLORS.background }}>

@@ -29,6 +29,21 @@ const statusConfig: Record<UserStatus, { dot: string; icon: any; label: string; 
   LOCKED:   { dot: '#EF4444', icon: Ban,         label: 'Locked',   color: '#DC2626' },
 };
 
+const fallbackRoleBadge = {
+  bg: 'rgba(100,116,139,0.12)',
+  color: '#64748b',
+  border: '1px solid rgba(100,116,139,0.25)',
+  icon: Users,
+  label: 'User',
+};
+
+const fallbackStatus = {
+  dot: '#94a3b8',
+  icon: AlertTriangle,
+  label: 'Unknown',
+  color: '#64748b',
+};
+
 // ── Helpers ──
 function getInitials(firstName: string, lastName: string): string {
   return `${(firstName || '')[0] || ''}${(lastName || '')[0] || ''}`.toUpperCase() || '??';
@@ -40,7 +55,9 @@ function getFullName(user: User): string {
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'Never';
-  const diff = Date.now() - new Date(iso).getTime();
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return 'Unknown';
+  const diff = Date.now() - ts;
   if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
@@ -375,8 +392,8 @@ export default function UserList() {
                   const initials = getInitials(user.firstName, user.lastName);
                   const fullName = getFullName(user);
                   const grad = avatarGradStyle(user.id);
-                  const roleCfg = roleBadgeStyles[user.role];
-                  const statusCfg = statusConfig[user.status];
+                  const roleCfg = roleBadgeStyles[user.role as Role] ?? fallbackRoleBadge;
+                  const statusCfg = statusConfig[user.status as UserStatus] ?? fallbackStatus;
                   const StatusIcon = statusCfg.icon;
                   const org = (user as any).organization;
                   const isCurrentUser = currentUser?.id === user.id;

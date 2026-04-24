@@ -10,7 +10,7 @@ import {
   BookOpen, Clock, FileSearch, UserCircle, X, ScrollText, ShieldCheck,
   Printer, Smartphone, HardDrive, Package, MonitorSmartphone,
   ClipboardCheck, MapPin, ShoppingCart, ClipboardList, Globe,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Wrench, Database, LifeBuoy, Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
@@ -33,15 +33,23 @@ interface NavItem {
   superAdminOnly?: boolean;
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
+interface NavGroup {
+  label: string;
+  icon: React.ComponentType<any>;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
   {
     label: 'OVERVIEW',
+    icon: LayoutDashboard,
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
     ],
   },
   {
     label: 'SERVICE MANAGEMENT',
+    icon: LifeBuoy,
     items: [
       { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
       { to: '/problems', icon: Bug, label: 'Problems' },
@@ -51,6 +59,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'CMDB & ASSETS',
+    icon: Database,
     items: [
       { to: '/assets', icon: Server, label: 'All Assets' },
       { to: '/inventory/servers', icon: Server, label: 'Servers' },
@@ -62,21 +71,26 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'OPERATIONS',
+    icon: Activity,
     items: [
       { to: '/alerts', icon: Bell, label: 'Alerts & Events' },
       { to: '/oncall', icon: Phone, label: 'On-Call' },
-      { to: '/escalation', icon: GitMerge, label: 'Escalations' },
-      { to: '/sla', icon: Clock, label: 'SLA Policies' },
+      { to: '/escalations', icon: GitMerge, label: 'Escalations' },
+      { to: '/sla-policies', icon: Clock, label: 'SLA Policies' },
       { to: '/maintenance', icon: CalendarClock, label: 'Maintenance' },
       { to: '/bod-eod', icon: ClipboardCheck, label: 'BOD / EOD' },
+      { to: '/eod', icon: ClipboardList, label: 'EOD Operations', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/oms', icon: ShoppingCart, label: 'OMS', roles: ['ADMIN', 'MANAGER'] },
       { to: '/noc', icon: Monitor, label: 'NOC View', badge: 'LIVE', superAdminOnly: true },
     ],
   },
   {
     label: 'MONITORING',
+    icon: Monitor,
     items: [
       { to: '/metrics', icon: Activity, label: 'Metrics', superAdminOnly: true },
       { to: '/apm', icon: Eye, label: 'Service Map', badge: 'LIVE', superAdminOnly: true },
+      { to: '/domain', icon: Globe, label: 'Domain Ops', badge: 'LIVE', roles: ['ADMIN', 'MANAGER'] },
       { to: '/ill-bandwidth', icon: Radio, label: 'ILL Bandwidth', badge: 'LIVE', superAdminOnly: true },
       { to: '/k8s', icon: Layers, label: 'Infrastructure', superAdminOnly: true },
       { to: '/logs', icon: Terminal, label: 'Logs', superAdminOnly: true },
@@ -84,15 +98,17 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'AI & AUTOMATION',
+    icon: Sparkles,
     items: [
-      { to: '/ai-insights', icon: Brain, label: 'AIOps', badge: 'AI' },
-      { to: '/automation', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/aiops', icon: Brain, label: 'AIOps', badge: 'AI' },
+      { to: '/runbooks', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
       { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
       { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {
     label: 'SETTINGS',
+    icon: Settings,
     items: [
       { to: '/teams', icon: Users, label: 'Teams' },
       { to: '/users', icon: Shield, label: 'Users', roles: ['ADMIN', 'MANAGER'] },
@@ -143,6 +159,9 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   // State for expanded groups
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['OVERVIEW', 'SERVICE MANAGEMENT']));
+  
+  // State for hover menu in collapsed mode
+  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {
@@ -179,6 +198,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         style={{
           background: '#0c0a1d',
           borderRight: '1px solid rgba(255,255,255,0.06)',
+          overflow: 'visible',
         }}
       >
         {/* ── Brand ── */}
@@ -226,7 +246,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         {showLabels && <OrgSwitcher />}
 
         {/* ── Navigation ── */}
-        <nav role="navigation" aria-label="Main navigation" className="flex-1 py-3 px-2.5 space-y-4 relative z-10" style={{ overflowY: 'auto', minHeight: 0, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.15) transparent' }}>
+        <nav role="navigation" aria-label="Main navigation" className="flex-1 py-3 px-2.5 space-y-4 relative z-10" style={{ overflowY: 'visible', minHeight: 0, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.15) transparent' }}>
           {navGroups.map((group) => {
             const visibleItems = group.items.filter(
               (item) => {
@@ -243,6 +263,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                     onClick={() => toggleGroup(group.label)}
                     className="flex items-center gap-2 px-3 mb-1.5 w-full cursor-pointer group"
                   >
+                    <group.icon className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.25)' }} />
                     <span
                       className="text-[11px] font-black tracking-[0.18em] uppercase whitespace-nowrap"
                       style={{ color: 'rgba(255,255,255,0.25)' }}
@@ -261,9 +282,67 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   </button>
                 ) : (
                   <div
-                    className="h-px mx-2 mb-2"
-                    style={{ background: 'rgba(255,255,255,0.06)' }}
-                  />
+                    className="relative"
+                    onMouseEnter={() => setHoveredGroup(group.label)}
+                    onMouseLeave={() => setHoveredGroup(null)}
+                  >
+                    <div className="flex items-center justify-center h-8 mb-1.5 cursor-pointer">
+                      <group.icon className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.35)' }} />
+                    </div>
+                    
+                    {/* Hover menu */}
+                    {hoveredGroup === group.label && (
+                      <div
+                        className="absolute left-full top-1/2 -translate-y-1/2 min-w-max rounded-xl p-2 z-[1000]"
+                        style={{
+                          background: '#1a162e',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                        }}
+                      >
+                        {/* Transparent bridge to prevent gap */}
+                        <div
+                          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-8 h-full"
+                          style={{ background: 'transparent' }}
+                        />
+                        <div className="text-[10px] font-black tracking-[0.18em] uppercase mb-2 px-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                          {group.label}
+                        </div>
+                        <div className="space-y-0.5">
+                          {visibleItems.map((item) => (
+                            <NavLink
+                              key={item.to}
+                              to={item.to}
+                              end={item.end}
+                              onClick={() => onMobileClose?.()}
+                            >
+                              {({ isActive }) => (
+                                <div
+                                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all cursor-pointer"
+                                  style={
+                                    isActive
+                                      ? { background: 'rgba(124,58,237,0.15)', color: '#c084fc' }
+                                      : { color: 'rgba(255,255,255,0.45)' }
+                                  }
+                                >
+                                  <item.icon className="w-4 h-4 shrink-0" style={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)' }} />
+                                  <span className="truncate">{item.label}</span>
+                                  {item.badge && (
+                                    <span
+                                      className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ml-auto"
+                                      style={getBadgeStyle(item.badge)}
+                                    >
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </NavLink>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {expandedGroups.has(group.label) && (

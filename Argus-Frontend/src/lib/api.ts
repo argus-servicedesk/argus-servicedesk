@@ -5,9 +5,10 @@ const api = axios.create({
   withCredentials: true, // Send httpOnly cookies with every request
   headers: {
     'Content-Type': 'application/json',
-    'X-Tenant-Id': 'argus',
   },
 });
+
+const apiBaseURL = String(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
 // Request interceptor: attach Bearer token + org header
 api.interceptors.request.use((config) => {
@@ -15,8 +16,19 @@ api.interceptors.request.use((config) => {
     const stored = localStorage.getItem('argus-auth');
     if (stored) {
       const { state } = JSON.parse(stored);
-      if (state?.accessToken) config.headers['Authorization'] = `Bearer ${state.accessToken}`;
-      if (state?.selectedOrgId) config.headers['X-Organization-Id'] = state.selectedOrgId;
+      if (state?.accessToken) {
+        config.headers['Authorization'] = `Bearer ${state.accessToken}`;
+      }
+      // Resolve org id — handle nested object, plain UUID string, or selectedOrgId
+      let orgId: string | null = state?.selectedOrgId || null;
+      if (!orgId) {
+        const org = state?.user?.organization;
+        if (org && typeof org === 'object') orgId = org.id || null;
+        else if (org && typeof org === 'string') orgId = org; // legacy plain UUID
+      }
+      if (orgId) {
+        config.headers['X-Organization-Id'] = orgId;
+      }
     }
   } catch {}
   return config;
@@ -57,7 +69,7 @@ api.interceptors.response.use(
     try {
       const stored = localStorage.getItem('argus-auth');
       const refreshToken = stored ? JSON.parse(stored)?.state?.refreshToken : null;
-      const refreshRes = await axios.post('/api/v1/auth/refresh',
+      const refreshRes = await axios.post(`${apiBaseURL}/auth/refresh`,
         refreshToken ? { refresh: refreshToken } : {},
         {
           withCredentials: true,
@@ -66,8 +78,9 @@ api.interceptors.response.use(
       );
 
       // Save new tokens from refresh response
-      const newAccess = refreshRes.data?.access;
-      const newRefresh = refreshRes.data?.refresh;
+      const refreshPayload = refreshRes.data?.data || refreshRes.data || {};
+      const newAccess = refreshPayload.access;
+      const newRefresh = refreshPayload.refresh;
       if (newAccess && stored) {
         const parsed = JSON.parse(stored);
         parsed.state.accessToken = newAccess;

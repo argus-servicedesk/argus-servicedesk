@@ -2,18 +2,20 @@ from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success
 from .models import Alert
 from .serializers import AlertSerializer, AlertUpdateSerializer
 
 
-class AlertListCreateView(generics.ListCreateAPIView):
+class AlertListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['severity', 'status', 'source']
+    queryset = Alert.objects.all()
     
     def get_queryset(self):
-        queryset = Alert.objects.filter(organization_id=self.request.organization_id)
+        queryset = super().get_queryset()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
@@ -37,25 +39,28 @@ class AlertListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        alert = serializer.save(organization=request.user.organization)
+        alert = serializer.save(organization=request.organization)
         return success(AlertSerializer(alert).data, "alert created", 201)
 
 
-class AlertDetailView(generics.RetrieveUpdateAPIView):
+class AlertDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    queryset = Alert.objects.select_related('acknowledged_by', 'config_item', 'incident')
+    queryset = Alert.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return AlertUpdateSerializer
         return AlertSerializer
 
+    def get_queryset(self):
+        return super().get_queryset().select_related('acknowledged_by', 'config_item', 'incident')
+
 
 class AlertStatsView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        queryset = Alert.objects.filter(organization_id=request.organization_id)
+        queryset = Alert.objects.filter(organization=request.organization)
         
         stats = {
             'total': queryset.count(),

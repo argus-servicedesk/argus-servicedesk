@@ -9,8 +9,12 @@ interface Organization {
   name: string;
   slug: string;
   is_active: boolean;
+  isActive?: boolean;
+  environment?: string;
   created_at: string;
+  createdAt?: string;
   updated_at: string;
+  updatedAt?: string;
 }
 
 interface User {
@@ -18,12 +22,21 @@ interface User {
   username: string;
   email: string;
   first_name: string;
+  firstName?: string;
   last_name: string;
+  lastName?: string;
+  phone?: string | null;
+  department?: string | null;
+  timezone?: string | null;
   role: string;
   organization: any;
+  organizationId?: string | null;
   mfa_enabled: boolean;
+  mfaEnabled?: boolean;
   created_at: string;
+  createdAt?: string;
   updated_at: string;
+  updatedAt?: string;
 }
 
 interface AuthState {
@@ -41,6 +54,34 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
+function normalizeOrganization(org: any): Organization | null {
+  if (!org) return null;
+  return {
+    ...org,
+    isActive: org.isActive ?? org.is_active,
+    environment: org.environment ?? 'Production',
+    createdAt: org.createdAt ?? org.created_at,
+    updatedAt: org.updatedAt ?? org.updated_at,
+  };
+}
+
+function normalizeUser(rawUser: any): User {
+  const organization = normalizeOrganization(rawUser.organization);
+  return {
+    ...rawUser,
+    organization,
+    organizationId: rawUser.organizationId ?? organization?.id ?? null,
+    firstName: rawUser.firstName ?? rawUser.first_name ?? '',
+    lastName: rawUser.lastName ?? rawUser.last_name ?? '',
+    phone: rawUser.phone ?? null,
+    department: rawUser.department ?? null,
+    timezone: rawUser.timezone ?? 'Asia/Kolkata',
+    mfaEnabled: rawUser.mfaEnabled ?? rawUser.mfa_enabled ?? false,
+    createdAt: rawUser.createdAt ?? rawUser.created_at,
+    updatedAt: rawUser.updatedAt ?? rawUser.updated_at,
+  };
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -55,12 +96,17 @@ export const useAuthStore = create<AuthState>()(
           if (mfaToken) body.mfaToken = mfaToken;
 
           const response = await api.post('/auth/login', body);
-          const { user, access, refresh } = response.data.data;
+          const { user: rawUser, access, refresh } = response.data.data;
+          const user = normalizeUser(rawUser);
+
+          // Resolve org — could be nested object or just an id
+          const orgObj = user.organization || null;
+          const orgId = orgObj?.id || null;
 
           set({
             user,
-            organization: user.organization || null,
-            selectedOrgId: user.organization?.id || null,
+            organization: orgObj,
+            selectedOrgId: orgId,
             accessToken: access,
             refreshToken: refresh,
             isAuthenticated: true,
@@ -89,7 +135,7 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      setUser: (user) => set({ user, isAuthenticated: true }),
+      setUser: (user) => set({ user: normalizeUser(user), isAuthenticated: true }),
       setSelectedOrg: (orgId) => set({ selectedOrgId: orgId }),
 
       checkAuth: async () => {
@@ -102,7 +148,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const response = await api.get('/auth/me');
-          const user = response.data.data;
+          const user = normalizeUser(response.data.data);
           set({
             user,
             organization: user.organization || null,
@@ -116,12 +162,13 @@ export const useAuthStore = create<AuthState>()(
           if (refreshToken) {
             try {
               const refreshRes = await api.post('/auth/refresh', { refresh: refreshToken });
-              const { access, refresh } = refreshRes.data;
+              const payload = refreshRes.data?.data || refreshRes.data || {};
+              const { access, refresh } = payload;
               if (access) {
-                set({ accessToken: access, refreshToken: refresh });
+                set({ accessToken: access, refreshToken: refresh || refreshToken });
                 // Retry /me with new token
                 const retryRes = await api.get('/auth/me');
-                const user = retryRes.data.data;
+                const user = normalizeUser(retryRes.data.data);
                 set({
                   user,
                   organization: user.organization || null,
