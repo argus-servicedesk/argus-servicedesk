@@ -56,6 +56,11 @@ class ConfigurationItem(models.Model):
     
     category = models.CharField(max_length=100, blank=True, null=True)
     subcategory = models.CharField(max_length=100, blank=True, null=True)
+    template = models.CharField(max_length=100, blank=True, null=True)
+    network_type = models.CharField(max_length=50, blank=True, null=True)
+    switch_type = models.CharField(max_length=50, blank=True, null=True)
+    firewall_type = models.CharField(max_length=50, blank=True, null=True)
+    router_type = models.CharField(max_length=50, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     
     serial_number = models.CharField(max_length=255, blank=True, null=True)
@@ -69,6 +74,7 @@ class ConfigurationItem(models.Model):
     data_center = models.CharField(max_length=255, blank=True, null=True)
     
     ip_address = models.GenericIPAddressField(blank=True, null=True)
+    physical_ip_address = models.GenericIPAddressField(blank=True, null=True)
     mac_address = models.CharField(max_length=255, blank=True, null=True)
     hostname = models.CharField(max_length=255, blank=True, null=True)
     fqdn = models.CharField(max_length=255, blank=True, null=True)
@@ -97,6 +103,7 @@ class ConfigurationItem(models.Model):
     cost_center = models.CharField(max_length=100, blank=True, null=True)
     
     monitoring_enabled = models.BooleanField(default=True)
+    metrics_management_interfaces = models.BooleanField(default=False)
     prometheus_job = models.CharField(max_length=255, blank=True, null=True)
     grafana_dashboard = models.CharField(max_length=255, blank=True, null=True)
     loki_labels = models.JSONField(blank=True, null=True)
@@ -445,3 +452,80 @@ class AssetOnboardingRecord(models.Model):
 
     def __str__(self):
         return self.hostname or self.service_name or str(self.id)
+
+
+class AssetMetricsManagement(models.Model):
+    """
+    Model for storing metrics and management interfaces configuration
+    for ILO, IDRAC, Node Exporter, and Windows Exporter.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    configuration_item = models.ForeignKey(
+        ConfigurationItem,
+        on_delete=models.CASCADE,
+        related_name='metrics_management',
+    )
+    
+    # ILO Configuration
+    ilo_enabled = models.BooleanField(default=False)
+    ilo_username = models.CharField(max_length=255, blank=True, null=True)
+    ilo_password = models.CharField(max_length=255, blank=True, null=True)
+    ilo_ip = models.GenericIPAddressField(blank=True, null=True)
+    
+    # IDRAC Configuration
+    idrac_enabled = models.BooleanField(default=False)
+    idrac_port = models.PositiveIntegerField(blank=True, null=True)
+    
+    # Node Exporter Configuration
+    node_exporter_enabled = models.BooleanField(default=False)
+    node_exporter_port = models.PositiveIntegerField(blank=True, null=True)
+    
+    # Windows Exporter Configuration
+    windows_exporter_enabled = models.BooleanField(default=False)
+    windows_exporter_port = models.PositiveIntegerField(blank=True, null=True)
+    
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "asset_metrics_management"
+        verbose_name = "Asset Metrics Management"
+        verbose_name_plural = "Asset Metrics Management"
+
+    def __str__(self):
+        return f"{self.configuration_item.name} - Metrics Management"
+
+
+class AssetSNMPConfiguration(models.Model):
+    """
+    Model for storing SNMP configuration.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    configuration_item = models.ForeignKey(
+        ConfigurationItem,
+        on_delete=models.CASCADE,
+        related_name='snmp_configurations',
+    )
+    
+    snmp_enabled = models.BooleanField(default=False)
+    snmp_version = models.CharField(max_length=10, blank=True, null=True)
+    snmp_community_string = models.CharField(max_length=255, blank=True, null=True)
+    snmp_username = models.CharField(max_length=255, blank=True, null=True)
+    snmp_security_level = models.CharField(max_length=50, blank=True, null=True)
+    snmp_auth_method = models.CharField(max_length=50, blank=True, null=True)
+    snmp_auth_password = models.CharField(max_length=255, blank=True, null=True)
+    snmp_privacy_method = models.CharField(max_length=50, blank=True, null=True)
+    snmp_privacy_password = models.CharField(max_length=255, blank=True, null=True)
+    
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "asset_snmp_configurations"
+        verbose_name = "Asset SNMP Configuration"
+        verbose_name_plural = "Asset SNMP Configurations"
+
+    def __str__(self):
+        return f"{self.configuration_item.name} - SNMP Configuration"

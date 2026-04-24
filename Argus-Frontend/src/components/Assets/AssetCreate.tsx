@@ -27,6 +27,11 @@ interface FormData {
   type: CIType;
   status: CIStatus;
   category: string;
+  template: string;
+  networkType: string;
+  switchType: string;
+  firewallType: string;
+  routerType: string;
   description: string;
   serialNumber: string;
   manufacturer: string;
@@ -86,6 +91,39 @@ const CI_STATUSES: { value: CIStatus; label: string }[] = [
   { value: 'PLANNED', label: 'Planned' },
 ];
 
+const TEMPLATES: { value: string; label: string }[] = [
+  { value: '', label: 'None' },
+  { value: 'cisco', label: 'Cisco' },
+  { value: 'huawei', label: 'Huawei' },
+  { value: 'fortigate', label: 'Fortigate' },
+  { value: 'physical_server', label: 'Physical Server' },
+  { value: 'vm', label: 'VM' },
+];
+
+const NETWORK_TYPES: { value: string; label: string }[] = [
+  { value: '', label: 'Select type...' },
+  { value: 'switch', label: 'Switch' },
+  { value: 'firewall', label: 'Firewall' },
+  { value: 'router', label: 'Router' },
+];
+
+const SWITCH_TYPES: { value: string; label: string }[] = [
+  { value: '', label: 'Select type...' },
+  { value: 'gateway_switch', label: 'Gateway Switch' },
+  { value: 'public_switch', label: 'Public Switch' },
+  { value: 'exchange_switch', label: 'Exchange Switch' },
+];
+
+const FIREWALL_TYPES: { value: string; label: string }[] = [
+  { value: '', label: 'Select type...' },
+  { value: 'fortigate', label: 'Fortigate' },
+];
+
+const ROUTER_TYPES: { value: string; label: string }[] = [
+  { value: '', label: 'Select type...' },
+  { value: 'router', label: 'Router' },
+];
+
 // ─── Inline style constant ──────────────────────────────────────────────────
 
 const inputStyle: React.CSSProperties = {
@@ -131,6 +169,11 @@ export default function AssetCreate() {
       type: (CI_TYPES.some(t => t.value === prefilledType) ? prefilledType : 'SERVER') as CIType,
       status: 'PLANNED',
       category: '',
+      template: '',
+      networkType: '',
+      switchType: '',
+      firewallType: '',
+      routerType: '',
       description: '',
       serialNumber: '',
       manufacturer: '',
@@ -171,6 +214,7 @@ export default function AssetCreate() {
   });
 
   const selectedType = watch('type');
+  const networkType = watch('networkType');
   const metricsEnabled = watch('metricsManagementInterfaces');
   const iloEnabled = watch('ilo');
   const idracEnabled = watch('idrac');
@@ -317,6 +361,72 @@ export default function AssetCreate() {
               />
             </div>
           </div>
+
+          {/* Network Type - only show for NETWORK asset type */}
+          {selectedType === 'NETWORK' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                  Network Type
+                </label>
+                <select {...styledRegister('networkType')}>
+                  {NETWORK_TYPES.map((t) => (
+                    <option key={t.value} value={t.value} style={{ background: '#ffffff', color: '#0f172a' }}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Switch Type */}
+              {networkType === 'switch' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    Switch Type
+                  </label>
+                  <select {...styledRegister('switchType')}>
+                    {SWITCH_TYPES.map((t) => (
+                      <option key={t.value} value={t.value} style={{ background: '#ffffff', color: '#0f172a' }}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Firewall Type */}
+              {networkType === 'firewall' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    Firewall Type
+                  </label>
+                  <select {...styledRegister('firewallType')}>
+                    {FIREWALL_TYPES.map((t) => (
+                      <option key={t.value} value={t.value} style={{ background: '#ffffff', color: '#0f172a' }}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Router Type */}
+              {networkType === 'router' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                    Router Type
+                  </label>
+                  <select {...styledRegister('routerType')}>
+                    {ROUTER_TYPES.map((t) => (
+                      <option key={t.value} value={t.value} style={{ background: '#ffffff', color: '#0f172a' }}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Description (full width textarea) */}
           <div>
@@ -466,8 +576,8 @@ export default function AssetCreate() {
             Support & Monitoring
           </h3>
 
-          {/* Support Group | Environment */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Support Group | Environment | Template */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
                 Support Group
@@ -490,6 +600,19 @@ export default function AssetCreate() {
                 <option value="DEV" style={{ background: '#ffffff', color: '#0f172a' }}>DEV</option>
                 <option value="UAT" style={{ background: '#ffffff', color: '#0f172a' }}>UAT</option>
                 <option value="PROD" style={{ background: '#ffffff', color: '#0f172a' }}>PROD</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
+                Template
+              </label>
+              <select {...styledRegister('template')}>
+                {TEMPLATES.map((t) => (
+                  <option key={t.value} value={t.value} style={{ background: '#ffffff', color: '#0f172a' }}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -521,55 +644,72 @@ export default function AssetCreate() {
               </p>
             </div>
 
-            {/* Metrics & Management Interfaces (toggle-style checkbox) */}
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    {...register('metricsManagementInterfaces')}
-                  />
-                  <div
-                    className="w-10 h-5 rounded-full transition-colors bg-slate-300 peer-checked:bg-indigo-500"
-                  />
-                  <div
-                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-5 shadow-sm"
-                  />
-                </div>
-                <span className="text-sm font-medium transition-colors" style={{ color: '#6366f1' }}>
-                  Metrics & Management Interfaces
-                </span>
-              </label>
-              <p className="text-xs mt-1 ml-[52px]" style={{ color: '#94a3b8' }}>
-                Enable metrics collection and management interfaces for this asset
-              </p>
-            </div>
+            {/* Metrics & Management Interfaces (toggle-style checkbox) - only show for SERVER, VM, NETWORK */}
+            {(selectedType === 'SERVER' || selectedType === 'VM' || selectedType === 'NETWORK') && (
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      {...register('metricsManagementInterfaces')}
+                    />
+                    <div
+                      className="w-10 h-5 rounded-full transition-colors bg-slate-300 peer-checked:bg-indigo-500"
+                    />
+                    <div
+                      className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-5 shadow-sm"
+                    />
+                  </div>
+                  <span className="text-sm font-medium transition-colors" style={{ color: '#6366f1' }}>
+                    Metrics & Management Interfaces
+                  </span>
+                </label>
+                <p className="text-xs mt-1 ml-[52px]" style={{ color: '#94a3b8' }}>
+                  Enable metrics collection and management interfaces for this asset
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Metrics Options - only show when Metrics & Management Interfaces is enabled */}
           {metricsEnabled && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" {...register('ilo')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
-                <span className="text-sm" style={{ color: '#64748b' }}>ILO</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" {...register('idrac')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
-                <span className="text-sm" style={{ color: '#64748b' }}>IDRAC</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" {...register('nodeExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
-                <span className="text-sm" style={{ color: '#64748b' }}>Node-Exporter</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" {...register('windowsExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
-                <span className="text-sm" style={{ color: '#64748b' }}>Windows-Exporter</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" {...register('snmp')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
-                <span className="text-sm" style={{ color: '#64748b' }}>SNMP</span>
-              </label>
+              {/* ILO - only for SERVER */}
+              {selectedType === 'SERVER' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...register('ilo')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                  <span className="text-sm" style={{ color: '#64748b' }}>ILO</span>
+                </label>
+              )}
+              {/* IDRAC - only for SERVER */}
+              {selectedType === 'SERVER' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...register('idrac')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                  <span className="text-sm" style={{ color: '#64748b' }}>IDRAC</span>
+                </label>
+              )}
+              {/* Node-Exporter - for SERVER and VM */}
+              {(selectedType === 'SERVER' || selectedType === 'VM') && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...register('nodeExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                  <span className="text-sm" style={{ color: '#64748b' }}>Node-Exporter</span>
+                </label>
+              )}
+              {/* Windows-Exporter - for SERVER and VM */}
+              {(selectedType === 'SERVER' || selectedType === 'VM') && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...register('windowsExporter')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                  <span className="text-sm" style={{ color: '#64748b' }}>Windows-Exporter</span>
+                </label>
+              )}
+              {/* SNMP - only for NETWORK */}
+              {selectedType === 'NETWORK' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" {...register('snmp')} className="w-4 h-4 rounded" style={{ accentColor: '#6366f1' }} />
+                  <span className="text-sm" style={{ color: '#64748b' }}>SNMP</span>
+                </label>
+              )}
             </div>
           )}
 
