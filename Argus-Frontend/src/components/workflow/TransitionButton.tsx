@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Button } from '../ui/button';
 import { useExecuteTransition } from '../../hooks/useWorkflow';
 import { TransitionModal } from './TransitionModal';
 import toast from 'react-hot-toast';
@@ -12,8 +11,6 @@ interface TransitionButtonProps {
   toState: string;
   label: string;
   disabled?: boolean;
-  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
-  size?: 'default' | 'sm' | 'lg' | 'icon';
 }
 
 export const TransitionButton: React.FC<TransitionButtonProps> = ({
@@ -23,8 +20,6 @@ export const TransitionButton: React.FC<TransitionButtonProps> = ({
   toState,
   label,
   disabled = false,
-  variant = 'default',
-  size = 'default',
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
@@ -91,14 +86,14 @@ export const TransitionButton: React.FC<TransitionButtonProps> = ({
   
   return (
     <>
-      <Button
-        variant={variant}
-        size={size}
+      <button
         disabled={disabled || executeTransition.isPending}
         onClick={handleClick}
+        className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+        style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#ffffff', opacity: (disabled || executeTransition.isPending) ? 0.6 : 1 }}
       >
         {executeTransition.isPending ? 'Processing...' : label}
-      </Button>
+      </button>
       
       {showModal && validationResult && (
         <TransitionModal
