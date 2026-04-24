@@ -1019,7 +1019,7 @@ export default function DashboardOverview() {
                 ))}
               </div>
             ) : (
-              <Empty message="Connect Prometheus for live metrics" icon={<Cpu size={20} />} />
+              <Empty message="Live metrics will appear here when Prometheus is configured for this environment" icon={<Cpu size={20} />} />
             )}
           </Section>
         </div>

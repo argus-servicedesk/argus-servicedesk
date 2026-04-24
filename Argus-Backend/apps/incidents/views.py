@@ -5,7 +5,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
 from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success, failure
-from .models import Incident, WorkNote, Activity, Attachment
+from apps.changes.models import Change
+from apps.problems.models import Problem
+from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem, IncidentChange
 from .serializers import IncidentSerializer, IncidentCreateSerializer, IncidentUpdateSerializer, WorkNoteSerializer
 
 
@@ -24,7 +26,7 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
                 Q(short_description__icontains=search) |
                 Q(description__icontains=search)
             )
-        return queryset.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'linked_problems')
+        return queryset.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'linked_problems__problem', 'linked_changes__change')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -54,7 +56,7 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
         return IncidentSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems')
+        return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems__problem', 'linked_changes__change')
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -88,6 +90,119 @@ class IncidentStatsView(APIView):
         }
         
         return success(stats)
+
+
+class IncidentProblemLinkView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        organization = getattr(request, "organization", None)
+        if organization is None:
+            return failure("organization access denied", status_code=403)
+
+        incident = Incident.objects.filter(organization=organization, pk=pk).first()
+        if incident is None:
+            return failure("incident not found", status_code=404)
+
+        problem_id = request.data.get("problem_id") or request.data.get("problemId")
+        if not problem_id:
+            return failure("problem_id is required", status_code=400)
+
+        problem = Problem.objects.filter(organization=organization, pk=problem_id).first()
+        if problem is None:
+            return failure("problem not found", status_code=404)
+
+        link_type = request.data.get("link_type") or request.data.get("linkType") or IncidentProblem.LinkType.RELATED
+        if link_type not in IncidentProblem.LinkType.values:
+            return failure("invalid link type", status_code=400)
+
+        notes = request.data.get("notes")
+        link, created = IncidentProblem.objects.get_or_create(
+            incident=incident,
+            problem=problem,
+            defaults={"link_type": link_type, "notes": notes},
+        )
+        if not created:
+            changed = False
+            if link.link_type != link_type:
+                link.link_type = link_type
+                changed = True
+            if notes is not None and link.notes != notes:
+                link.notes = notes
+                changed = True
+            if changed:
+                link.save(update_fields=["link_type", "notes"])
+
+        Activity.objects.create(
+            action="PROBLEM_LINKED",
+            description=f"Linked problem {problem.number}",
+            user=request.user,
+            incident=incident,
+            problem=problem,
+        )
+
+        incident = (
+            Incident.objects.filter(pk=incident.pk)
+            .select_related('assigned_to', 'created_by', 'assignment_group')
+            .prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems__problem', 'linked_changes__change')
+            .first()
+        )
+        return success(
+            IncidentSerializer(incident).data,
+            "problem linked to incident" if created else "incident problem link updated",
+            201 if created else 200,
+        )
+
+
+class IncidentChangeLinkView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        organization = getattr(request, "organization", None)
+        if organization is None:
+            return failure("organization access denied", status_code=403)
+
+        incident = Incident.objects.filter(organization=organization, pk=pk).first()
+        if incident is None:
+            return failure("incident not found", status_code=404)
+
+        change_id = request.data.get("change_id") or request.data.get("changeId")
+        if not change_id:
+            return failure("change_id is required", status_code=400)
+
+        change = Change.objects.filter(organization=organization, pk=change_id).first()
+        if change is None:
+            return failure("change not found", status_code=404)
+
+        notes = request.data.get("notes")
+        link, created = IncidentChange.objects.get_or_create(
+            incident=incident,
+            change=change,
+            defaults={"notes": notes},
+        )
+        if not created and notes is not None and link.notes != notes:
+            link.notes = notes
+            link.save(update_fields=["notes"])
+
+        Activity.objects.create(
+            action="CHANGE_LINKED",
+            description=f"Linked change {change.number}",
+            user=request.user,
+            incident=incident,
+            change=change,
+        )
+
+        incident = (
+            Incident.objects.filter(pk=incident.pk)
+            .select_related('assigned_to', 'created_by', 'assignment_group')
+            .prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems__problem', 'linked_changes__change')
+            .first()
+        )
+        return success(
+            IncidentSerializer(incident).data,
+            "change linked to incident" if created else "incident change link updated",
+            201 if created else 200,
+        )
 
 
 class WorkNoteCreateView(generics.CreateAPIView):

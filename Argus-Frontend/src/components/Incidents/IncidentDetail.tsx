@@ -15,6 +15,8 @@ import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useIncident, useIncidentTimeline, useAddWorkNote, useUpdateIncident, useIncidentLiveContext, useEscalationLogs } from '../../hooks/useIncidents';
+import { useCreateChange } from '../../hooks/useChanges';
+import { useProblems } from '../../hooks/useProblems';
 import { useTeams } from '../../hooks/useTeams';
 import IncidentReportGenerator from './IncidentReportGenerator';
 import api from '../../lib/api';
@@ -466,10 +468,12 @@ export default function IncidentDetail() {
   const navigate = useNavigate();
 
   // Data hooks
-  const { data: incidentData, isLoading } = useIncident(id || '');
+  const { data: incidentData, isLoading, isError, error, refetch } = useIncident(id || '');
   const { data: timelineData } = useIncidentTimeline(id || '');
   const addWorkNote = useAddWorkNote(id || '');
   const updateIncident = useUpdateIncident();
+  const createChange = useCreateChange();
+  const { data: problemsListData } = useProblems({ limit: 200 });
   const { data: teamsData } = useTeams();
 
   // UI state — ALL hooks must be before any early returns (React rules of hooks)
@@ -518,12 +522,15 @@ export default function IncidentDetail() {
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [showReportGen, setShowReportGen] = useState(false);
   const [showCreateChangeModal, setShowCreateChangeModal] = useState(false);
+  const [showLinkProblemModal, setShowLinkProblemModal] = useState(false);
   const [showSubIncidentModal, setShowSubIncidentModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Assign modal state
   const [assignTeamId, setAssignTeamId] = useState('');
   const [assignUserId, setAssignUserId] = useState('');
+  const [linkProblemId, setLinkProblemId] = useState('');
+  const [linkProblemType, setLinkProblemType] = useState('RELATED');
 
   // Edit modal state
   const [editImpact, setEditImpact] = useState('');
@@ -556,6 +563,27 @@ export default function IncidentDetail() {
   const incident = incidentData?.data;
   const timeline = timelineData?.data || [];
   const teams = teamsData?.data || [];
+  const assignableUsers = ((usersData?.data || []) as any[]).map((user) => {
+    const firstName = user.firstName || user.first_name || '';
+    const lastName = user.lastName || user.last_name || '';
+    const displayName =
+      [firstName, lastName].filter(Boolean).join(' ').trim() ||
+      user.email ||
+      user.username ||
+      'Unknown user';
+    return {
+      ...user,
+      firstName,
+      lastName,
+      displayName,
+    };
+  });
+  const linkedProblemIds = new Set(
+    (incident?.linkedProblems || []).map((link: any) => link.problem?.id || link.id),
+  );
+  const problemOptions = ((problemsListData?.data || []) as any[]).filter(
+    (problem) => !linkedProblemIds.has(problem.id),
+  );
 
   // Initialize edit/change fields when incident loads
   useEffect(() => {
@@ -662,7 +690,7 @@ export default function IncidentDetail() {
     }
     setSubmitting(true);
     try {
-      const { data: chRes } = await api.post('/changes/', {
+      const chRes = await createChange.mutateAsync({
         shortDescription: changeDesc.trim(),
         type: changeType,
         riskLevel: changeRisk,
@@ -672,19 +700,40 @@ export default function IncidentDetail() {
         description: `This change was created from incident ${incident?.number}.\n\n${incident?.description || ''}`,
       });
       const changeId = chRes?.data?.id;
-      if (changeId) {
-        try {
-          await api.post(`/incidents/${id}/changes/`, { changeId });
-        } catch {
-          // Linking is optional here; creating the change is the critical path.
-        }
+      if (!changeId) {
+        throw new Error('Change was created without an id');
       }
+      await api.post(`/incidents/${id}/changes/`, { changeId });
       toast.success(`Change ${chRes?.data?.number || ''} created successfully`.trim());
       setShowCreateChangeModal(false);
       setChangeDesc('');
       setChangeJustification('');
+      refetch();
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to create change');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to create change');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleLinkProblem() {
+    if (!id || !linkProblemId) {
+      toast.error('Select a problem to link');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.post(`/incidents/${id}/problems/`, {
+        problemId: linkProblemId,
+        linkType: linkProblemType,
+      });
+      toast.success('Problem linked to incident');
+      setShowLinkProblemModal(false);
+      setLinkProblemId('');
+      setLinkProblemType('RELATED');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to link problem');
     } finally {
       setSubmitting(false);
     }
@@ -754,6 +803,38 @@ export default function IncidentDetail() {
   // ───────────────────────────────────────────────────────────────────────────
   // Loading State
   // ───────────────────────────────────────────────────────────────────────────
+
+  if (isError && !incident) {
+    return (
+      <div className="min-h-screen p-6" style={{ background: '#F1F5F9' }}>
+        <div className="max-w-[900px] mx-auto">
+          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-4">
+            <AlertTriangle size={32} className="mx-auto text-amber-500" />
+            <div>
+              <h2 className="text-xl font-display font-bold text-slate-900">Incident details could not be loaded</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                {error instanceof Error ? error.message : 'The backend did not return the incident detail payload.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => navigate('/incidents')}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Back to Incidents
+              </button>
+              <button
+                onClick={() => refetch()}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !incident) {
     return (
@@ -1148,6 +1229,10 @@ export default function IncidentDetail() {
               <button onClick={() => setShowCreateChangeModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors">
                 <GitBranch size={12} />
                 Create Change
+              </button>
+              <button onClick={() => setShowLinkProblemModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 transition-colors">
+                <AlertTriangle size={12} />
+                Link Problem
               </button>
               {state !== 'RESOLVED' && (
                 <button onClick={() => setShowSubIncidentModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
@@ -2074,7 +2159,7 @@ export default function IncidentDetail() {
                       <div className="text-center py-12">
                         <Gauge size={32} className="mx-auto text-stone-200 mb-3" />
                         <p className="text-sm text-stone-500 font-medium font-body">
-                          {liveCtx?.metrics?.error ? 'Prometheus unreachable' : 'No live metrics available'}
+                          {liveCtx?.metrics?.error ? 'Prometheus is not reachable for this environment right now' : 'Live metrics will appear here when monitoring is configured for this asset'}
                         </p>
                         <p className="text-xs text-stone-400 mt-1 font-body">
                           {liveCtx?.metrics?.error || 'This incident may not be linked to a monitored host'}
@@ -2449,6 +2534,13 @@ export default function IncidentDetail() {
                         style={{ background: '#F5F3FF', color: '#6366f1', borderColor: '#DDD6FE' }}
                       >
                         <GitBranch size={13} /> Create Change Request
+                      </button>
+                      <button
+                        onClick={() => setShowLinkProblemModal(true)}
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all"
+                        style={{ background: '#FDF4FF', color: '#a21caf', borderColor: '#f5d0fe' }}
+                      >
+                        <AlertTriangle size={13} /> Link Existing Problem
                       </button>
                       <button
                         onClick={() => setShowSubIncidentModal(true)}
@@ -3056,9 +3148,9 @@ export default function IncidentDetail() {
               className="input-field w-full text-sm"
             >
               <option value="">Choose a user...</option>
-              {(usersData?.data || []).map((u: any) => (
+              {assignableUsers.map((u: any) => (
                 <option key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName} — {u.role}
+                  {u.displayName}{u.role ? ` — ${u.role}` : ''}
                 </option>
               ))}
             </select>
@@ -3235,6 +3327,76 @@ export default function IncidentDetail() {
               {submitting && <Loader2 size={14} className="animate-spin" />}
               <GitBranch size={14} />
               Create & Link Change
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* -- Link Problem Modal -- */}
+      <Modal
+        open={showLinkProblemModal}
+        onClose={() => { setShowLinkProblemModal(false); setLinkProblemId(''); setLinkProblemType('RELATED'); }}
+        title="Link Existing Problem"
+        width="max-w-lg"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-fuchsia-50 border border-fuchsia-200">
+            <AlertTriangle size={16} className="text-fuchsia-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[10px] font-bold text-fuchsia-700 uppercase tracking-wide mb-0.5">Incident Context</p>
+              <p className="text-xs font-medium text-fuchsia-800">{incident?.number} · {incident?.shortDescription?.substring(0, 80)}</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-stone-600 mb-1.5 font-body">
+              Problem <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={linkProblemId}
+              onChange={(e) => setLinkProblemId(e.target.value)}
+              className="input-field w-full text-sm"
+            >
+              <option value="">Choose a problem...</option>
+              {problemOptions.map((problem: any) => (
+                <option key={problem.id} value={problem.id}>
+                  {problem.number} — {problem.shortDescription}
+                </option>
+              ))}
+            </select>
+            {problemOptions.length === 0 && (
+              <p className="mt-1.5 text-[10px] text-stone-500">No additional problems are available to link for this organization.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-stone-600 mb-1.5 font-body">Relationship Type</label>
+            <select
+              value={linkProblemType}
+              onChange={(e) => setLinkProblemType(e.target.value)}
+              className="input-field w-full text-sm"
+            >
+              <option value="RELATED">Related</option>
+              <option value="CAUSED_BY">Caused By</option>
+              <option value="SYMPTOM_OF">Symptom Of</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => { setShowLinkProblemModal(false); setLinkProblemId(''); setLinkProblemType('RELATED'); }}
+              className="btn-ghost px-4 py-2 rounded-lg text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleLinkProblem}
+              disabled={!linkProblemId || submitting}
+              className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-fuchsia-600 text-white hover:bg-fuchsia-700 transition-colors disabled:opacity-50"
+            >
+              {submitting && <Loader2 size={14} className="animate-spin" />}
+              <AlertTriangle size={14} />
+              Link Problem
             </button>
           </div>
         </div>

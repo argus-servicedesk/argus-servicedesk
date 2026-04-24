@@ -22,6 +22,7 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   resolution_notes: 'resolutionNotes',
   work_notes: 'workNotes',
   linked_problems: 'linkedProblems',
+  linked_changes: 'linkedChanges',
   created_at: 'createdAt',
   updated_at: 'updatedAt',
   first_name: 'firstName',

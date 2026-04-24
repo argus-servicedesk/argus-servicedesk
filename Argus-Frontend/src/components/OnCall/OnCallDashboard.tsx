@@ -108,12 +108,25 @@ export default function OnCallDashboard() {
   const { data: historyData } = useOnCallHistory(activeTeamId);
 
   const overview = overviewData?.data;
-  const schedules: any[] = schedulesData?.data || [];
-  const escalationPolicies: any[] = escalationData?.data || [];
+  const schedules: any[] = Array.isArray(schedulesData?.data)
+    ? schedulesData.data
+    : Array.isArray(schedulesData?.data?.schedules)
+      ? schedulesData.data.schedules
+      : [];
+  const escalationLevels: any[] = Array.isArray(escalationData?.data)
+    ? escalationData.data
+    : Array.isArray(escalationData?.data?.levels)
+      ? escalationData.data.levels
+      : [];
   const history = historyData?.data;
   const recentIncidents: any[] = history?.recentIncidents || [];
 
-  const stats = overview?.stats || { activeResponders: 0, teamsCovered: 0, openCritical: 0, totalSchedules: 0 };
+  const stats = {
+    activeResponders: overview?.stats?.activeResponders ?? overview?.stats?.onCallNow ?? 0,
+    teamsCovered: overview?.stats?.teamsCovered ?? 0,
+    openCritical: overview?.stats?.openCritical ?? overview?.stats?.escalations ?? 0,
+    totalSchedules: overview?.stats?.totalSchedules ?? overview?.stats?.activeSchedules ?? 0,
+  };
   const allOnCall: any[] = overview?.schedules || [];
 
   const primarySchedules = schedules.filter((s: any) => s.isPrimary);
@@ -540,41 +553,41 @@ export default function OnCallDashboard() {
               </span>
             </div>
             <div className="px-4 py-3">
-              {escalationPolicies.length === 0 ? (
+              {escalationLevels.length === 0 ? (
                 <p className="text-sm py-4 text-center" style={{ color: '#94a3b8' }}>No escalation policies</p>
               ) : (
-                escalationPolicies.map((policy: any) => (
-                  <div key={policy.id} className="space-y-0">
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#94a3b8' }}>{policy.name}</p>
-                    {(policy.rules || []).map((rule: any, idx: number) => {
-                      const lc = LEVEL_DARK[Math.min(rule.level - 1, 3)];
+                <div className="space-y-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#94a3b8' }}>Escalation Levels</p>
+                  {escalationLevels.map((rule: any, idx: number) => {
+                      const lc = LEVEL_DARK[Math.min((rule.level || 1) - 1, 3)];
                       const NotifyIcon = NOTIFY_ICONS[rule.notifyType] || Bell;
                       return (
-                        <div key={rule.id} className="relative">
+                        <div key={rule.id || idx} className="relative">
                           <div className="flex items-start gap-2.5 py-2">
                             <div className="flex flex-col items-center shrink-0">
                               <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: lc.bg, color: lc.color, border: `2px solid ${lc.border}` }}>
-                                L{rule.level}
+                                L{rule.level || idx + 1}
                               </div>
-                              {idx < (policy.rules?.length || 0) - 1 && (
+                              {idx < escalationLevels.length - 1 && (
                                 <div className="w-px h-5 mt-1 relative" style={{ background: 'rgba(99,102,241,0.15)' }}>
                                   <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full -translate-x-1/2 -translate-y-1/2 animate-pulse" style={{ background: lc.dot }} />
                                 </div>
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-medium truncate" style={{ color: '#6366f1' }}>{rule.notifyTargets}</p>
+                              <p className="text-[11px] font-medium truncate" style={{ color: '#6366f1' }}>
+                                {rule.user?.email || rule.user?.firstName || rule.name || `Level ${rule.level || idx + 1}`}
+                              </p>
                               <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono" style={{ color: '#94a3b8' }}>
-                                <span className="flex items-center gap-0.5"><Timer size={9} /> {rule.delayMinutes}m</span>
-                                <span className="flex items-center gap-0.5"><NotifyIcon size={9} /> {rule.notifyType}</span>
+                                <span className="flex items-center gap-0.5"><Timer size={9} /> {rule.delayMinutes || 0}m</span>
+                                <span className="flex items-center gap-0.5"><NotifyIcon size={9} /> {rule.notifyType || 'AUTO'}</span>
                               </div>
                             </div>
                           </div>
                         </div>
                       );
                     })}
-                  </div>
-                ))
+                </div>
               )}
             </div>
           </div>

@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useProblem, useUpdateProblem, useAiRCA, useAlertKB } from '../../hooks/useProblems';
+import { useIncidents } from '../../hooks/useIncidents';
+import { useChanges } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
 import api from '../../lib/api';
 
@@ -346,9 +348,16 @@ export default function ProblemDetail() {
   const [newNote, setNewNote] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showLinkIncidentModal, setShowLinkIncidentModal] = useState(false);
+  const [showLinkChangeModal, setShowLinkChangeModal] = useState(false);
+  const [selectedIncidentId, setSelectedIncidentId] = useState('');
+  const [selectedChangeId, setSelectedChangeId] = useState('');
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
   const [noteLoading, setNoteLoading] = useState(false);
 
   const { data: problemData, isLoading, isError, refetch } = useProblem(id || '');
+  const { data: incidentsListData } = useIncidents({ limit: 200 });
+  const { data: changesListData } = useChanges({ limit: 200 });
   const aiRCA = useAiRCA();
   const { data: kbData } = useAlertKB();
   const alertKBEntries: any[] = kbData?.data || [];
@@ -377,6 +386,11 @@ export default function ProblemDetail() {
         title: prb.relatedChangeInfo?.shortDescription || 'Related Change',
       }]
     : [];
+  const relatedIncidentIds = new Set(relatedIncidents.map((incident: any) => incident.id));
+  const incidentOptions = ((incidentsListData?.data || []) as any[]).filter(
+    (incident: any) => !relatedIncidentIds.has(incident.id),
+  );
+  const changeOptions = (changesListData?.data || []) as any[];
 
   const rca = prb?.rootCauseAnalysis as any;
 
@@ -407,6 +421,44 @@ export default function ProblemDetail() {
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to add note');
     } finally { setNoteLoading(false); }
+  };
+
+  const handleLinkIncident = async () => {
+    if (!id || !selectedIncidentId) {
+      toast.error('Select an incident to link');
+      return;
+    }
+    setLinkSubmitting(true);
+    try {
+      await api.post(`/problems/${id}/incidents/`, { incidentId: selectedIncidentId });
+      toast.success('Incident linked to problem');
+      setShowLinkIncidentModal(false);
+      setSelectedIncidentId('');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to link incident');
+    } finally {
+      setLinkSubmitting(false);
+    }
+  };
+
+  const handleLinkChange = async () => {
+    if (!id || !selectedChangeId) {
+      toast.error('Select a change to link');
+      return;
+    }
+    setLinkSubmitting(true);
+    try {
+      await api.post(`/problems/${id}/changes/`, { changeId: selectedChangeId });
+      toast.success('Change linked to problem');
+      setShowLinkChangeModal(false);
+      setSelectedChangeId('');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to link change');
+    } finally {
+      setLinkSubmitting(false);
+    }
   };
 
   const handleAiRCA = async () => {
@@ -858,9 +910,18 @@ export default function ProblemDetail() {
       {activeTab === 'related' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
           <div className="rounded-xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.12)', backdropFilter: 'blur(12px)' }}>
-            <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: '#64748b' }}>
-              <Link2 size={14} /> Related Incidents ({relatedIncidents.length})
-            </h3>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: '#64748b' }}>
+                <Link2 size={14} /> Related Incidents ({relatedIncidents.length})
+              </h3>
+              <button
+                onClick={() => setShowLinkIncidentModal(true)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ background: '#EEF2FF', color: '#4f46e5', borderColor: '#c7d2fe' }}
+              >
+                Link Incident
+              </button>
+            </div>
             <div className="space-y-2">
               {relatedIncidents.map((inc: any) => (
                 <button key={inc.id} onClick={() => navigate(`/incidents/${inc.id}`)} className="w-full text-left p-3 rounded-lg transition-colors flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(99,102,241,0.15)' }}
@@ -873,12 +934,24 @@ export default function ProblemDetail() {
                   <ChevronRight size={14} style={{ color: '#94a3b8' }} />
                 </button>
               ))}
+              {relatedIncidents.length === 0 && (
+                <p className="text-sm" style={{ color: '#94a3b8' }}>No incidents are linked yet.</p>
+              )}
             </div>
           </div>
           <div className="rounded-xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.12)', backdropFilter: 'blur(12px)' }}>
-            <h3 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: '#64748b' }}>
-              <Link2 size={14} /> Related Changes ({relatedChanges.length})
-            </h3>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: '#64748b' }}>
+                <Link2 size={14} /> Related Changes ({relatedChanges.length})
+              </h3>
+              <button
+                onClick={() => setShowLinkChangeModal(true)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ background: '#F5F3FF', color: '#7c3aed', borderColor: '#ddd6fe' }}
+              >
+                Link Change
+              </button>
+            </div>
             <div className="space-y-2">
               {relatedChanges.map((chg: any) => (
                 <button key={chg.id} onClick={() => navigate(`/changes/${chg.id}`)} className="w-full text-left p-3 rounded-lg transition-colors flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(99,102,241,0.15)' }}
@@ -891,12 +964,77 @@ export default function ProblemDetail() {
                   <ChevronRight size={14} style={{ color: '#94a3b8' }} />
                 </button>
               ))}
+              {relatedChanges.length === 0 && (
+                <p className="text-sm" style={{ color: '#94a3b8' }}>No changes are linked yet.</p>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {/* Modals */}
+      {showLinkIncidentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => { setShowLinkIncidentModal(false); setSelectedIncidentId(''); }}>
+          <div className="w-full max-w-md p-6 space-y-4 shadow-2xl animate-fade-in rounded-2xl" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.2)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold" style={{ color: '#0f172a' }}>Link Incident</h3>
+              <button onClick={() => { setShowLinkIncidentModal(false); setSelectedIncidentId(''); }} className="p-1 rounded-lg" style={{ color: '#94a3b8' }}><X size={18} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Incident</label>
+              <select value={selectedIncidentId} onChange={(e) => setSelectedIncidentId(e.target.value)} style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(99,102,241,0.15)', color: '#0f172a', borderRadius: '8px', padding: '8px 12px', width: '100%', fontSize: '14px', outline: 'none' }}>
+                <option value="" style={{ background: '#ffffff' }}>Select incident...</option>
+                {incidentOptions.map((incident: any) => (
+                  <option key={incident.id} value={incident.id} style={{ background: '#ffffff' }}>
+                    {incident.number} — {incident.shortDescription}
+                  </option>
+                ))}
+              </select>
+              {incidentOptions.length === 0 && (
+                <p className="mt-2 text-[11px]" style={{ color: '#94a3b8' }}>No additional incidents are available to link.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => { setShowLinkIncidentModal(false); setSelectedIncidentId(''); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ color: '#64748b', border: '1px solid rgba(99,102,241,0.15)' }}>Cancel</button>
+              <button onClick={handleLinkIncident} disabled={linkSubmitting || !selectedIncidentId} className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#FFFFFF', boxShadow: '0 4px 20px rgba(99,102,241,0.5)', opacity: (linkSubmitting || !selectedIncidentId) ? 0.6 : 1 }}>
+                {linkSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                Link Incident
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showLinkChangeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => { setShowLinkChangeModal(false); setSelectedChangeId(''); }}>
+          <div className="w-full max-w-md p-6 space-y-4 shadow-2xl animate-fade-in rounded-2xl" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.2)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold" style={{ color: '#0f172a' }}>Link Change</h3>
+              <button onClick={() => { setShowLinkChangeModal(false); setSelectedChangeId(''); }} className="p-1 rounded-lg" style={{ color: '#94a3b8' }}><X size={18} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Change</label>
+              <select value={selectedChangeId} onChange={(e) => setSelectedChangeId(e.target.value)} style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(99,102,241,0.15)', color: '#0f172a', borderRadius: '8px', padding: '8px 12px', width: '100%', fontSize: '14px', outline: 'none' }}>
+                <option value="" style={{ background: '#ffffff' }}>Select change...</option>
+                {changeOptions.map((change: any) => (
+                  <option key={change.id} value={change.id} style={{ background: '#ffffff' }}>
+                    {change.number} — {change.shortDescription}
+                  </option>
+                ))}
+              </select>
+              {changeOptions.length === 0 && (
+                <p className="mt-2 text-[11px]" style={{ color: '#94a3b8' }}>No changes are available in this organization yet.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => { setShowLinkChangeModal(false); setSelectedChangeId(''); }} className="px-3 py-1.5 rounded-lg text-sm" style={{ color: '#64748b', border: '1px solid rgba(99,102,241,0.15)' }}>Cancel</button>
+              <button onClick={handleLinkChange} disabled={linkSubmitting || !selectedChangeId} className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#FFFFFF', boxShadow: '0 4px 20px rgba(99,102,241,0.5)', opacity: (linkSubmitting || !selectedChangeId) ? 0.6 : 1 }}>
+                {linkSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                Link Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showEditModal && <EditProblemModal problem={prb} onClose={() => setShowEditModal(false)} />}
       {showAssignModal && <AssignProblemModal problem={prb} onClose={() => setShowAssignModal(false)} />}
     </div>

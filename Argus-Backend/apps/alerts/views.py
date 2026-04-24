@@ -1,10 +1,13 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.responses import success
+from apps.common.responses import success, failure
 from .models import Alert
 from .serializers import AlertSerializer, AlertUpdateSerializer
 
@@ -109,3 +112,90 @@ class AlertKnowledgeBaseView(APIView):
         ]
 
         return success(data)
+
+
+class AlertAcknowledgeView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        alert = Alert.objects.filter(pk=pk, organization=request.organization).first()
+        if alert is None:
+            return failure("alert not found", status_code=404)
+
+        alert.status = Alert.Status.ACKNOWLEDGED
+        alert.acknowledged_at = timezone.now()
+        alert.acknowledged_by = request.user
+        alert.save(update_fields=["status", "acknowledged_at", "acknowledged_by", "updated_at"])
+        return success(AlertSerializer(alert).data, "alert acknowledged")
+
+
+class AlertSilenceView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        alert = Alert.objects.filter(pk=pk, organization=request.organization).first()
+        if alert is None:
+            return failure("alert not found", status_code=404)
+
+        duration_minutes = int(request.data.get("duration", 60) or 60)
+        alert.status = Alert.Status.SILENCED
+        alert.silence_until = timezone.now() + timedelta(minutes=duration_minutes)
+        alert.save(update_fields=["status", "silence_until", "updated_at"])
+        return success(AlertSerializer(alert).data, "alert silenced")
+
+
+class AlertCreateIncidentView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from apps.incidents.models import Incident
+
+        alert = Alert.objects.filter(pk=pk, organization=request.organization).first()
+        if alert is None:
+            return failure("alert not found", status_code=404)
+
+        if alert.incident_id:
+            return success(
+                {"id": str(alert.incident.id), "number": alert.incident.number},
+                "incident already exists",
+            )
+
+        severity_map = {
+            Alert.Severity.CRITICAL: {
+                "impact": Incident.Impact.ENTERPRISE,
+                "urgency": Incident.Urgency.CRITICAL,
+                "priority": Incident.Priority.P1,
+            },
+            Alert.Severity.WARNING: {
+                "impact": Incident.Impact.TEAM,
+                "urgency": Incident.Urgency.HIGH,
+                "priority": Incident.Priority.P2,
+            },
+            Alert.Severity.INFO: {
+                "impact": Incident.Impact.INDIVIDUAL,
+                "urgency": Incident.Urgency.MEDIUM,
+                "priority": Incident.Priority.P3,
+            },
+        }
+        mapped = severity_map.get(alert.severity, severity_map[Alert.Severity.WARNING])
+
+        number = f"INC{timezone.now().year}{timezone.now().strftime('%H%M%S')}{str(alert.id.int)[-4:]}"
+        incident = Incident.objects.create(
+            number=number,
+            short_description=alert.name,
+            description=alert.description or f"Created from alert {alert.alert_id}",
+            state=Incident.State.NEW,
+            impact=mapped["impact"],
+            urgency=mapped["urgency"],
+            priority=mapped["priority"],
+            category=alert.metric or "Alert",
+            created_by=request.user,
+            config_item=alert.config_item,
+            source=Incident.Source.API,
+            source_alert_id=alert.alert_id,
+            source_alert_name=alert.name,
+            organization=request.organization,
+        )
+        alert.incident = incident
+        alert.save(update_fields=["incident", "updated_at"])
+        return success({"id": str(incident.id), "number": incident.number}, "incident created", 201)
