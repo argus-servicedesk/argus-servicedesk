@@ -25,6 +25,7 @@ class SignupView(APIView):
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         if not serializer.is_valid():
+            print(f"Signup validation errors: {serializer.errors}")
             return failure(serializer.errors, status_code=400)
         user = serializer.save()
         if not _ensure_user_organization(user):
