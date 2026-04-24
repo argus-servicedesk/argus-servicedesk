@@ -33,6 +33,8 @@ import { useProblem, useUpdateProblem, useAiRCA, useAlertKB } from '../../hooks/
 import { useIncidents } from '../../hooks/useIncidents';
 import { useChanges } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
+import { useExecuteTransition } from '../../hooks/useWorkflow';
+import { TransitionLog } from '../workflow/TransitionLog';
 import api from '../../lib/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -262,7 +264,7 @@ function AssignProblemModal({ problem, onClose }: { problem: any; onClose: () =>
 }
 
 function ProblemStateDropdown({ problem }: { problem: any }) {
-  const updateProblem = useUpdateProblem();
+  const executeTransition = useExecuteTransition();
   const [open, setOpen] = useState(false);
   const allowed = PROBLEM_TRANSITIONS[problem.state] || [];
   if (allowed.length === 0) return null;
@@ -278,12 +280,18 @@ function ProblemStateDropdown({ problem }: { problem: any }) {
   const handleTransition = async (newState: string) => {
     setOpen(false);
     try {
-      const data: any = { state: newState };
-      if (newState === 'KNOWN_ERROR') data.isKnownError = true;
-      await updateProblem.mutateAsync({ id: problem.id, data });
+      const field_updates: any = {};
+      if (newState === 'KNOWN_ERROR') field_updates.is_known_error = true;
+      await executeTransition.mutateAsync({
+        module: 'PROBLEM',
+        record_id: problem.id,
+        from_state: problem.state,
+        to_state: newState,
+        field_updates,
+      });
       toast.success(`State changed to ${labels[newState] || newState}`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'State change failed');
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || 'State change failed');
     }
   };
 
@@ -1035,6 +1043,9 @@ export default function ProblemDetail() {
           </div>
         </div>
       )}
+      <div className="mt-6">
+        <TransitionLog module="PROBLEM" recordId={prb.id} />
+      </div>
       {showEditModal && <EditProblemModal problem={prb} onClose={() => setShowEditModal(false)} />}
       {showAssignModal && <AssignProblemModal problem={prb} onClose={() => setShowAssignModal(false)} />}
     </div>

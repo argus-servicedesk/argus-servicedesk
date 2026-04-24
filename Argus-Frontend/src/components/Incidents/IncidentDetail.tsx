@@ -19,6 +19,8 @@ import { useCreateChange } from '../../hooks/useChanges';
 import { useProblems } from '../../hooks/useProblems';
 import { useTeams } from '../../hooks/useTeams';
 import IncidentReportGenerator from './IncidentReportGenerator';
+import { useExecuteTransition } from '../../hooks/useWorkflow';
+import { TransitionLog } from '../workflow/TransitionLog';
 import api from '../../lib/api';
 
 // =============================================================================
@@ -472,6 +474,7 @@ export default function IncidentDetail() {
   const { data: timelineData } = useIncidentTimeline(id || '');
   const addWorkNote = useAddWorkNote(id || '');
   const updateIncident = useUpdateIncident();
+  const executeTransition = useExecuteTransition();
   const createChange = useCreateChange();
   const { data: problemsListData } = useProblems({ limit: 200 });
   const { data: teamsData } = useTeams();
@@ -626,10 +629,15 @@ export default function IncidentDetail() {
 
     setSubmitting(true);
     try {
-      await updateIncident.mutateAsync({ id, data: { state: newState } });
+      await executeTransition.mutateAsync({
+        module: 'INCIDENT',
+        record_id: id,
+        from_state: state,
+        to_state: newState,
+      });
       toast.success(`State changed to ${stateLabel(newState)}`);
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to update state');
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update state');
     } finally {
       setSubmitting(false);
     }
@@ -642,12 +650,14 @@ export default function IncidentDetail() {
     }
     setSubmitting(true);
     try {
-      await updateIncident.mutateAsync({
-        id,
-        data: {
-          state: 'RESOLVED',
-          resolutionCode: resCode,
-          resolutionNotes: resNotes || undefined,
+      await executeTransition.mutateAsync({
+        module: 'INCIDENT',
+        record_id: id,
+        from_state: state,
+        to_state: 'RESOLVED',
+        field_updates: {
+          resolution_code: resCode,
+          resolution_notes: resNotes || '',
         },
       });
       toast.success('Incident resolved');
@@ -655,7 +665,7 @@ export default function IncidentDetail() {
       setResCode('');
       setResNotes('');
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to resolve incident');
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to resolve incident');
     } finally {
       setSubmitting(false);
     }
@@ -1974,7 +1984,9 @@ export default function IncidentDetail() {
 
                 {/* === Timeline / Activity Tab === */}
                 {activeTab === 'timeline' && (
-                  <div className="space-y-0">
+                  <div className="space-y-4">
+                    {id && <TransitionLog module="INCIDENT" recordId={id} />}
+                    <div className="space-y-0">
                     {timeline.length === 0 ? (
                       <div className="text-center py-12">
                         <Activity size={32} className="mx-auto text-stone-200 mb-3" />
@@ -2048,6 +2060,7 @@ export default function IncidentDetail() {
                         })}
                       </div>
                     )}
+                    </div>
                   </div>
                 )}
 

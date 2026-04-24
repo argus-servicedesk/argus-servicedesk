@@ -24,6 +24,8 @@ import {
 import toast from 'react-hot-toast';
 import { useChange, useUpdateChange } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
+import { useExecuteTransition } from '../../hooks/useWorkflow';
+import { TransitionLog } from '../workflow/TransitionLog';
 import api from '../../lib/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -273,7 +275,7 @@ function AssignChangeModal({ change, onClose }: { change: any; onClose: () => vo
 }
 
 function ChangeStateDropdown({ change }: { change: any }) {
-  const updateChange = useUpdateChange();
+  const executeTransition = useExecuteTransition();
   const [open, setOpen] = useState(false);
   const allowed = CHANGE_TRANSITIONS[change.state] || [];
   if (allowed.length === 0) return null;
@@ -281,10 +283,15 @@ function ChangeStateDropdown({ change }: { change: any }) {
   const handleTransition = async (newState: string) => {
     setOpen(false);
     try {
-      await updateChange.mutateAsync({ id: change.id, data: { state: newState } });
+      await executeTransition.mutateAsync({
+        module: 'CHANGE',
+        record_id: change.id,
+        from_state: change.state,
+        to_state: newState,
+      });
       toast.success(`State changed to ${newState.replace(/_/g, ' ')}`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'State change failed');
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || 'State change failed');
     }
   };
 
@@ -620,6 +627,9 @@ export default function ChangeDetail() {
         </div>
       )}
 
+      <div className="mt-6 px-6 pb-6">
+        <TransitionLog module="CHANGE" recordId={chg.id} />
+      </div>
       {/* Modals */}
       {showEditModal && <EditChangeModal change={chg} onClose={() => setShowEditModal(false)} />}
       {showAssignModal && <AssignChangeModal change={chg} onClose={() => setShowAssignModal(false)} />}
