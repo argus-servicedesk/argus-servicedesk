@@ -152,12 +152,15 @@ class DashboardIncidentTrendView(APIView):
         incidents = Incident.objects.filter(organization_id=org_id, created_at__gte=since)
         resolved = Incident.objects.filter(organization_id=org_id, resolved_at__gte=since)
 
+        def to_date(val):
+            return val.date() if hasattr(val, "date") else val
+
         created_map = {
-            row["day"].date(): row["count"]
+            to_date(row["day"]): row["count"]
             for row in incidents.extra({"day": "date(created_at)"}).values("day").annotate(count=Count("id"))
         }
         resolved_map = {
-            row["day"].date(): row["count"]
+            to_date(row["day"]): row["count"]
             for row in resolved.extra({"day": "date(resolved_at)"}).values("day").annotate(count=Count("id"))
         }
 
