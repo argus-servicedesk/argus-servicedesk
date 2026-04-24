@@ -34,6 +34,7 @@ interface Problem {
   priority: Priority;
   state: ProblemState;
   shortDescription: string;
+  description?: string | null;
   assignedTo: string | { firstName?: string; lastName?: string } | null;
   relatedIncidents: number;
   createdAt: string;
@@ -321,7 +322,7 @@ export default function ProblemList() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid rgba(99,102,241,0.12)' }}>
-                {([['number', 'Number'], ['priority', 'Priority'], ['state', 'State'], ['shortDescription', 'Description'], ['relatedIncidents', 'Incidents'], ['createdAt', 'Created']] as [SortField, string][]).map(([field, label]) => (
+                {([['number', 'Number'], ['priority', 'Priority'], ['state', 'State'], ['shortDescription', 'Short Description'], ['relatedIncidents', 'Incidents'], ['createdAt', 'Created']] as [SortField, string][]).map(([field, label]) => (
                   <th key={field} onClick={() => handleSort(field)} className="px-4 py-2.5 text-left cursor-pointer select-none transition-colors">
                     <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#94a3b8' }}>{label} <SortIcon field={field} /></span>
                   </th>
@@ -359,7 +360,12 @@ export default function ProblemList() {
                   <td className="px-4 py-3"><span className="font-mono group-hover:underline" style={{ color: '#334155' }}>{prb.number}</span></td>
                   <td className="px-4 py-3"><span className={clsx('badge', priorityClass[prb.priority])}>{prb.priority}</span></td>
                   <td className="px-4 py-3"><span className="badge text-[10px] px-2 py-0.5 rounded-md" style={stateDarkStyle[prb.state]}>{stateLabel[prb.state]}</span></td>
-                  <td className="px-4 py-3 max-w-xs truncate" style={{ color: '#334155' }}>{prb.shortDescription}</td>
+                  <td className="px-4 py-3 max-w-xs">
+                    <p className="truncate font-medium" style={{ color: '#334155' }}>{prb.shortDescription}</p>
+                    <p className="truncate text-[11px]" style={{ color: '#94a3b8' }}>
+                      {prb.description || 'No additional description'}
+                    </p>
+                  </td>
                   <td className="px-4 py-3 text-center">
                     {(prb.relatedIncidents || 0) > 0 ? (
                       <span className="badge text-[10px] px-2 py-0.5 rounded-md" style={{ background: 'rgba(245,158,11,0.15)', color: '#D97706', border: '1px solid rgba(245,158,11,0.3)' }}>{prb.relatedIncidents}</span>
@@ -376,7 +382,7 @@ export default function ProblemList() {
 
         {!isLoading && totalItems > 0 && (
           <div className="flex items-center justify-between px-4 py-3 text-sm" style={{ borderTop: '1px solid rgba(99,102,241,0.12)' }}>
-            <span style={{ color: '#94a3b8' }}>{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} of {totalItems}</span>
+            <span style={{ color: '#94a3b8' }}>{(page - 1) * pageSize + 1}-{Math.min(page * pageSize, totalItems)} of {totalItems}</span>
             <div className="flex items-center gap-1">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg transition-colors" style={{ color: page === 1 ? '#94a3b8' : '#64748b' }}><ChevronLeft size={18} /></button>
               <span className="px-3" style={{ color: '#94a3b8' }}>{page} / {totalPages}</span>
@@ -394,3 +400,4 @@ export default function ProblemList() {
     </div>
   );
 }
+

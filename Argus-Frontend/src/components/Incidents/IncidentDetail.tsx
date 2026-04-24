@@ -479,8 +479,13 @@ export default function IncidentDetail() {
   const { data: aiResData, isLoading: aiResLoading, refetch: refetchAI } = useQuery({
     queryKey: ['ai-resolution', id],
     queryFn: async () => {
-      const { data } = await api.get(`/ai/incidents/${id}/resolution-details`);
-      return data.data;
+      try {
+        const { data } = await api.get(`/ai/incidents/${id}/resolution-details`);
+        return data.data;
+      } catch (error: any) {
+        if (error?.response?.status === 404) return null;
+        throw error;
+      }
     },
     enabled: activeTab === 'aiagent' && !!id,
     staleTime: 300000,
@@ -657,7 +662,7 @@ export default function IncidentDetail() {
     }
     setSubmitting(true);
     try {
-      const { data: chRes } = await api.post('/changes', {
+      const { data: chRes } = await api.post('/changes/', {
         shortDescription: changeDesc.trim(),
         type: changeType,
         riskLevel: changeRisk,
@@ -668,9 +673,13 @@ export default function IncidentDetail() {
       });
       const changeId = chRes?.data?.id;
       if (changeId) {
-        await api.post(`/incidents/${id}/changes`, { changeId });
+        try {
+          await api.post(`/incidents/${id}/changes/`, { changeId });
+        } catch {
+          // Linking is optional here; creating the change is the critical path.
+        }
       }
-      toast.success(`Change ${chRes?.data?.number} created and linked`);
+      toast.success(`Change ${chRes?.data?.number || ''} created successfully`.trim());
       setShowCreateChangeModal(false);
       setChangeDesc('');
       setChangeJustification('');
@@ -688,7 +697,7 @@ export default function IncidentDetail() {
     }
     setSubmitting(true);
     try {
-      await api.post('/incidents', {
+      await api.post('/incidents/', {
         shortDescription: subDesc.trim(),
         description: `Sub-incident of ${incident?.number}: ${incident?.shortDescription}`,
         impact: subImpact || incident?.impact || 'TEAM',

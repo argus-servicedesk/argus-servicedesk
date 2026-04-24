@@ -47,7 +47,7 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
 class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     queryset = Incident.objects.all()
-    
+
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return IncidentUpdateSerializer
@@ -55,6 +55,18 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
 
     def get_queryset(self):
         return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems')
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return success(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return success(IncidentSerializer(instance).data)
 
 
 class IncidentStatsView(APIView):
@@ -85,4 +97,140 @@ class WorkNoteCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         incident_id = self.kwargs.get('incident_id')
         serializer.save(author=self.request.user, incident_id=incident_id)
+
+
+class IncidentTimelineView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        incident = (
+            Incident.objects.filter(organization=request.organization, pk=pk)
+            .select_related('assigned_to', 'created_by', 'assignment_group')
+            .prefetch_related('activities__user', 'work_notes__author')
+            .first()
+        )
+        if incident is None:
+            return failure("incident not found", status_code=404)
+
+        items = []
+
+        for activity in incident.activities.all():
+            items.append(
+                {
+                    "id": str(activity.id),
+                    "type": "activity",
+                    "action": activity.action,
+                    "description": activity.description,
+                    "oldValue": activity.old_value,
+                    "newValue": activity.new_value,
+                    "createdAt": activity.created_at.isoformat() if activity.created_at else None,
+                    "user": (
+                        {
+                            "id": str(activity.user.id),
+                            "firstName": activity.user.first_name,
+                            "lastName": activity.user.last_name,
+                            "email": activity.user.email,
+                        }
+                        if activity.user_id
+                        else None
+                    ),
+                }
+            )
+
+        for note in incident.work_notes.all():
+            items.append(
+                {
+                    "id": str(note.id),
+                    "type": "work_note",
+                    "action": "NOTE_ADDED",
+                    "description": note.content,
+                    "isInternal": note.is_internal,
+                    "source": note.source,
+                    "createdAt": note.created_at.isoformat() if note.created_at else None,
+                    "user": (
+                        {
+                            "id": str(note.author.id),
+                            "firstName": note.author.first_name,
+                            "lastName": note.author.last_name,
+                            "email": note.author.email,
+                        }
+                        if note.author_id
+                        else None
+                    ),
+                }
+            )
+
+        items.sort(key=lambda item: item.get("createdAt") or "", reverse=True)
+        return success(items)
+
+
+class IncidentLiveContextView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        incident = (
+            Incident.objects.filter(organization=request.organization, pk=pk)
+            .select_related("config_item")
+            .first()
+        )
+        if incident is None:
+            return failure("incident not found", status_code=404)
+
+        config_item = incident.config_item
+        hostname = getattr(config_item, "hostname", None) or getattr(config_item, "name", None)
+        ip_address = getattr(config_item, "ip_address", None)
+        os_name = (getattr(config_item, "os", None) or "").strip()
+        os_type = "windows" if "windows" in os_name.lower() else "linux" if os_name else None
+
+        past_incidents = []
+        if config_item is not None:
+            related = (
+                Incident.objects.filter(
+                    organization=request.organization,
+                    config_item=config_item,
+                )
+                .exclude(pk=incident.pk)
+                .order_by("-created_at")[:5]
+            )
+            past_incidents = [
+                {
+                    "id": str(item.id),
+                    "number": item.number,
+                    "priority": item.priority,
+                    "state": item.state,
+                    "shortDescription": item.short_description,
+                    "createdAt": item.created_at.isoformat() if item.created_at else None,
+                }
+                for item in related
+            ]
+
+        payload = {
+            "alertContext": {
+                "alertName": incident.source_alert_name or incident.short_description,
+                "instance": hostname or ip_address,
+                "hostname": hostname,
+                "ip": ip_address,
+                "source": incident.source,
+            },
+            "metrics": {
+                "available": False,
+                "error": None,
+                "osType": os_type,
+                "cpu": {"usagePct": 0, "cores": None},
+                "memory": {"usedPct": 0, "totalBytes": None},
+                "load": {"m1": 0, "m5": 0, "cores": 1},
+                "filesystems": [],
+                "interfaces": [],
+                "sysInfo": {
+                    "hostname": hostname,
+                    "os": os_name or None,
+                    "kernel": None,
+                    "arch": None,
+                    "uptimeSeconds": None,
+                },
+            },
+            "firingAlerts": [],
+            "pastIncidents": past_incidents,
+        }
+        return success(payload)
 

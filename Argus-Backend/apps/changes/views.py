@@ -46,7 +46,7 @@ class ChangeListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
 class ChangeDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     queryset = Change.objects.all()
-    
+
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return ChangeUpdateSerializer
@@ -54,6 +54,18 @@ class ChangeDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
 
     def get_queryset(self):
         return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('approvals', 'affected_cis')
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return success(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return success(ChangeSerializer(instance).data)
 
 
 class ApprovalCreateView(generics.CreateAPIView):

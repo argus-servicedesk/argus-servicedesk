@@ -17,10 +17,11 @@ import api from '../../lib/api';
 import { useDashboard, useDashboardTrends, useSLACompliance } from '../../hooks/useDashboard';
 import { useIncidents } from '../../hooks/useIncidents';
 import { useAlerts } from '../../hooks/useAlerts';
-import { useAssets } from '../../hooks/useAssets';
+import { useAssets, useAssetStats } from '../../hooks/useAssets';
 import { useChanges } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
 import { useOnCallOverview } from '../../hooks/useOnCall';
+import { useProblems, useProblemStats } from '../../hooks/useProblems';
 import { useAuthStore } from '../../stores/authStore';
 
 /* ===================================================================
@@ -326,16 +327,14 @@ export default function DashboardOverview() {
   const { data: incidentData, isLoading: incLoading } = useIncidents({ limit: 8 });
   const { data: alertsData } = useAlerts({ limit: 50, status: 'FIRING' });
   const { data: assetsData } = useAssets({ limit: 100 });
+  const { data: assetStatsData } = useAssetStats();
   const { data: trendData } = useDashboardTrends(trendDays);
   const { data: slaData } = useSLACompliance();
   const { data: changesData } = useChanges({ limit: 5, status: 'PLANNED' });
   const { data: teamsData } = useTeams({ limit: 10 });
   const { data: onCallData } = useOnCallOverview();
-  const { data: problemsData } = useQuery({
-    queryKey: ['problems', 'dashboard'],
-    queryFn: async () => { const { data } = await api.get('/problems/?page=1&limit=5'); return data; },
-    staleTime: 60000,
-  });
+  const { data: problemsData } = useProblems({ page: 1, limit: 10 });
+  const { data: problemStatsData } = useProblemStats();
 
   /* ── KPI ── */
   const kpi = dashboardData?.data?.kpi;
@@ -385,14 +384,24 @@ export default function DashboardOverview() {
 
   /* ── Assets ── */
   const allAssets: any[] = assetsData?.data ?? [];
-  const totalAssets = assetsData?.pagination?.total ?? allAssets.length;
-  const assetsByType = useMemo(() => {
+  const totalAssets = Math.max(
+    Number(assetStatsData?.data?.total ?? 0),
+    Number(assetsData?.pagination?.total ?? 0),
+    Number(assetsData?.pagination?.count ?? 0),
+    allAssets.length,
+  );
+  const assetsByType = useMemo<[string, number][]>(() => {
+    if (allAssets.length === 0 && assetStatsData?.data?.by_type) {
+      return Object.entries(assetStatsData.data.by_type)
+        .map(([type, count]) => [type, Number(count)] as [string, number])
+        .sort((a, b) => b[1] - a[1]);
+    }
     const counts: Record<string, number> = {};
     allAssets.forEach(a => { counts[a.type] = (counts[a.type] || 0) + 1; });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [allAssets]);
+  }, [allAssets, assetStatsData]);
 
-  const assetsByStatus = useMemo(() => {
+  const assetsByStatus = useMemo<[string, number][]>(() => {
     const counts: Record<string, number> = {};
     allAssets.forEach(a => { counts[a.status || 'UNKNOWN'] = (counts[a.status || 'UNKNOWN'] || 0) + 1; });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
@@ -401,14 +410,28 @@ export default function DashboardOverview() {
   /* ── Trend ── */
   const trendChart = useMemo(() => {
     const raw = trendData?.data;
-    if (Array.isArray(raw) && raw.length > 0) return raw;
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw.map((row: any) => ({
+        date: row.date ?? row.day,
+        count: Number(row.count ?? row.incidents ?? 0),
+        resolved: Number(row.resolved ?? 0),
+      }));
+    }
     return null;
   }, [trendData]);
 
   /* ── Changes / Problems / Teams / OnCall ── */
   const upcomingChanges: any[] = changesData?.data ?? [];
-  const problems: any[] = problemsData?.data ?? [];
-  const openProblems = problemsData?.pagination?.total ?? problems.length;
+  const problems: any[] = (problemsData?.data ?? []).filter((problem: any) =>
+    !['RESOLVED', 'CLOSED'].includes(safeStr(problem.state || problem.status).toUpperCase()),
+  );
+  const problemStateCounts = problemStatsData?.data?.stateCounts ?? {};
+  const openProblems =
+    Number(problemStateCounts.NEW ?? 0) +
+    Number(problemStateCounts.INVESTIGATION ?? 0) +
+    Number(problemStateCounts.RCA_IN_PROGRESS ?? 0) +
+    Number(problemStateCounts.KNOWN_ERROR ?? 0) ||
+    problems.length;
   const teams: any[] = Array.isArray(teamsData?.data) ? teamsData.data : [];
   const onCallTeams: any[] = onCallData?.data ?? [];
 
@@ -837,9 +860,11 @@ export default function DashboardOverview() {
             badge={<Badge color={slaCompliance >= 95 ? '#059669' : slaCompliance >= 85 ? '#D97706' : '#DC2626'}>{slaCompliance}%</Badge>}
             accent="#059669">
             {(() => {
-              const sla = slaData?.data;
-              const overall = sla?.overall ?? slaCompliance ?? 0;
-              const byPriority = sla?.byPriority || [];
+              const slaRows = Array.isArray(slaData?.data) ? slaData.data : [];
+              const overall = slaRows.length > 0
+                ? Math.round(slaRows.reduce((sum: number, row: any) => sum + Number(row.compliance ?? 0), 0) / slaRows.length)
+                : slaCompliance ?? 0;
+              const byPriority = slaRows;
               return (
                 <div className="space-y-4">
                   <div className="flex justify-center">

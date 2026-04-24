@@ -196,7 +196,7 @@ export default function ProblemCreate() {
               {/* Description */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                  Description
+                  Description <span style={{ color: '#94a3b8', fontSize: '12px' }}>(Optional)</span>
                 </label>
                 <textarea
                   rows={4}
@@ -211,7 +211,7 @@ export default function ProblemCreate() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                    Priority
+                    Priority <span style={{ color: '#94a3b8', fontSize: '12px' }}>(Optional)</span>
                   </label>
                   <select className="prb-select" {...register('priority')}>
                     {PRIORITIES.map((p) => (
@@ -233,7 +233,7 @@ export default function ProblemCreate() {
 
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                    Category
+                    Category <span style={{ color: '#94a3b8', fontSize: '12px' }}>(Optional)</span>
                   </label>
                   <select className="prb-select" {...register('category')}>
                     <option value="">Select category...</option>
@@ -249,7 +249,7 @@ export default function ProblemCreate() {
               {/* Assignment Group */}
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: '#64748b' }}>
-                  Assignment Group
+                  Assignment Group <span style={{ color: '#94a3b8', fontSize: '12px' }}>(Optional)</span>
                 </label>
                 <select className="prb-select" {...register('assignmentGroupId')}>
                   <option value="">Select team...</option>

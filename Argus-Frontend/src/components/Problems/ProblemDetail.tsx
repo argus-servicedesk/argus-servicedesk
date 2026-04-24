@@ -72,12 +72,19 @@ const stateLabel: Record<ProblemState, string> = {
   CLOSED: 'Closed',
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+function formatDate(iso?: string | null): string {
+  if (!iso) return 'N/A';
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+function relativeTime(iso?: string | null): string {
+  if (!iso) return 'Unknown';
+  const parsed = new Date(iso).getTime();
+  if (!Number.isFinite(parsed)) return 'Unknown';
+  const diff = Date.now() - parsed;
+  if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -364,7 +371,11 @@ export default function ProblemDetail() {
     alertName: li.incident?.alertName,
   }));
   const relatedChanges = prb?.relatedChangeId
-    ? [{ id: prb.relatedChangeId, number: '', title: 'Related Change' }]
+    ? [{
+        id: prb.relatedChangeId,
+        number: prb.relatedChangeInfo?.number || '',
+        title: prb.relatedChangeInfo?.shortDescription || 'Related Change',
+      }]
     : [];
 
   const rca = prb?.rootCauseAnalysis as any;
@@ -389,7 +400,7 @@ export default function ProblemDetail() {
     if (!newNote.trim()) return;
     setNoteLoading(true);
     try {
-      await api.post(`/problems/${id}/notes`, { content: newNote });
+      await api.post(`/problems/${id}/notes/`, { content: newNote });
       toast.success('Work note added');
       setNewNote('');
       refetch();
@@ -419,7 +430,7 @@ export default function ProblemDetail() {
       if (rca.workaround) updateData.workaround = rca.workaround;
       if (rca.permanentFix) updateData.permanentFix = rca.permanentFix;
       if (rca.category) updateData.category = rca.category;
-      await api.patch(`/problems/${id}`, updateData);
+      await api.patch(`/problems/${id}/`, updateData);
       toast.success('RCA accepted \u2014 state moved to RCA In Progress');
       refetch();
     } catch (err: any) {
@@ -430,7 +441,7 @@ export default function ProblemDetail() {
   const handleApplyKB = async (kb: any) => {
     if (!id) return;
     try {
-      await api.patch(`/problems/${id}/rca`, {
+      await api.patch(`/problems/${id}/rca/`, {
         rootCause: kb.rootCauses.join('; '),
         workaround: kb.remediate?.[0] || '',
       });
@@ -539,7 +550,9 @@ export default function ProblemDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5">
           <div className="lg:col-span-2 rounded-xl p-5" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.12)', backdropFilter: 'blur(12px)' }}>
             <h3 className="text-sm font-medium mb-3" style={{ color: '#64748b' }}>Description</h3>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#334155' }}>{prb.description}</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#334155' }}>
+              {prb.description || 'No detailed description has been added yet.'}
+            </p>
           </div>
           <div className="space-y-4">
             <div className="rounded-xl p-5 space-y-3" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.12)', backdropFilter: 'blur(12px)' }}>

@@ -19,12 +19,13 @@ api.interceptors.request.use((config) => {
       if (state?.accessToken) {
         config.headers['Authorization'] = `Bearer ${state.accessToken}`;
       }
-      // Resolve org id — handle nested object, plain UUID string, or selectedOrgId
+      // Resolve org id — selectedOrgId > organizationId > nested organization object
       let orgId: string | null = state?.selectedOrgId || null;
+      if (!orgId) orgId = state?.user?.organizationId || null;
       if (!orgId) {
         const org = state?.user?.organization;
         if (org && typeof org === 'object') orgId = org.id || null;
-        else if (org && typeof org === 'string') orgId = org; // legacy plain UUID
+        else if (org && typeof org === 'string') orgId = org;
       }
       if (orgId) {
         config.headers['X-Organization-Id'] = orgId;

@@ -1,4 +1,5 @@
 from rest_framework import generics
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
@@ -73,3 +74,38 @@ class AlertStatsView(generics.GenericAPIView):
         }
         
         return success(stats)
+
+
+class AlertKnowledgeBaseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.problems.models import Problem
+
+        known_errors = (
+            Problem.objects.filter(
+                organization=request.organization,
+                state=Problem.State.KNOWN_ERROR,
+            )
+            .select_related("assignment_group")
+            .order_by("-updated_at", "-created_at")[:50]
+        )
+
+        data = [
+            {
+                "id": str(problem.id),
+                "problemId": str(problem.id),
+                "number": problem.number,
+                "title": problem.short_description,
+                "shortDescription": problem.short_description,
+                "priority": problem.priority,
+                "category": problem.category,
+                "workaround": problem.workaround,
+                "updatedAt": (problem.updated_at or problem.created_at).isoformat()
+                if (problem.updated_at or problem.created_at)
+                else None,
+            }
+            for problem in known_errors
+        ]
+
+        return success(data)

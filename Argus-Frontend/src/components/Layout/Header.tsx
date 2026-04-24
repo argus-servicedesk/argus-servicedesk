@@ -95,6 +95,23 @@ const notifStyles: Record<string, { bg: string; border: string; titleColor: stri
   },
 };
 
+function buildDisplayName(user: any): string {
+  const first = user?.first_name ?? user?.firstName ?? '';
+  const last = user?.last_name ?? user?.lastName ?? '';
+  const fullName = `${first} ${last}`.trim();
+  if (fullName) return fullName;
+  if (user?.username) return user.username;
+  if (user?.email) return String(user.email).split('@')[0];
+  return 'User';
+}
+
+function buildInitials(label: string): string {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('');
+  return initials || 'U';
+}
+
 interface NotifItemProps {
   notification: import('../../hooks/useNotifications').Notification;
   onRead: (id: string) => void;
@@ -140,10 +157,8 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user } = useAuthStore();
-  const firstName = (user as any)?.first_name ?? (user as any)?.firstName ?? '';
-  const lastName = (user as any)?.last_name ?? (user as any)?.lastName ?? '';
-  const initials = user ? `${(firstName?.[0] || '').toUpperCase()}${(lastName?.[0] || '').toUpperCase()}` : 'U';
-  const displayName = user ? `${firstName} ${lastName}`.trim() : 'User';
+  const displayName = buildDisplayName(user);
+  const initials = buildInitials(displayName);
   const displayRole = user?.role || 'User';
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
