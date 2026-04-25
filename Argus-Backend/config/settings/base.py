@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.illbandwidth",
     "apps.oms",
     "apps.workflow",
+    "apps.ai_agents",
 ]
 
 MIDDLEWARE = [
@@ -145,6 +146,12 @@ SPECTACULAR_SETTINGS = {
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+AI_PROVIDER = os.getenv("AI_PROVIDER", "anthropic")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://integrate.api.nvidia.com/v1")
+AI_MODEL = os.getenv("AI_MODEL", "claude-3-5-sonnet-20241022")
+AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "60"))
 PROMETHEUS_FILE_SD_PATH = os.getenv("PROMETHEUS_FILE_SD_PATH", "/etc/prometheus/file_sd")
 ALERTMANAGER_URL = os.getenv("ALERTMANAGER_URL")
 if not DEBUG and not ALERTMANAGER_URL:

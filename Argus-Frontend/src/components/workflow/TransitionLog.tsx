@@ -11,6 +11,13 @@ interface TransitionLogProps {
 export const TransitionLog: React.FC<TransitionLogProps> = ({ module, recordId }) => {
   const { data: logs, isLoading, error } = useTransitionLogs(module, recordId);
 
+  const renderActor = (actor: any) => {
+    if (!actor) return 'System';
+    if (typeof actor === 'string') return actor;
+    const name = [actor.firstName, actor.lastName].filter(Boolean).join(' ').trim();
+    return name || actor.email || 'System';
+  };
+
   return (
     <div className="rounded-xl p-4" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.12)' }}>
       <div className="flex items-center gap-2 mb-3">
@@ -50,7 +57,7 @@ export const TransitionLog: React.FC<TransitionLogProps> = ({ module, recordId }
               </div>
               <div className="flex items-center gap-4 mt-1.5">
                 <span className="flex items-center gap-1 text-xs" style={{ color: '#64748b' }}>
-                  <User size={10} /> {log.transitioned_by || 'System'}
+                  <User size={10} /> {renderActor(log.transitioned_by)}
                 </span>
                 <span className="flex items-center gap-1 text-xs" style={{ color: '#64748b' }}>
                   <Clock size={10} /> {formatDistanceToNow(new Date(log.transitioned_at), { addSuffix: true })}

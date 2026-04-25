@@ -43,6 +43,31 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         incident = serializer.save()
+        
+        # Trigger AI analysis asynchronously (non-blocking)
+        try:
+            from apps.ai_agents.tasks import run_incident_ai_analysis
+            # Try async first, fallback to sync if Celery unavailable
+            try:
+                run_incident_ai_analysis.delay(
+                    str(incident.id),
+                    str(incident.organization_id)
+                )
+            except Exception as celery_error:
+                # Fallback: Run synchronously (for testing only)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Celery unavailable, running AI analysis synchronously: {celery_error}")
+                run_incident_ai_analysis(
+                    str(incident.id),
+                    str(incident.organization_id)
+                )
+        except Exception as e:
+            # Log but don't fail incident creation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to trigger AI analysis: {e}")
+        
         return success(IncidentSerializer(incident).data, "incident created", 201)
 
 
@@ -349,3 +374,46 @@ class IncidentLiveContextView(APIView):
         }
         return success(payload)
 
+
+
+
+class IncidentAIReanalyzeView(APIView):
+    """Endpoint to manually re-run AI analysis"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        try:
+            incident = Incident.objects.filter(
+                organization=request.organization,
+                pk=pk
+            ).first()
+            
+            if not incident:
+                return failure("incident not found", status_code=404)
+            
+            # Trigger AI analysis
+            from apps.ai_agents.tasks import run_incident_ai_analysis
+            
+            # Try async first, fallback to sync if Celery unavailable
+            try:
+                run_incident_ai_analysis.delay(
+                    str(incident.id),
+                    str(incident.organization_id)
+                )
+            except Exception as celery_error:
+                # Fallback: Run synchronously (for testing only)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Celery unavailable, running AI analysis synchronously: {celery_error}")
+                run_incident_ai_analysis(
+                    str(incident.id),
+                    str(incident.organization_id)
+                )
+            
+            return success({"message": "AI analysis triggered"})
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to trigger AI reanalysis: {e}")
+            return failure(f"Failed to trigger analysis: {str(e)}", status_code=500)

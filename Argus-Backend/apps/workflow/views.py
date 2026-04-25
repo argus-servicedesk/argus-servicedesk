@@ -50,7 +50,7 @@ class ValidateTransitionView(APIView):
         app_label, model_name = model_path.split('.')
         model = apps.get_model(app_label, model_name)
         
-        return model.objects.filter(org=org).get(id=record_id)
+        return model.objects.filter(organization=org).get(id=record_id)
 
 
 class ExecuteTransitionView(APIView):
@@ -85,6 +85,7 @@ class ExecuteTransitionView(APIView):
 
 
 class TransitionLogListView(OrgQuerysetMixin, ListAPIView):
+    organization_lookup = "org"
     serializer_class = TransitionLogSerializer
     permission_classes = [IsAuthenticated]
     queryset = TransitionLog.objects.all()

@@ -482,22 +482,8 @@ export default function IncidentDetail() {
   // UI state — ALL hooks must be before any early returns (React rules of hooks)
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
-  // AI Agent resolution details — must be here (before early return) to satisfy rules of hooks
-  const { data: aiResData, isLoading: aiResLoading, refetch: refetchAI } = useQuery({
-    queryKey: ['ai-resolution', id],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(`/ai/incidents/${id}/resolution-details`);
-        return data.data;
-      } catch (error: any) {
-        if (error?.response?.status === 404) return null;
-        throw error;
-      }
-    },
-    enabled: activeTab === 'aiagent' && !!id,
-    staleTime: 300000,
-    retry: 1,
-  });
+  // AI Agent state from incident payload
+  const [aiActionLoading, setAiActionLoading] = useState(false);
 
   // Live Context (Prometheus metrics, firing alerts, past incidents) — lazy
   const { data: liveCtx, isLoading: liveCtxLoading, refetch: refetchLive } = useIncidentLiveContext(
@@ -587,6 +573,47 @@ export default function IncidentDetail() {
   const problemOptions = ((problemsListData?.data || []) as any[]).filter(
     (problem) => !linkedProblemIds.has(problem.id),
   );
+
+  const aiRaw = incident?.aiAnalysis || null;
+  const aiResLoading = aiActionLoading || incident?.aiStatus === 'PENDING';
+  const aiResData = aiRaw
+    ? {
+        aiAnalysis: aiRaw.summary || aiRaw.suggested_workaround || 'AI analysis generated.',
+        confidenceScore: aiRaw.confidence_score,
+        blastRadiusScore: aiRaw.blast_radius_score,
+        policyDecision: aiRaw.policy_decision,
+        hypotheses: aiRaw.hypotheses || [],
+        resolutionSteps: (aiRaw.suggested_next_actions || []).map((action: any, idx: number) => ({
+          step: idx + 1,
+          title: action.action || `Step ${idx + 1}`,
+          description: action.reason || action.action || '',
+          estimatedMinutes: action.estimated_minutes,
+          risk: action.risk,
+          autoExecutable: action.auto_executable,
+        })),
+        slaConfig: aiRaw.sla_config || null,
+        configChanges: aiRaw.config_changes || [],
+        verificationChecklist: aiRaw.verification_checklist || [],
+        relatedIncidents: aiRaw.related_incidents || [],
+        model: aiRaw.model,
+        promptVersion: aiRaw.prompt_version,
+        generatedAt: aiRaw.generated_at,
+      }
+    : null;
+
+  async function triggerAIReanalyze() {
+    if (!id) return;
+    setAiActionLoading(true);
+    try {
+      await api.post(`/incidents/${id}/ai/reanalyze/`);
+      toast.success('AI analysis triggered');
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to trigger AI analysis');
+    } finally {
+      setAiActionLoading(false);
+    }
+  }
 
   // Initialize edit/change fields when incident loads
   useEffect(() => {
@@ -2594,7 +2621,7 @@ export default function IncidentDetail() {
                         </div>
                       </div>
                       <button
-                        onClick={() => refetchAI()}
+                        onClick={triggerAIReanalyze}
                         disabled={aiResLoading}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors border border-amber-200 disabled:opacity-50"
                       >
@@ -2844,7 +2871,7 @@ export default function IncidentDetail() {
                           Click "Re-analyze" to generate AI-powered resolution steps, configuration recommendations, and a verification checklist for this incident.
                         </p>
                         <button
-                          onClick={() => refetchAI()}
+                          onClick={triggerAIReanalyze}
                           className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-stone-950 rounded-xl text-sm font-semibold shadow-lg hover:shadow-amber-500/25 transition-all"
                         >
                           <Brain size={15} />

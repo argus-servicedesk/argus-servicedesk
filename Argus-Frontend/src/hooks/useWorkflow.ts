@@ -63,6 +63,11 @@ export const useValidateTransition = (
 
 export const useExecuteTransition = () => {
   const queryClient = useQueryClient();
+  const moduleQueryKeys: Record<string, string> = {
+    INCIDENT: 'incidents',
+    PROBLEM: 'problems',
+    CHANGE: 'changes',
+  };
   
   return useMutation({
     mutationFn: async (request: ExecuteTransitionRequest): Promise<ExecuteTransitionResponse> => {
@@ -71,8 +76,9 @@ export const useExecuteTransition = () => {
     },
     onSuccess: (data, variables) => {
       // Invalidate queries for the specific module
+      const queryRoot = moduleQueryKeys[variables.module] || variables.module.toLowerCase();
       queryClient.invalidateQueries({
-        queryKey: [variables.module.toLowerCase()],
+        queryKey: [queryRoot],
       });
       
       // Invalidate transition logs for this record

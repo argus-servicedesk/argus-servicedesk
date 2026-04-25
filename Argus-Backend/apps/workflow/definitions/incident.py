@@ -20,9 +20,11 @@ TRANSITIONS = {
         "actions": ["notify_assignee"],
     },
     ("IN_PROGRESS", "RESOLVED"): {
+        "required_fields": ["resolution_notes"],
         "actions": ["stop_sla_clock", "notify_reporter", "log_transition"],
     },
     ("ON_HOLD", "RESOLVED"): {
+        "required_fields": ["resolution_notes"],
         "actions": ["stop_sla_clock", "notify_reporter", "log_transition"],
     },
     ("ON_HOLD", "IN_PROGRESS"): {

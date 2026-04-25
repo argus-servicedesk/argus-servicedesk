@@ -44,6 +44,24 @@ class Incident(models.Model):
         VOICE = "VOICE", "Voice"
         SLACK = "SLACK", "Slack"
 
+    class Environment(models.TextChoices):
+        PRODUCTION = "PRODUCTION", "Production"
+        STAGING = "STAGING", "Staging"
+        DEVELOPMENT = "DEVELOPMENT", "Development"
+
+    class DetectionSource(models.TextChoices):
+        MANUAL = "MANUAL", "Manual"
+        ALERT = "ALERT", "Alert"
+        SYNTHETIC = "SYNTHETIC", "Synthetic"
+        VENDOR = "VENDOR", "Vendor"
+        INTEGRATION = "INTEGRATION", "Integration"
+
+    class OwnershipStatus(models.TextChoices):
+        COMPLIANT = "COMPLIANT", "Compliant"
+        UNASSIGNED = "UNASSIGNED", "Unassigned"
+        OVERDUE = "OVERDUE", "Overdue"
+        OVERRIDDEN = "OVERRIDDEN", "Overridden"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=50, unique=True, db_index=True)
     short_description = models.CharField(max_length=200)
@@ -55,25 +73,122 @@ class Incident(models.Model):
     category = models.CharField(max_length=100, blank=True, null=True)
     subcategory = models.CharField(max_length=100, blank=True, null=True)
     
-    assigned_to = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
-    assignment_group = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
-    created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='created_incidents')
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='incidents')
+    assigned_to = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_incidents',
+    )
+    assignment_group = models.ForeignKey(
+        'teams.Team',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_incidents',
+    )
+    created_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.PROTECT,
+        related_name='created_incidents',
+    )
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incidents',
+    )
+    service = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='service_incidents',
+    )
     
     sla_breached = models.BooleanField(default=False, db_index=True)
+    sla_due_at = models.DateTimeField(blank=True, null=True)
+    sla_resolved_at = models.DateTimeField(blank=True, null=True)
+    sla_paused_at = models.DateTimeField(blank=True, null=True)
     response_time = models.DurationField(blank=True, null=True)
     resolution_time = models.DurationField(blank=True, null=True)
     sla_target_response = models.DurationField(blank=True, null=True)
     sla_target_resolution = models.DurationField(blank=True, null=True)
     
-    source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
-    source_alert_id = models.CharField(max_length=255, blank=True, null=True)
-    source_alert_name = models.CharField(max_length=255, blank=True, null=True)
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.MANUAL,
+    )
+    source_alert_id = models.CharField(
+        max_length=255, blank=True, null=True,
+    )
+    source_alert_name = models.CharField(
+        max_length=255, blank=True, null=True,
+    )
+
+    # New enrichment fields
+    environment = models.CharField(
+        max_length=20,
+        choices=Environment.choices,
+        blank=True,
+        null=True,
+    )
+    affected_user_count = models.IntegerField(blank=True, null=True)
+    customer_visible = models.BooleanField(default=False)
+    workaround_available = models.BooleanField(default=False)
+    related_change_suspected = models.BooleanField(default=False)
+    detection_source = models.CharField(
+        max_length=20,
+        choices=DetectionSource.choices,
+        default=DetectionSource.MANUAL,
+    )
+
+    # Ownership and governance fields
+    ownership_status = models.CharField(
+        max_length=20,
+        choices=OwnershipStatus.choices,
+        default=OwnershipStatus.UNASSIGNED,
+        db_index=True,
+    )
+    next_best_action = models.CharField(
+        max_length=255, blank=True, null=True,
+    )
+    major_incident = models.BooleanField(default=False, db_index=True)
+    priority_override_reason = models.TextField(blank=True, null=True)
+    escalation_reason = models.CharField(
+        max_length=255, blank=True, null=True,
+    )
+
+    # Predictive scoring fields
+    recurrence_score = models.FloatField(default=0.0)
+    breach_risk_score = models.FloatField(default=0.0)
     
     resolved_at = models.DateTimeField(blank=True, null=True)
     closed_at = models.DateTimeField(blank=True, null=True)
     resolution_code = models.CharField(max_length=100, blank=True, null=True)
     resolution_notes = models.TextField(blank=True, null=True)
+    
+    # AI Agent fields
+    class AIStatus(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+    
+    ai_analysis = models.JSONField(blank=True, null=True)
+    ai_status = models.CharField(
+        max_length=20,
+        choices=AIStatus.choices,
+        blank=True,
+        null=True,
+    )
+    ai_last_run_at = models.DateTimeField(blank=True, null=True)
+    ai_model_version = models.CharField(
+        max_length=50, blank=True, null=True,
+    )
+    ai_error = models.TextField(blank=True, null=True)
+    ai_analysis_version = models.IntegerField(default=0)
     
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='incidents')
     

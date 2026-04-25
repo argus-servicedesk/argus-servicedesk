@@ -22,13 +22,14 @@ class WorkflowEngine:
         return definitions.get((from_state, to_state))
     
     @staticmethod
-    def validate(module, record, user, from_state, to_state):
-        """Returns: { "allowed": bool, "errors": list[str], "missing_fields": list[str] }"""
+    def validate(module, record, user, from_state, to_state, field_updates=None, enforce_required=False):
+        """Returns validation status for a workflow transition."""
         result = {
             "allowed": False,
             "errors": [],
             "missing_fields": []
         }
+        field_updates = field_updates or {}
         
         # 1. Get definition
         definition = WorkflowEngine.get_definition(module, from_state, to_state)
@@ -56,9 +57,13 @@ class WorkflowEngine:
         # 4. Check required_fields
         required_fields = definition.get("required_fields", [])
         for field in required_fields:
-            value = getattr(record, field, None)
+            value = field_updates.get(field, getattr(record, field, None))
             if value is None or (isinstance(value, str) and not value.strip()):
                 result["missing_fields"].append(field)
+
+        if enforce_required and result["missing_fields"]:
+            result["errors"].append("Required fields are missing")
+            return result
         
         # 5. Return result
         # allowed=True even with missing_fields — frontend shows modal to collect them
@@ -68,10 +73,19 @@ class WorkflowEngine:
 
         return result
     @staticmethod
-    def execute(module, record, user, org, from_state, to_state, notes="", field_updates={}):
+    def execute(module, record, user, org, from_state, to_state, notes="", field_updates=None):
         """Execute workflow transition"""
+        field_updates = field_updates or {}
         # 1. Validate
-        validation = WorkflowEngine.validate(module, record, user, from_state, to_state)
+        validation = WorkflowEngine.validate(
+            module,
+            record,
+            user,
+            from_state,
+            to_state,
+            field_updates=field_updates,
+            enforce_required=True,
+        )
         if not validation["allowed"]:
             raise ValidationError(validation["errors"])
         

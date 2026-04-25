@@ -25,6 +25,7 @@ import toast from 'react-hot-toast';
 import { useChange, useUpdateChange } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
 import { useExecuteTransition } from '../../hooks/useWorkflow';
+import { useAuthStore } from '../../stores/authStore';
 import { TransitionLog } from '../workflow/TransitionLog';
 import api from '../../lib/api';
 
@@ -36,10 +37,12 @@ type Risk = 'HIGH' | 'MEDIUM' | 'LOW';
 
 interface Approval {
   id: string;
-  approver: string | { firstName?: string; lastName?: string };
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approver: string | { id?: string; firstName?: string; lastName?: string };
+  state?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   comments: string;
-  decidedAt: string | null;
+  approvedAt?: string | null;
+  decidedAt?: string | null;
 }
 
 interface TimelineEvent {
@@ -329,38 +332,56 @@ export default function ChangeDetail() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'details' | 'plans' | 'approvals' | 'timeline'>('details');
+  const { user } = useAuthStore();
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
+  const [rejectComments, setRejectComments] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
   const actionHandled = useRef(false);
 
-  const { data: changeData, isLoading, isError } = useChange(id || '');
+  const { data: changeData, isLoading, isError, refetch } = useChange(id || '');
   const chg = changeData?.data;
   const approvals: Approval[] = chg?.approvals || [];
   const timeline: TimelineEvent[] = chg?.activities || [];
 
+  // Check if current user has pending approval
+  const currentUserApproval = approvals.find(
+    (approval) => {
+      const approverId = typeof approval.approver === 'object' && approval.approver && 'id' in approval.approver
+        ? approval.approver.id 
+        : approval.approver;
+      const approvalState = approval.state || approval.status;
+      return approverId === user?.id && approvalState === 'PENDING';
+    }
+  );
+
   const handleApprove = async () => {
     setApproveLoading(true);
     try {
-      await api.post(`/changes/${id}/approve`, { comments: 'Approved' });
+      await api.post(`/changes/${id}/approve/`, { comments: 'Approved' });
       toast.success('Change approved');
-      window.location.reload();
+      await refetch();
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to approve');
+      toast.error(err?.response?.data?.message || 'Failed to approve');
     } finally { setApproveLoading(false); }
   };
 
-  const handleReject = async (reason?: string) => {
-    const r = reason || prompt('Rejection reason:');
-    if (!r) return;
+  const handleReject = async () => {
+    if (!rejectComments.trim()) {
+      toast.error('Comments are required for rejection');
+      return;
+    }
     setApproveLoading(true);
     try {
-      await api.post(`/changes/${id}/reject`, { comments: r });
+      await api.post(`/changes/${id}/reject/`, { comments: rejectComments });
       toast.success('Change rejected');
-      window.location.reload();
+      setShowRejectModal(false);
+      setRejectComments('');
+      await refetch();
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to reject');
+      toast.error(err?.response?.data?.message || 'Failed to reject');
     } finally { setApproveLoading(false); }
   };
 
@@ -376,7 +397,7 @@ export default function ChangeDetail() {
     if (action === 'approve') {
       handleApprove();
     } else if (action === 'reject') {
-      handleReject();
+      setShowRejectModal(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chg]);
@@ -420,11 +441,11 @@ export default function ChangeDetail() {
   );
 
   const tabs = [
-    { key: 'details', label: 'Details' },
-    { key: 'plans', label: 'Plans' },
-    { key: 'approvals', label: 'Approvals', count: approvals.length },
-    { key: 'timeline', label: 'Timeline', count: timeline.length },
-  ] as const;
+    { key: 'details' as const, label: 'Details' },
+    { key: 'plans' as const, label: 'Plans' },
+    ...(chg?.state === 'APPROVAL' || approvals.length > 0 ? [{ key: 'approvals' as const, label: 'Approvals', count: approvals.length }] : []),
+    { key: 'timeline' as const, label: 'Timeline', count: timeline.length },
+  ];
 
   return (
     <div className="animate-fade-in space-y-0" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 40%, #f8fafc 100%)', minHeight: '100vh', margin: '-1.5rem', padding: '1.5rem' }}>
@@ -472,9 +493,9 @@ export default function ChangeDetail() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}>
                 <UserPlus size={13} /> Assign
               </button>
-              {chg.state === 'APPROVAL' && (
+              {chg.state === 'APPROVAL' && currentUserApproval && (
                 <>
-                  <button onClick={() => handleReject()} disabled={approveLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all" style={{ background: 'rgba(220,38,38,0.25)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.35)' }}>
+                  <button onClick={() => setShowRejectModal(true)} disabled={approveLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all" style={{ background: 'rgba(220,38,38,0.25)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.35)' }}>
                     <XCircle size={13} /> Reject
                   </button>
                   <button onClick={handleApprove} disabled={approveLoading}
@@ -499,7 +520,7 @@ export default function ChangeDetail() {
         {tabs.map((tab) => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="px-4 py-2.5 text-sm font-medium transition-colors relative" style={{ color: activeTab === tab.key ? '#334155' : '#94a3b8' }}>
             {tab.label}
-            {'count' in tab && tab.count > 0 && <span className="ml-1.5 text-xs" style={{ color: '#94a3b8' }}>({tab.count})</span>}
+            {'count' in tab && tab.count !== undefined && tab.count > 0 && <span className="ml-1.5 text-xs" style={{ color: '#94a3b8' }}>({tab.count})</span>}
             {activeTab === tab.key && <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: '#6366f1' }} />}
           </button>
         ))}
@@ -569,27 +590,73 @@ export default function ChangeDetail() {
         <div className="space-y-4 mt-5">
           {approvals.length === 0 ? (
             <p className="text-sm text-center py-8" style={{ color: '#94a3b8' }}>No approvals found</p>
-          ) : approvals.map((approval) => {
-            const approverName = formatPersonName(approval.approver);
-            const borderColor = approval.status === 'APPROVED' ? 'rgba(5,150,105,0.3)' : approval.status === 'REJECTED' ? 'rgba(220,38,38,0.3)' : 'rgba(217,119,6,0.3)';
-            return (
-              <div key={approval.id} className="rounded-xl p-5" style={{ background: '#ffffff', border: `1px solid ${borderColor}`, backdropFilter: 'blur(12px)' }}>
-                <div className="flex items-center justify-between mb-2">
+          ) : (
+            <>
+              {/* Current user approval actions */}
+              {chg.state === 'APPROVAL' && currentUserApproval && (
+                <div className="rounded-xl p-5 mb-6" style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                  <h3 className="text-sm font-medium mb-3" style={{ color: '#6366f1' }}>Your Approval Required</h3>
+                  <p className="text-sm mb-4" style={{ color: '#64748b' }}>
+                    This change requires your approval before it can proceed to the next stage.
+                  </p>
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: approval.status === 'APPROVED' ? 'rgba(5,150,105,0.15)' : approval.status === 'REJECTED' ? 'rgba(220,38,38,0.15)' : 'rgba(217,119,6,0.15)' }}>
-                      {approval.status === 'APPROVED' ? <CheckCircle size={16} style={{ color: '#059669' }} /> : approval.status === 'REJECTED' ? <XCircle size={16} style={{ color: '#DC2626' }} /> : <Clock size={16} style={{ color: '#D97706' }} />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: '#0f172a' }}>{approverName}</p>
-                      <p className="text-xs" style={{ color: '#94a3b8' }}>{approval.decidedAt ? formatDate(approval.decidedAt) : 'Pending'}</p>
-                    </div>
+                    <button 
+                      onClick={handleApprove} 
+                      disabled={approveLoading}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all"
+                      style={{ 
+                        background: '#059669', 
+                        color: '#ffffff',
+                        opacity: approveLoading ? 0.6 : 1
+                      }}
+                    >
+                      {approveLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                      Approve
+                    </button>
+                    <button 
+                      onClick={() => setShowRejectModal(true)} 
+                      disabled={approveLoading}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all"
+                      style={{ 
+                        background: '#DC2626', 
+                        color: '#ffffff',
+                        opacity: approveLoading ? 0.6 : 1
+                      }}
+                    >
+                      <XCircle size={16} />
+                      Reject
+                    </button>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-md" style={approval.status === 'APPROVED' ? { background: 'rgba(5,150,105,0.15)', color: '#059669', border: '1px solid rgba(5,150,105,0.3)' } : approval.status === 'REJECTED' ? { background: 'rgba(220,38,38,0.15)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.3)' } : { background: 'rgba(217,119,6,0.15)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>{approval.status}</span>
                 </div>
-                {approval.comments && <p className="text-sm mt-2 pl-11" style={{ color: '#64748b' }}>{approval.comments}</p>}
-              </div>
-            );
-          })}
+              )}
+              
+              {/* Approval list */}
+              {approvals.map((approval) => {
+                const approvalState = approval.state || approval.status || 'PENDING';
+                const approverName = formatPersonName(approval.approver);
+                const borderColor = approvalState === 'APPROVED' ? 'rgba(5,150,105,0.3)' : approvalState === 'REJECTED' ? 'rgba(220,38,38,0.3)' : 'rgba(217,119,6,0.3)';
+                return (
+                  <div key={approval.id} className="rounded-xl p-5" style={{ background: '#ffffff', border: `1px solid ${borderColor}`, backdropFilter: 'blur(12px)' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: approvalState === 'APPROVED' ? 'rgba(5,150,105,0.15)' : approvalState === 'REJECTED' ? 'rgba(220,38,38,0.15)' : 'rgba(217,119,6,0.15)' }}>
+                          {approvalState === 'APPROVED' ? <CheckCircle size={16} style={{ color: '#059669' }} /> : approvalState === 'REJECTED' ? <XCircle size={16} style={{ color: '#DC2626' }} /> : <Clock size={16} style={{ color: '#D97706' }} />}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium" style={{ color: '#0f172a' }}>{approverName}</p>
+                          <p className="text-xs" style={{ color: '#94a3b8' }}>
+                            {approval.approvedAt || approval.decidedAt ? formatDate(approval.approvedAt || approval.decidedAt) : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-md" style={approvalState === 'APPROVED' ? { background: 'rgba(5,150,105,0.15)', color: '#059669', border: '1px solid rgba(5,150,105,0.3)' } : approvalState === 'REJECTED' ? { background: 'rgba(220,38,38,0.15)', color: '#DC2626', border: '1px solid rgba(220,38,38,0.3)' } : { background: 'rgba(217,119,6,0.15)', color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' }}>{approvalState}</span>
+                    </div>
+                    {approval.comments && <p className="text-sm mt-2 pl-11" style={{ color: '#64748b' }}>{approval.comments}</p>}
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
@@ -633,6 +700,51 @@ export default function ChangeDetail() {
       {/* Modals */}
       {showEditModal && <EditChangeModal change={chg} onClose={() => setShowEditModal(false)} />}
       {showAssignModal && <AssignChangeModal change={chg} onClose={() => setShowAssignModal(false)} />}
+      
+      {/* Reject Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setShowRejectModal(false)}>
+          <div className="w-full max-w-md p-6 space-y-4 shadow-2xl animate-fade-in rounded-2xl" style={{ background: '#ffffff', border: '1px solid rgba(99,102,241,0.2)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold" style={{ color: '#0f172a' }}>Reject Change</h3>
+              <button onClick={() => setShowRejectModal(false)} className="p-1 rounded-lg" style={{ color: '#94a3b8' }}><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>Rejection Comments *</label>
+                <textarea 
+                  rows={4} 
+                  value={rejectComments} 
+                  onChange={(e) => setRejectComments(e.target.value)}
+                  placeholder="Please provide a reason for rejecting this change..."
+                  className="resize-y w-full p-3 text-sm rounded-lg border focus:outline-none"
+                  style={{ 
+                    background: 'rgba(255,255,255,0.6)', 
+                    border: '1px solid rgba(99,102,241,0.15)', 
+                    color: '#0f172a' 
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowRejectModal(false)} className="px-3 py-1.5 rounded-lg text-sm" style={{ color: '#64748b', border: '1px solid rgba(99,102,241,0.15)' }}>Cancel</button>
+              <button 
+                onClick={handleReject} 
+                disabled={approveLoading || !rejectComments.trim()}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-sm font-bold transition-all active:scale-95"
+                style={{ 
+                  background: '#DC2626', 
+                  color: '#FFFFFF', 
+                  opacity: (approveLoading || !rejectComments.trim()) ? 0.6 : 1 
+                }}
+              >
+                {approveLoading ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+                Reject Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

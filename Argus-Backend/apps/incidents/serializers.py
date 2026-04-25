@@ -91,7 +91,9 @@ class IncidentSerializer(serializers.ModelSerializer):
             'sla_target_response', 'sla_target_resolution', 'source',
             'source_alert_id', 'source_alert_name', 'resolved_at', 'closed_at',
             'resolution_code', 'resolution_notes', 'organization',
-            'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes', 'created_at', 'updated_at'
+            'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes',
+            'ai_analysis', 'ai_status', 'ai_last_run_at', 'ai_model_version', 'ai_error',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at']
 

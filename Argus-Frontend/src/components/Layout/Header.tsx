@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Bell, LogOut, User, ChevronRight, CheckCheck, Menu } from 'lucide-react';
+import { Bell, LogOut, User, ChevronRight, CheckCheck, Menu, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
@@ -118,6 +118,14 @@ interface NotifItemProps {
   onNavigate: () => void;
 }
 
+interface SearchResult {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  url: string;
+}
+
 function NotifItem({ notification: n, onRead, onNavigate }: NotifItemProps) {
   const style = notifStyles[n.type] ?? notifStyles.DEFAULT;
 
@@ -162,6 +170,54 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const displayRole = user?.role || 'User';
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Search functionality
+  const { data: searchResultsResponse, isFetching: isSearchFetching } = useQuery({
+    queryKey: ['global-search', searchQuery],
+    queryFn: async () => {
+      if (!searchQuery || searchQuery.length < 2) return [];
+      const { data } = await api.get(`/search/?q=${encodeURIComponent(searchQuery)}`);
+      return data?.data?.results ?? [];
+    },
+    enabled: searchQuery.length >= 2,
+    staleTime: 30000,
+  });
+  const searchResults: SearchResult[] = Array.isArray(searchResultsResponse) ? searchResultsResponse : [];
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    
+    // Clear existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set new timeout for 300ms debounce
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchOpen(value.length >= 2);
+    }, 300);
+  };
+
+  const handleSearchResultClick = (result: SearchResult) => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    navigate(result.url || '/');
+  };
+
+  const getTypeBadgeStyle = (type: string) => {
+    const styles: Record<string, { bg: string; color: string }> = {
+      'incident': { bg: 'rgba(239,68,68,0.1)', color: '#DC2626' },
+      'problem': { bg: 'rgba(245,158,11,0.1)', color: '#D97706' },
+      'change': { bg: 'rgba(99,102,241,0.1)', color: '#6366f1' },
+      'asset': { bg: 'rgba(34,197,94,0.1)', color: '#059669' },
+    };
+    return styles[type.toLowerCase()] || { bg: 'rgba(99,102,241,0.1)', color: '#6366f1' };
+  };
 
   // Notifications
   const { data: unreadData }   = useUnreadCount();
@@ -193,10 +249,16 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
       if (e.key === 'Escape') {
         setNotifOpen(false);
         setProfileOpen(false);
+        setSearchOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (
@@ -245,6 +307,85 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
 
       {/* Right: Search + Notifications + Profile */}
       <div className="flex items-center gap-1.5">
+        {/* Search */}
+        <div className="relative">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: '#94a3b8' }} />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search incidents, changes..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="w-64 pl-10 pr-4 py-2 text-sm rounded-lg transition-all focus:outline-none"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid rgba(99,102,241,0.12)',
+                color: '#0f172a'
+              }}
+              onFocus={() => {
+                if (searchQuery.length >= 2) setSearchOpen(true);
+              }}
+            />
+          </div>
+
+          {searchOpen && searchQuery.length >= 2 && (
+            <div
+              className="absolute top-12 left-0 w-full rounded-xl overflow-hidden animate-fade-in z-50"
+              style={{
+                background: '#ffffff',
+                border: '1px solid rgba(99,102,241,0.12)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)',
+              }}
+            >
+              <div className="max-h-80 overflow-y-auto">
+                {isSearchFetching && (
+                  <div className="px-4 py-3 text-sm" style={{ color: '#64748b' }}>
+                    Searching...
+                  </div>
+                )}
+                {!isSearchFetching && searchResults.length === 0 && (
+                  <div className="px-4 py-3 text-sm" style={{ color: '#64748b' }}>
+                    No results found
+                  </div>
+                )}
+                {!isSearchFetching && searchResults.slice(0, 10).map((result) => {
+                  const badgeStyle = getTypeBadgeStyle(result.type);
+                  return (
+                    <div
+                      key={`${result.type}-${result.id}`}
+                      className="px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                      onClick={() => handleSearchResultClick(result)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span
+                          className="px-2 py-1 text-xs font-medium rounded-full"
+                          style={{
+                            background: badgeStyle.bg,
+                            color: badgeStyle.color
+                          }}
+                        >
+                          {result.type.toUpperCase()}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm" style={{ color: '#0f172a' }}>
+                              {result.title}
+                            </span>
+                          </div>
+                          <p className="text-sm mt-1 truncate" style={{ color: '#64748b' }}>
+                            {result.subtitle}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        
         {/* Notifications */}
         <div className="relative">
           <button

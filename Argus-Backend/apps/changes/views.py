@@ -1,11 +1,18 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+from django.db import transaction
+from django.utils import timezone
+import logging
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.responses import success
+from apps.common.responses import success, failure
+from apps.workflow.engine import WorkflowEngine
 from .models import Change, Approval
 from .serializers import ChangeSerializer, ChangeCreateSerializer, ChangeUpdateSerializer, ApprovalSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class ChangeListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
@@ -75,3 +82,103 @@ class ApprovalCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         change_id = self.kwargs.get('change_id')
         serializer.save(approver=self.request.user, change_id=change_id)
+
+
+class ChangeApproveView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        transition_warning = None
+        with transaction.atomic():
+            try:
+                change = Change.objects.select_for_update().filter(organization=request.organization).get(id=pk)
+            except Change.DoesNotExist:
+                return failure("Change not found", status_code=404)
+
+            if change.state != Change.State.APPROVAL:
+                return failure("Change is not in APPROVAL state", status_code=400)
+            
+            # Check if user has pending approval for this change
+            try:
+                approval = Approval.objects.select_for_update().get(
+                    change=change,
+                    approver=request.user,
+                    state=Approval.State.PENDING
+                )
+            except Approval.DoesNotExist:
+                return failure("No pending approval found for this user", status_code=400)
+            
+            # Update approval
+            approval.state = Approval.State.APPROVED
+            approval.comments = request.data.get('comments', '')
+            approval.approved_at = timezone.now()
+            approval.save(update_fields=['state', 'comments', 'approved_at'])
+            
+            # Check if all approvals are approved
+            pending_approvals = Approval.objects.filter(
+                change=change,
+                state=Approval.State.PENDING
+            ).count()
+            
+            if pending_approvals == 0 and change.state == Change.State.APPROVAL:
+                # All approvals are done, move to SCHEDULED
+                try:
+                    WorkflowEngine.execute(
+                        'CHANGE',
+                        change,
+                        request.user,
+                        request.organization,
+                        change.state,
+                        Change.State.SCHEDULED,
+                        notes='All approvals completed'
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to auto-transition change after final approval",
+                        extra={"change_id": str(change.id), "org_id": str(request.organization.id), "user_id": str(request.user.id)},
+                    )
+                    transition_warning = (
+                        "Approval recorded, but automatic state transition to SCHEDULED failed. "
+                        "Please transition manually."
+                    )
+        
+        payload = {"message": "Change approved successfully"}
+        if transition_warning:
+            payload["warning"] = transition_warning
+        return success(payload)
+
+
+class ChangeRejectView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        comments = request.data.get('comments', '')
+        if not comments:
+            return failure("Comments are required for rejection", status_code=400)
+
+        with transaction.atomic():
+            try:
+                change = Change.objects.select_for_update().filter(organization=request.organization).get(id=pk)
+            except Change.DoesNotExist:
+                return failure("Change not found", status_code=404)
+
+            if change.state != Change.State.APPROVAL:
+                return failure("Change is not in APPROVAL state", status_code=400)
+            
+            # Check if user has pending approval for this change
+            try:
+                approval = Approval.objects.select_for_update().get(
+                    change=change,
+                    approver=request.user,
+                    state=Approval.State.PENDING
+                )
+            except Approval.DoesNotExist:
+                return failure("No pending approval found for this user", status_code=400)
+            
+            # Update approval
+            approval.state = Approval.State.REJECTED
+            approval.comments = comments
+            approval.approved_at = timezone.now()
+            approval.save(update_fields=['state', 'comments', 'approved_at'])
+        
+        return success({"message": "Change rejected successfully"})
