@@ -26,11 +26,20 @@ class SignupView(APIView):
         serializer = SignupSerializer(data=request.data)
         if not serializer.is_valid():
             print(f"Signup validation errors: {serializer.errors}")
-            return failure(serializer.errors, status_code=400)
+            return failure(
+                "Validation failed.",
+                errors=serializer.errors,
+                status_code=400,
+            )
         user = serializer.save()
         if not _ensure_user_organization(user):
             return failure("user must belong to an organization", status_code=400)
-        return success(MeSerializer(user).data, "user created", 201)
+        tokens = _token_payload(user)
+        return success(
+            {"user": MeSerializer(user).data, **tokens},
+            "user created",
+            201,
+        )
 
 
 class AuthIndexView(APIView):

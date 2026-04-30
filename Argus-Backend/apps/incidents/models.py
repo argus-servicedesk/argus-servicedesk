@@ -57,9 +57,15 @@ class Incident(models.Model):
     
     assigned_to = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
     assignment_group = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incidents',
+    )
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='created_incidents')
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='incidents')
-    
+        
     sla_breached = models.BooleanField(default=False, db_index=True)
     response_time = models.DurationField(blank=True, null=True)
     resolution_time = models.DurationField(blank=True, null=True)
@@ -127,8 +133,14 @@ class Activity(models.Model):
     incident = models.ForeignKey('incidents.Incident', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
     change = models.ForeignKey('changes.Change', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
     problem = models.ForeignKey('problems.Problem', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
-    
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='activities',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

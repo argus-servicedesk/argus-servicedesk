@@ -4,7 +4,7 @@ import { disconnectSocket } from '../lib/socket';
 import { queryClient } from '../lib/queryClient';
 import api from '../lib/api';
 
-interface Organization {
+export interface Organization {
   id: string;
   name: string;
   slug: string;
@@ -17,7 +17,7 @@ interface Organization {
   updatedAt?: string;
 }
 
-interface User {
+export interface User {
   id: string;
   username: string;
   email: string;
@@ -50,14 +50,28 @@ interface AuthState {
   hasHydrated: boolean;
   login: (email: string, password: string, mfaToken?: string) => Promise<{ requiresMfa?: boolean }>;
   logout: () => Promise<void>;
-  setUser: (user: User) => void;
+  setUser: (user: User, tokens?: { access?: string | null; refresh?: string | null }) => void;
   setSelectedOrg: (orgId: string | null) => void;
   setHasHydrated: (value: boolean) => void;
   checkAuth: () => Promise<void>;
 }
 
 function normalizeOrganization(org: any): Organization | null {
-  if (!org) return null;
+  if (org == null || org === '') return null;
+  if (typeof org === 'string') {
+    return {
+      id: org,
+      name: '',
+      slug: '',
+      is_active: true,
+      isActive: true,
+      environment: 'Production',
+      created_at: '',
+      updated_at: '',
+      createdAt: '',
+      updatedAt: '',
+    };
+  }
   return {
     ...org,
     isActive: org.isActive ?? org.is_active,
@@ -68,6 +82,21 @@ function normalizeOrganization(org: any): Organization | null {
 }
 
 function normalizeUser(rawUser: any): User {
+  if (rawUser == null || typeof rawUser !== 'object') {
+    return {
+      id: '',
+      username: '',
+      email: '',
+      first_name: '',
+      last_name: '',
+      role: '',
+      organization: null,
+      organizationId: null,
+      mfa_enabled: false,
+      created_at: '',
+      updated_at: '',
+    };
+  }
   const organization = normalizeOrganization(rawUser.organization);
   return {
     ...rawUser,
@@ -139,7 +168,23 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      setUser: (user) => set({ user: normalizeUser(user), isAuthenticated: true, hasHydrated: true }),
+      setUser: (userRaw, tokens) =>
+        set((state) => {
+          const user = normalizeUser(userRaw);
+          const orgObj = user.organization ?? null;
+          const orgId = user.organizationId ?? orgObj?.id ?? null;
+          return {
+            user,
+            organization: orgObj,
+            selectedOrgId: orgId,
+            accessToken:
+              tokens?.access !== undefined ? tokens.access : state.accessToken,
+            refreshToken:
+              tokens?.refresh !== undefined ? tokens.refresh : state.refreshToken,
+            isAuthenticated: true,
+            hasHydrated: true,
+          };
+        }),
       setSelectedOrg: (orgId) => set({ selectedOrgId: orgId }),
       setHasHydrated: (value) => set({ hasHydrated: value }),
 

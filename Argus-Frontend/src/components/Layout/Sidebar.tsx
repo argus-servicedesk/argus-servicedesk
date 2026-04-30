@@ -1,18 +1,46 @@
-import { NavLink } from 'react-router-dom';
+import { useState, type CSSProperties, type ComponentType } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { useState } from 'react';
 import {
-  LayoutDashboard, AlertTriangle, GitBranch, Bug, Bell,
-  Server, Network, Brain, Zap, BarChart3, Plug, Users, Cpu,
-  Settings, ChevronLeft, ChevronRight, Shield, Eye,
-  MessageSquare, Mic, Activity, LogOut, Phone, Layers,
-  Monitor, CalendarDays, CalendarClock, GitMerge, Terminal, Radio,
-  BookOpen, Clock, FileSearch, UserCircle, X, ScrollText, ShieldCheck,
-  Printer, Smartphone, HardDrive, Package, MonitorSmartphone,
-  ClipboardCheck, MapPin, ShoppingCart, ClipboardList, Globe,
-  ChevronDown, ChevronUp, Wrench, Database, LifeBuoy, Sparkles,
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Bell,
+  BookOpen,
+  Bug,
+  CalendarClock,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  Eye,
+  GitBranch,
+  GitMerge,
+  Globe,
+  Layers,
+  LayoutDashboard,
+  LifeBuoy,
+  LogOut,
+  MapPin,
+  Monitor,
+  Package,
+  Phone,
+  Plug,
+  Radio,
+  ScrollText,
+  Settings,
+  Shield,
+  Sparkles,
+  Terminal,
+  UserCircle,
+  Users,
+  X,
+  Zap,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import OrgSwitcher from './OrgSwitcher';
 
@@ -25,7 +53,7 @@ interface SidebarProps {
 
 interface NavItem {
   to: string;
-  icon: React.ComponentType<any>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   end?: boolean;
   roles?: string[];
@@ -35,20 +63,20 @@ interface NavItem {
 
 interface NavGroup {
   label: string;
-  icon: React.ComponentType<any>;
+  icon: ComponentType<{ className?: string }>;
   items: NavItem[];
 }
 
 const navGroups: NavGroup[] = [
   {
-    label: 'OVERVIEW',
+    label: 'Overview',
     icon: LayoutDashboard,
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
     ],
   },
   {
-    label: 'SERVICE MANAGEMENT',
+    label: 'Service Management',
     icon: LifeBuoy,
     items: [
       { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
@@ -58,19 +86,7 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'CMDB & ASSETS',
-    icon: Database,
-    items: [
-      { to: '/assets', icon: Server, label: 'All Assets' },
-      { to: '/inventory/servers', icon: Server, label: 'Servers' },
-      { to: '/inventory/virtual-machines', icon: Layers, label: 'Virtual Machines' },
-      { to: '/inventory/network-devices', icon: Network, label: 'Network Devices' },
-      { to: '/inventory/software', icon: Package, label: 'Software' },
-      { to: '/hardware', icon: Cpu, label: 'Hardware Monitor', superAdminOnly: true },
-    ],
-  },
-  {
-    label: 'OPERATIONS',
+    label: 'Operations',
     icon: Activity,
     items: [
       { to: '/alerts', icon: Bell, label: 'Alerts & Events' },
@@ -80,12 +96,11 @@ const navGroups: NavGroup[] = [
       { to: '/maintenance', icon: CalendarClock, label: 'Maintenance' },
       { to: '/bod-eod', icon: ClipboardCheck, label: 'BOD / EOD' },
       { to: '/eod', icon: ClipboardList, label: 'EOD Operations', roles: ['ADMIN', 'MANAGER'] },
-      { to: '/oms', icon: ShoppingCart, label: 'OMS', roles: ['ADMIN', 'MANAGER'] },
       { to: '/noc', icon: Monitor, label: 'NOC View', badge: 'LIVE', superAdminOnly: true },
     ],
   },
   {
-    label: 'MONITORING',
+    label: 'Monitoring',
     icon: Monitor,
     items: [
       { to: '/metrics', icon: Activity, label: 'Metrics', superAdminOnly: true },
@@ -97,17 +112,17 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'AI & AUTOMATION',
+    label: 'AI & Automation',
     icon: Sparkles,
     items: [
-      { to: '/aiops', icon: Brain, label: 'AIOps', badge: 'AI' },
+      { to: '/aiops', icon: Sparkles, label: 'AIOps', badge: 'AI' },
       { to: '/runbooks', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
       { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
       { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {
-    label: 'SETTINGS',
+    label: 'Settings',
     icon: Settings,
     items: [
       { to: '/teams', icon: Users, label: 'Teams' },
@@ -122,27 +137,10 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-function getBadgeStyle(badge: string): React.CSSProperties {
-  if (badge === 'LIVE') return {
-    color: '#f87171',
-    background: 'rgba(239,68,68,0.15)',
-    border: '1px solid rgba(239,68,68,0.25)',
-  };
-  if (badge === 'AI') return {
-    color: '#c084fc',
-    background: 'rgba(192,132,252,0.12)',
-    border: '1px solid rgba(192,132,252,0.25)',
-  };
-  if (badge === 'NEW') return {
-    color: '#4ade80',
-    background: 'rgba(34,197,94,0.12)',
-    border: '1px solid rgba(34,197,94,0.25)',
-  };
-  return {
-    color: 'rgba(255,255,255,0.4)',
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.1)',
-  };
+function badgeStyle(badge: string): CSSProperties {
+  if (badge === 'LIVE') return { color: '#b42318', background: '#fff6f6', border: '1px solid #fca5a5' };
+  if (badge === 'AI') return { color: '#075985', background: '#eff6ff', border: '1px solid #bfdbfe' };
+  return { color: '#475467', background: '#f5f6f7', border: '1px solid #d8dde6' };
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
@@ -153,261 +151,118 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const initials = user
     ? `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
     : 'U';
-
-  // On mobile, sidebar is always expanded (not collapsed)
   const showLabels = mobileOpen || !collapsed;
-
-  // State for expanded groups
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['OVERVIEW', 'SERVICE MANAGEMENT']));
-  
-  // State for hover menu in collapsed mode
-  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Overview', 'Service Management', 'Operations']));
 
   const toggleGroup = (label: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
-        next.add(label);
-      }
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
       return next;
     });
   };
 
   return (
     <>
-      {/* Mobile backdrop overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 lg:hidden"
-          style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'rgba(15,23,42,0.35)' }}
           onClick={onMobileClose}
         />
       )}
 
       <aside
         className={clsx(
-          'fixed left-0 top-0 h-screen z-50 flex flex-col transition-all duration-300',
-          // Desktop: always visible, width based on collapsed state
-          'lg:translate-x-0',
+          'fixed left-0 top-0 z-50 flex h-screen flex-col transition-all duration-300 lg:translate-x-0',
           collapsed ? 'lg:w-[68px]' : 'lg:w-[240px]',
-          // Mobile: slide in/out, always full width (240px)
           mobileOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full w-[280px] lg:w-auto',
         )}
         style={{
-          background: '#0c0a1d',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          overflow: 'visible',
+          background: '#f4f6f8',
+          borderRight: '1px solid #c6ccd5',
+          color: '#1f2937',
         }}
       >
-        {/* ── Brand ── */}
-        <div
-          className="flex items-center justify-between px-4 h-14 shrink-0 relative z-10"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, #7c3aed, #c084fc)',
-                boxShadow: '0 0 20px rgba(124,58,237,0.4)',
-              }}
-            >
-              <Eye className="w-4 h-4 text-white" strokeWidth={2.5} />
+        <div className="flex h-14 shrink-0 items-center justify-between border-b px-4" style={{ background: '#fff', borderColor: '#c6ccd5' }}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm" style={{ background: '#001d5b', color: '#fff' }}>
+              <Eye className="h-4 w-4" strokeWidth={2.4} />
             </div>
             {showLabels && (
-              <span
-                className="font-display font-bold text-[15px] tracking-tight"
-                style={{
-                  background: 'linear-gradient(135deg, #c084fc, #f0abfc)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
+              <span className="truncate text-[15px] font-bold" style={{ color: '#001d5b' }}>
                 Argus Service Desk
               </span>
             )}
           </div>
-          {/* Mobile close button */}
           {mobileOpen && (
-            <button
-              onClick={onMobileClose}
-              className="lg:hidden p-1.5 rounded-lg transition-colors"
-              style={{ color: 'rgba(255,255,255,0.5)' }}
-              aria-label="Close sidebar"
-            >
-              <X className="w-5 h-5" />
+            <button type="button" onClick={onMobileClose} className="lg:hidden p-1" aria-label="Close sidebar" style={{ color: '#475467' }}>
+              <X className="h-5 w-5" />
             </button>
           )}
         </div>
 
-        {/* ── Org Switcher (Admin only) ── */}
         {showLabels && <OrgSwitcher />}
 
-        {/* ── Navigation ── */}
-        <nav role="navigation" aria-label="Main navigation" className="flex-1 py-3 px-2.5 space-y-4 relative z-10" style={{ overflowY: 'visible', minHeight: 0, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.15) transparent' }}>
+        <nav role="navigation" aria-label="Main navigation" className="flex-1 overflow-y-auto px-2 py-3">
           {navGroups.map((group) => {
-            const visibleItems = group.items.filter(
-              (item) => {
-                if (item.superAdminOnly && !isSuperAdmin) return false;
-                return !item.roles || item.roles.includes(userRole);
-              }
-            );
+            const visibleItems = group.items.filter((item) => {
+              if (item.superAdminOnly && !isSuperAdmin) return false;
+              return !item.roles || item.roles.includes(userRole);
+            });
             if (visibleItems.length === 0) return null;
+            const groupOpen = showLabels ? expandedGroups.has(group.label) : true;
 
             return (
-              <div key={group.label}>
+              <div key={group.label} className="mb-3">
                 {showLabels ? (
                   <button
+                    type="button"
                     onClick={() => toggleGroup(group.label)}
-                    className="flex items-center gap-2 px-3 mb-1.5 w-full cursor-pointer group"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+                    style={{ color: '#475467' }}
                   >
-                    <group.icon className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.25)' }} />
-                    <span
-                      className="text-[11px] font-black tracking-[0.18em] uppercase whitespace-nowrap"
-                      style={{ color: 'rgba(255,255,255,0.25)' }}
-                    >
-                      {group.label}
-                    </span>
-                    <div
-                      className="flex-1 h-px"
-                      style={{ background: 'rgba(255,255,255,0.06)' }}
-                    />
-                    {expandedGroups.has(group.label) ? (
-                      <ChevronUp className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.25)' }} />
-                    ) : (
-                      <ChevronDown className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.25)' }} />
-                    )}
+                    <group.icon className="h-3.5 w-3.5" />
+                    <span className="flex-1 truncate text-[11px] font-bold uppercase tracking-[0.08em]">{group.label}</span>
+                    {groupOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
                 ) : (
-                  <div
-                    className="relative"
-                    onMouseEnter={() => setHoveredGroup(group.label)}
-                    onMouseLeave={() => setHoveredGroup(null)}
-                  >
-                    <div className="flex items-center justify-center h-8 mb-1.5 cursor-pointer">
-                      <group.icon className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.35)' }} />
-                    </div>
-                    
-                    {/* Hover menu */}
-                    {hoveredGroup === group.label && (
-                      <div
-                        className="absolute left-full top-1/2 -translate-y-1/2 min-w-max rounded-xl p-2 z-[1000]"
-                        style={{
-                          background: '#1a162e',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                        }}
-                      >
-                        {/* Transparent bridge to prevent gap */}
-                        <div
-                          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-8 h-full"
-                          style={{ background: 'transparent' }}
-                        />
-                        <div className="text-[10px] font-black tracking-[0.18em] uppercase mb-2 px-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                          {group.label}
-                        </div>
-                        <div className="space-y-0.5">
-                          {visibleItems.map((item) => (
-                            <NavLink
-                              key={item.to}
-                              to={item.to}
-                              end={item.end}
-                              onClick={() => onMobileClose?.()}
-                            >
-                              {({ isActive }) => (
-                                <div
-                                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all cursor-pointer"
-                                  style={
-                                    isActive
-                                      ? { background: 'rgba(124,58,237,0.15)', color: '#c084fc' }
-                                      : { color: 'rgba(255,255,255,0.45)' }
-                                  }
-                                >
-                                  <item.icon className="w-4 h-4 shrink-0" style={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)' }} />
-                                  <span className="truncate">{item.label}</span>
-                                  {item.badge && (
-                                    <span
-                                      className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ml-auto"
-                                      style={getBadgeStyle(item.badge)}
-                                    >
-                                      {item.badge}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </NavLink>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <div className="my-2 h-px" style={{ background: '#d8dde6' }} />
                 )}
 
-                {expandedGroups.has(group.label) && (
+                {groupOpen && (
                   <div className="space-y-0.5">
                     {visibleItems.map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.end}
-                        className="block relative"
-                        onClick={() => onMobileClose?.()}
-                      >
+                      <NavLink key={item.to} to={item.to} end={item.end} className="block" onClick={() => onMobileClose?.()}>
                         {({ isActive }) => (
                           <div
                             className={clsx(
-                              'flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 cursor-pointer group relative overflow-hidden',
-                              !showLabels && 'justify-center'
+                              'flex min-h-[34px] items-center gap-2.5 rounded-sm border px-2.5 text-[13px] font-semibold transition-colors',
+                              !showLabels && 'justify-center',
                             )}
+                            title={!showLabels ? item.label : undefined}
                             style={
                               isActive
                                 ? {
-                                    background: 'rgba(124,58,237,0.15)',
-                                    color: '#c084fc',
+                                    background: '#e8eef5',
+                                    borderColor: '#c6ccd5',
+                                    color: '#001d5b',
+                                    boxShadow: 'inset 3px 0 0 #001d5b',
                                   }
                                 : {
-                                    color: 'rgba(255,255,255,0.45)',
+                                    background: 'transparent',
+                                    borderColor: 'transparent',
+                                    color: '#344054',
                                   }
                             }
-                            onMouseEnter={(e) => {
-                              if (!isActive) {
-                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                                e.currentTarget.style.color = 'rgba(255,255,255,0.85)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isActive) {
-                                e.currentTarget.style.background = 'transparent';
-                                e.currentTarget.style.color = 'rgba(255,255,255,0.45)';
-                              }
-                            }}
                           >
-                            {/* Active left accent bar */}
-                            {isActive && (
-                              <div
-                                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
-                                style={{
-                                  background: 'linear-gradient(180deg, #7c3aed, #c084fc)',
-                                  boxShadow: '0 0 8px rgba(124,58,237,0.5)',
-                                }}
-                              />
-                            )}
-
-                            <item.icon
-                              className="w-[18px] h-[18px] shrink-0 transition-colors"
-                              style={{ color: isActive ? '#c084fc' : 'rgba(255,255,255,0.35)' }}
-                            />
-
+                            <item.icon className="h-[17px] w-[17px] shrink-0" />
                             {showLabels && (
                               <>
-                                <span className="truncate flex-1">{item.label}</span>
+                                <span className="min-w-0 flex-1 truncate">{item.label}</span>
                                 {item.badge && (
-                                  <span
-                                    className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded"
-                                    style={getBadgeStyle(item.badge)}
-                                  >
+                                  <span className="rounded px-1.5 py-0.5 text-[9px] font-bold" style={badgeStyle(item.badge)}>
                                     {item.badge}
                                   </span>
                                 )}
@@ -424,92 +279,50 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           })}
         </nav>
 
-        {/* ── User + Collapse ── */}
-        <div
-          className="p-2.5 shrink-0 space-y-1 relative z-10"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-        >
+        <div className="shrink-0 border-t p-2" style={{ borderColor: '#c6ccd5', background: '#fff' }}>
           {user && showLabels && (
-            <div
-              className="flex items-center gap-2.5 px-2 py-2 rounded-xl cursor-pointer transition-all"
+            <button
+              type="button"
+              className="mb-1 flex w-full items-center gap-2 rounded-sm border px-2 py-2 text-left"
+              style={{ borderColor: '#d8dde6', background: '#f7f8fa', color: '#1f2937' }}
               onClick={() => { navigate('/profile'); onMobileClose?.(); }}
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                e.currentTarget.style.borderColor = 'rgba(124,58,237,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
-              }}
             >
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                style={{
-                  background: 'linear-gradient(135deg, #7c3aed, #c084fc)',
-                  boxShadow: '0 0 12px rgba(124,58,237,0.4)',
-                }}
-              >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-[11px] font-bold" style={{ background: '#e8eef5', color: '#001d5b' }}>
                 {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p
-                  className="text-[12px] font-semibold truncate"
-                  style={{ color: 'rgba(255,255,255,0.9)' }}
-                >
-                  {user.first_name} {user.last_name}
-                </p>
-                <p className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {user.role}
-                </p>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); logout(); }}
-                className="p-1.5 rounded-md transition-colors"
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-bold">{user.first_name} {user.last_name}</span>
+                <span className="block truncate text-[10px] uppercase" style={{ color: '#667085' }}>{user.role}</span>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                className="rounded-sm p-1"
                 title="Logout"
                 aria-label="Logout"
-                style={{ color: 'rgba(255,255,255,0.3)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#f87171';
-                  e.currentTarget.style.background = 'rgba(239,68,68,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.3)';
-                  e.currentTarget.style.background = 'transparent';
+                style={{ color: '#667085' }}
+                onClick={(event) => { event.stopPropagation(); logout(); }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    logout();
+                  }
                 }}
               >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <LogOut className="h-3.5 w-3.5" />
+              </span>
+            </button>
           )}
 
-          {/* Collapse button — desktop only */}
           <button
+            type="button"
             onClick={onToggle}
             aria-label="Toggle sidebar"
-            className="hidden lg:flex w-full items-center justify-center gap-2 py-2 rounded-xl text-sm transition-all duration-150"
-            style={{ color: 'rgba(255,255,255,0.3)' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'rgba(255,255,255,0.7)';
-              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'rgba(255,255,255,0.3)';
-              e.currentTarget.style.background = 'transparent';
-            }}
+            className="hidden min-h-[32px] w-full items-center justify-center gap-2 rounded-sm border text-[12px] font-semibold lg:flex"
+            style={{ borderColor: '#d8dde6', color: '#344054', background: '#fff' }}
           >
-            {collapsed
-              ? <ChevronRight className="w-4 h-4" />
-              : (
-                <>
-                  <ChevronLeft className="w-4 h-4" />
-                  <span className="text-xs">Collapse</span>
-                </>
-              )
-            }
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4" /><span>Collapse</span></>}
           </button>
         </div>
       </aside>

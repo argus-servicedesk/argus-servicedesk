@@ -28,7 +28,7 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen relative" style={{ background: 'linear-gradient(180deg, #eef2ff 0%, #e0e7ff 30%, #ede9fe 70%, #eef2ff 100%)' }}>
+    <div className="min-h-screen relative" style={{ background: '#f4f6f8' }}>
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}

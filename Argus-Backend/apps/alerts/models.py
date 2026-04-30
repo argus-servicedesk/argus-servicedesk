@@ -33,10 +33,16 @@ class Alert(models.Model):
     threshold = models.CharField(max_length=255, blank=True, null=True)
     labels = models.JSONField(blank=True, null=True)
     annotations = models.JSONField(blank=True, null=True)
-    
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='alerts')
+
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='alerts',
+    )
     incident = models.ForeignKey('incidents.Incident', on_delete=models.SET_NULL, null=True, blank=True, related_name='related_alerts')
-    
+
     fired_at = models.DateTimeField(db_index=True)
     resolved_at = models.DateTimeField(blank=True, null=True)
     acknowledged_at = models.DateTimeField(blank=True, null=True)

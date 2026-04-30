@@ -6,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.alerts.models import Alert
-from apps.assets.models import ConfigurationItem
 from apps.changes.models import Change
 from apps.common.responses import success
 from apps.incidents.models import Incident
@@ -57,14 +56,6 @@ def _dashboard_payload(org_id):
         "warning": alerts.filter(severity="WARNING").count(),
     }
 
-    # Asset stats
-    assets = ConfigurationItem.objects.filter(organization_id=org_id)
-    asset_stats = {
-        "total": assets.count(),
-        "live": assets.filter(status="LIVE").count(),
-        "maintenance": assets.filter(status="MAINTENANCE").count(),
-        "monitoring_enabled": assets.filter(monitoring_enabled=True).count(),
-    }
 
     recent_incidents = incidents.order_by("-created_at")[:5]
     recent_changes = changes.order_by("-created_at")[:5]
@@ -88,7 +79,6 @@ def _dashboard_payload(org_id):
         "changes": change_stats,
         "problems": problem_stats,
         "alerts": alert_stats,
-        "assets": asset_stats,
         "recent_incidents": [
             {
                 "id": str(i.id),

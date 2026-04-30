@@ -38,20 +38,16 @@ INSTALLED_APPS = [
     "apps.changes",
     "apps.problems",
     "apps.alerts",
-    "apps.assets",
     "apps.teams",
     "apps.dashboard",
     "apps.integrations",
     "apps.notifications",
     "apps.reports",
     "apps.search",
+    "apps.assets",
     "apps.webhooks",
     "apps.status",
-    "apps.apm",
     "apps.domain",
-    "apps.eod",
-    "apps.illbandwidth",
-    "apps.oms",
 ]
 
 MIDDLEWARE = [

@@ -1,10 +1,7 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import ILLBandwidthViewSet
+from django.urls import re_path
 
-router = DefaultRouter()
-router.register(r'bandwidth', ILLBandwidthViewSet)
+from apps.common.stub_views import StubView
 
 urlpatterns = [
-    path('', include(router.urls)),
+    re_path(r"^.*$", StubView.as_view()),
 ]
