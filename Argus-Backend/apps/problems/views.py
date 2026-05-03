@@ -24,7 +24,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.changes.models import Change
+from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
+from apps.common.permissions import DenyViewerMutations, ProblemTransitionRBAC
 from apps.common.pagination import DefaultPagination
 from apps.common.responses import failure, success
 from apps.incidents.models import Activity, Incident, IncidentProblem, WorkNote
@@ -39,6 +41,33 @@ from .serializers import (
 from .services import ProblemService
 
 logger = logging.getLogger(__name__)
+
+
+PROBLEM_ACTIVITY_FIELDS = {
+    "short_description": "Short description",
+    "description": "Description",
+    "state": "State",
+    "priority": "Priority",
+    "category": "Category",
+    "assigned_to": "Assigned to",
+    "assignment_group": "Assignment group",
+    "root_cause": "Root cause",
+    "workaround": "Workaround",
+    "permanent_fix": "Permanent fix",
+    "fix_implemented": "Fix implemented",
+    "is_known_error": "Known error",
+    "known_error_id": "Known error ID",
+}
+
+
+def _activity_value(value):
+    if value is None:
+        return ""
+    if hasattr(value, "name"):
+        return value.name
+    if hasattr(value, "email"):
+        return value.email
+    return str(value)
 
 
 # ─── Mixins ───────────────────────────────────────────────────────────────────
@@ -59,7 +88,7 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
     POST /problems/   — create new problem
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["state", "priority", "category", "assigned_to"]
     pagination_class = DefaultPagination
@@ -79,7 +108,7 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
                 "related_change",
                 "organization",
             )
-            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .prefetch_related("linked_incidents__incident", "work_notes__author", "activities__user")
             .order_by("-created_at")
         )
 
@@ -120,6 +149,13 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             problem = serializer.save()
+            create_activity(
+                request=request,
+                action="CREATED",
+                description=f"Created problem {problem.number}",
+                user=request.user,
+                problem=problem,
+            )
             return success(
                 ProblemSerializer(problem).data, "Problem created successfully.", 201
             )
@@ -138,7 +174,7 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
     PATCH /problems/<uuid>/  — partial update (state transitions validated)
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations, ProblemTransitionRBAC]
     http_method_names = ["get", "patch", "head", "options"]
     queryset = Problem.objects.all()
 
@@ -155,7 +191,7 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
                 "related_change",
                 "organization",
             )
-            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .prefetch_related("linked_incidents__incident", "work_notes__author", "activities__user")
         )
 
     def get_serializer_class(self):
@@ -174,11 +210,28 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
     def partial_update(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
+            tracked_before = {
+                field: _activity_value(getattr(instance, field, None))
+                for field in PROBLEM_ACTIVITY_FIELDS
+            }
             serializer = ProblemUpdateSerializer(
                 instance, data=request.data, partial=True
             )
             serializer.is_valid(raise_exception=True)
             problem = serializer.save()
+            for field, label in PROBLEM_ACTIVITY_FIELDS.items():
+                before = tracked_before[field]
+                after = _activity_value(getattr(problem, field, None))
+                if before != after:
+                    create_activity(
+                        request=request,
+                        action="FIELD_CHANGED",
+                        description=f"{label} changed",
+                        old_value=before,
+                        new_value=after,
+                        user=request.user,
+                        problem=problem,
+                    )
             return success(
                 ProblemSerializer(problem).data, "Problem updated successfully."
             )
@@ -264,7 +317,7 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
     Adds a WorkNote (from incidents.WorkNote) linked to this problem.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = self._organization()
@@ -285,6 +338,13 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
             content=serializer.validated_data["content"],
             is_internal=serializer.validated_data.get("is_internal", False),
             source=WorkNote.Source.MANUAL,
+        )
+        create_activity(
+            request=request,
+            action="WORK_NOTE_ADDED",
+            description="Work note added",
+            user=request.user,
+            problem=problem,
         )
 
         return success(
@@ -309,7 +369,7 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
 # ─── AI RCA ───────────────────────────────────────────────────────────────────
 
 class ProblemIncidentLinkView(OrgScopedMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = self._organization()
@@ -349,7 +409,8 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
             if changed:
                 link.save(update_fields=["link_type", "notes"])
 
-        Activity.objects.create(
+        create_activity(
+            request=request,
             action="INCIDENT_LINKED",
             description=f"Linked incident {incident.number}",
             user=request.user,
@@ -366,7 +427,7 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
                 "related_change",
                 "organization",
             )
-            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .prefetch_related("linked_incidents__incident", "work_notes__author", "activities__user")
             .first()
         )
         return success(
@@ -377,7 +438,7 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
 
 
 class ProblemChangeLinkView(OrgScopedMixin, APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = self._organization()
@@ -399,7 +460,8 @@ class ProblemChangeLinkView(OrgScopedMixin, APIView):
         if problem.related_change_id != change.id:
             problem.related_change = change
             problem.save(update_fields=["related_change", "updated_at"])
-            Activity.objects.create(
+            create_activity(
+                request=request,
                 action="CHANGE_LINKED",
                 description=f"Linked change {change.number}",
                 user=request.user,
@@ -416,7 +478,7 @@ class ProblemChangeLinkView(OrgScopedMixin, APIView):
                 "related_change",
                 "organization",
             )
-            .prefetch_related("linked_incidents__incident", "work_notes__author")
+            .prefetch_related("linked_incidents__incident", "work_notes__author", "activities__user")
             .first()
         )
         return success(ProblemSerializer(problem).data, "change linked to problem")
@@ -433,7 +495,7 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
       4. Returns the updated problem
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = self._organization()
@@ -446,6 +508,13 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
 
         try:
             problem = ProblemService.run_ai_rca(problem)
+            create_activity(
+                request=request,
+                action="AI_RCA_COMPLETED",
+                description="AI root-cause analysis completed",
+                user=request.user,
+                problem=problem,
+            )
             return success(
                 ProblemSerializer(problem).data,
                 "AI root-cause analysis complete.",
@@ -465,7 +534,7 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
     without going through the full update serializer.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def patch(self, request, pk):
         organization = self._organization()
@@ -489,5 +558,12 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
         for field, value in update_data.items():
             setattr(problem, field, value)
         problem.save(update_fields=list(update_data.keys()) + ["updated_at"])
+        create_activity(
+            request=request,
+            action="RCA_UPDATED",
+            description="Root-cause fields updated",
+            user=request.user,
+            problem=problem,
+        )
 
         return success(ProblemSerializer(problem).data, "RCA fields updated.")

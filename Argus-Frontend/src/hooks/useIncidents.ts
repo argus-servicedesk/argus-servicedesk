@@ -20,9 +20,13 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   closed_at: 'closedAt',
   resolution_code: 'resolutionCode',
   resolution_notes: 'resolutionNotes',
+  hold_reason: 'holdReason',
   work_notes: 'workNotes',
   linked_problems: 'linkedProblems',
   linked_changes: 'linkedChanges',
+  available_transitions: 'availableTransitions',
+  old_value: 'oldValue',
+  new_value: 'newValue',
   created_at: 'createdAt',
   updated_at: 'updatedAt',
   first_name: 'firstName',
@@ -38,6 +42,7 @@ const FIELD_TO_SNAKE: Record<string, string> = {
   slaBreached: 'sla_breached',
   resolutionCode: 'resolution_code',
   resolutionNotes: 'resolution_notes',
+  holdReason: 'hold_reason',
   isInternal: 'is_internal',
 };
 

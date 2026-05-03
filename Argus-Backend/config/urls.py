@@ -4,23 +4,12 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
-from apps.assets.views import AssetLiveMetricsView, AssetMetricsHistoryView
 from apps.common.responses import success
+from apps.common.stub_views import StubView
 
 
 def health(_request):
     return JsonResponse({"status": "ok"})
-
-
-class StubView(APIView):
-    """Generic stub for frontend-called endpoints not yet implemented."""
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        return success([], "Not yet implemented — stub response.")
-
-    def post(self, request, *args, **kwargs):
-        return success({}, "Not yet implemented — stub response.")
 
 
 SVG_TEMPLATE_LIST = [
@@ -113,10 +102,9 @@ urlpatterns = [
     path("api/v1/incidents/", include("apps.incidents.urls")),
     path("api/v1/changes/", include("apps.changes.urls")),
     path("api/v1/problems/", include("apps.problems.urls")),
+    path("api/v1/sla/", include("apps.sla.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/v1/assets/", include("apps.assets.urls")),
-    path("api/v1/ai/assets/<uuid:pk>/live-metrics/", AssetLiveMetricsView.as_view()),
-    path("api/v1/ai/assets/<uuid:pk>/metrics-history/", AssetMetricsHistoryView.as_view()),
     path("api/v1/teams/", include("apps.teams.urls")),
     path("api/v1/dashboard/", include("apps.dashboard.urls")),
     path("api/v1/integrations/", include("apps.integrations.urls")),
@@ -141,6 +129,14 @@ urlpatterns = [
     # Stub endpoints for frontend features not yet implemented on backend
     path("api/v1/ai/infrastructure-metrics/", StubView.as_view()),
     path("api/v1/ai/infrastructure-metrics", StubView.as_view()),
+    path("api/v1/ai/classifications/", StubView.as_view()),
+    path("api/v1/ai/classifications", StubView.as_view()),
+    path("api/v1/ai/suggestions/", StubView.as_view()),
+    path("api/v1/ai/suggestions", StubView.as_view()),
+    path("api/v1/ai/tips/", StubView.as_view()),
+    path("api/v1/ai/tips", StubView.as_view()),
+    path("api/v1/ai/stats/", StubView.as_view()),
+    path("api/v1/ai/stats", StubView.as_view()),
     path("api/v1/bod-eod/overview/", StubView.as_view()),
     path("api/v1/bod-eod/overview", StubView.as_view()),
 ]

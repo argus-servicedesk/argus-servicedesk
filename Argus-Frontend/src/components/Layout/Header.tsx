@@ -189,8 +189,7 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
       className="h-14 flex items-center justify-between px-5 sticky top-0 z-30"
       style={{
         background: '#ffffff',
-        backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(99,102,241,0.12)',
+        borderBottom: '1px solid #c6ccd5',
       }}
     >
       {/* Left: Hamburger + Breadcrumbs */}
@@ -244,7 +243,7 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
               <span
                 className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center text-[9px] font-bold text-white leading-none"
                 style={{
-                  background: 'linear-gradient(135deg, #EF4444, #a855f7)',
+                  background: '#d0272b',
                   boxShadow: '0 0 0 2px #ffffff',
                 }}
               >
@@ -325,10 +324,11 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
             style={{ background: profileOpen ? '#f1f5f9' : 'transparent' }}
           >
             <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+              className="w-7 h-7 rounded-sm flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                boxShadow: '0 1px 3px rgba(99,102,241,0.3)',
+                background: '#e8eef5',
+                color: '#001d5b',
+                border: '1px solid #c6ccd5',
               }}
             >
               {initials}

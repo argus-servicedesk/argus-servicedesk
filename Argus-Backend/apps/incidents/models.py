@@ -44,6 +44,24 @@ class Incident(models.Model):
         VOICE = "VOICE", "Voice"
         SLACK = "SLACK", "Slack"
 
+    class HoldReason(models.TextChoices):
+        AWAITING_USER = "AWAITING_USER", "Awaiting User"
+        AWAITING_VENDOR = "AWAITING_VENDOR", "Awaiting Vendor"
+        AWAITING_CHANGE_WINDOW = "AWAITING_CHANGE_WINDOW", "Awaiting Change Window"
+        AWAITING_DEPENDENCY = "AWAITING_DEPENDENCY", "Awaiting Dependency"
+        MONITORING = "MONITORING", "Monitoring"
+        OTHER = "OTHER", "Other"
+
+    class ResolutionCode(models.TextChoices):
+        WORKAROUND_APPLIED = "WORKAROUND_APPLIED", "Workaround Applied"
+        PERMANENT_FIX = "PERMANENT_FIX", "Permanent Fix"
+        CONFIG_CHANGE = "CONFIG_CHANGE", "Configuration Change"
+        SERVICE_RESTART = "SERVICE_RESTART", "Service Restart"
+        DUPLICATE_INCIDENT = "DUPLICATE_INCIDENT", "Duplicate Incident"
+        USER_ERROR = "USER_ERROR", "User Error"
+        NO_ISSUE_FOUND = "NO_ISSUE_FOUND", "No Issue Found"
+        VENDOR_FIX = "VENDOR_FIX", "Vendor Fix"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=50, unique=True, db_index=True)
     short_description = models.CharField(max_length=200)
@@ -57,10 +75,17 @@ class Incident(models.Model):
     
     assigned_to = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
     assignment_group = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incidents',
+    )
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='created_incidents')
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='incidents')
-    
+        
     sla_breached = models.BooleanField(default=False, db_index=True)
+    sla_notified_thresholds = models.JSONField(default=list, blank=True)
     response_time = models.DurationField(blank=True, null=True)
     resolution_time = models.DurationField(blank=True, null=True)
     sla_target_response = models.DurationField(blank=True, null=True)
@@ -72,7 +97,8 @@ class Incident(models.Model):
     
     resolved_at = models.DateTimeField(blank=True, null=True)
     closed_at = models.DateTimeField(blank=True, null=True)
-    resolution_code = models.CharField(max_length=100, blank=True, null=True)
+    hold_reason = models.CharField(max_length=40, choices=HoldReason.choices, blank=True, null=True)
+    resolution_code = models.CharField(max_length=40, choices=ResolutionCode.choices, blank=True, null=True)
     resolution_notes = models.TextField(blank=True, null=True)
     
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='incidents')
@@ -86,6 +112,8 @@ class Incident(models.Model):
         indexes = [
             models.Index(fields=["state", "priority"]),
             models.Index(fields=["created_at"]),
+            models.Index(fields=["organization", "state", "created_at"]),
+            models.Index(fields=["organization", "priority", "created_at"]),
         ]
 
     def __str__(self):
@@ -122,13 +150,21 @@ class Activity(models.Model):
     description = models.TextField(blank=True, null=True)
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
-    
+    actor_ip = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='activities')
     incident = models.ForeignKey('incidents.Incident', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
     change = models.ForeignKey('changes.Change', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
     problem = models.ForeignKey('problems.Problem', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
-    config_item = models.ForeignKey('assets.ConfigurationItem', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
-    
+    config_item = models.ForeignKey(
+        'assets.ConfigurationItem',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='activities',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from django.db.models import Count
 from django.utils import timezone
@@ -6,11 +6,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.alerts.models import Alert
-from apps.assets.models import ConfigurationItem
 from apps.changes.models import Change
 from apps.common.responses import success
 from apps.incidents.models import Incident
 from apps.problems.models import Problem
+
+
+def _sql_day_to_date(val):
+    """Postgres `date(ts)` returns `date`; SQLite may return `datetime`."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    return val
 
 
 def _dashboard_payload(org_id):
@@ -57,14 +67,6 @@ def _dashboard_payload(org_id):
         "warning": alerts.filter(severity="WARNING").count(),
     }
 
-    # Asset stats
-    assets = ConfigurationItem.objects.filter(organization_id=org_id)
-    asset_stats = {
-        "total": assets.count(),
-        "live": assets.filter(status="LIVE").count(),
-        "maintenance": assets.filter(status="MAINTENANCE").count(),
-        "monitoring_enabled": assets.filter(monitoring_enabled=True).count(),
-    }
 
     recent_incidents = incidents.order_by("-created_at")[:5]
     recent_changes = changes.order_by("-created_at")[:5]
@@ -88,7 +90,6 @@ def _dashboard_payload(org_id):
         "changes": change_stats,
         "problems": problem_stats,
         "alerts": alert_stats,
-        "assets": asset_stats,
         "recent_incidents": [
             {
                 "id": str(i.id),
@@ -153,11 +154,11 @@ class DashboardIncidentTrendView(APIView):
         resolved = Incident.objects.filter(organization_id=org_id, resolved_at__gte=since)
 
         created_map = {
-            row["day"].date(): row["count"]
+            _sql_day_to_date(row["day"]): row["count"]
             for row in incidents.extra({"day": "date(created_at)"}).values("day").annotate(count=Count("id"))
         }
         resolved_map = {
-            row["day"].date(): row["count"]
+            _sql_day_to_date(row["day"]): row["count"]
             for row in resolved.extra({"day": "date(resolved_at)"}).values("day").annotate(count=Count("id"))
         }
 

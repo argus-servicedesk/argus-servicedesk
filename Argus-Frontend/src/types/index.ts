@@ -104,6 +104,7 @@ export interface Incident {
   sourceAlertName: string | null;
   resolvedAt: string | null;
   closedAt: string | null;
+  holdReason: string | null;
   resolutionCode: string | null;
   resolutionNotes: string | null;
   createdAt: string;
@@ -118,6 +119,7 @@ export interface Incident {
   activities?: Activity[];
   linkedChanges?: IncidentChange[];
   linkedProblems?: IncidentProblem[];
+  availableTransitions?: IncidentState[];
 }
 
 export interface Change {
@@ -161,6 +163,8 @@ export interface Change {
   attachments?: Attachment[];
   activities?: Activity[];
   linkedIncidents?: IncidentChange[];
+  availableTransitions?: ChangeState[];
+  requiredFieldsForState?: Record<string, string[]>;
 }
 
 export interface Problem {
@@ -192,6 +196,7 @@ export interface Problem {
   attachments?: Attachment[];
   activities?: Activity[];
   linkedIncidents?: IncidentProblem[];
+  availableTransitions?: ProblemState[];
 }
 
 export interface Approval {

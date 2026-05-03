@@ -12,6 +12,8 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   work_notes: 'workNotes',
   related_change: 'relatedChange',
   related_change_info: 'relatedChangeInfo',
+  old_value: 'oldValue',
+  new_value: 'newValue',
   root_cause: 'rootCause',
   root_cause_analysis: 'rootCauseAnalysis',
   permanent_fix: 'permanentFix',
@@ -25,6 +27,7 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   is_internal: 'isInternal',
   alert_name: 'alertName',
   link_type: 'linkType',
+  available_transitions: 'availableTransitions',
 };
 
 const FIELD_TO_SNAKE: Record<string, string> = {

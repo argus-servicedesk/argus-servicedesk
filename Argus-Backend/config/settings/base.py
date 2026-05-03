@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,9 +15,26 @@ if not SECRET_KEY:
     raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable is required")
 DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
+# HS256: PyJWT recommends >= 32 bytes. Use JWT_SIGNING_KEY in production if SECRET_KEY is short.
+JWT_SIGNING_KEY = (os.getenv("JWT_SIGNING_KEY", "") or SECRET_KEY).strip()
+_jwt_key_len = len(JWT_SIGNING_KEY.encode("utf-8"))
+if _jwt_key_len < 32:
+    if DEBUG:
+        warnings.warn(
+            "JWT signing key is under 32 bytes (HS256). Set JWT_SIGNING_KEY or a longer DJANGO_SECRET_KEY to silence this.",
+            stacklevel=1,
+        )
+    else:
+        raise ImproperlyConfigured(
+            "JWT_SIGNING_KEY (or DJANGO_SECRET_KEY) must be at least 32 bytes for HS256 when DEBUG is False."
+        )
+
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 CORS_ALLOWED_ORIGINS = [h.strip() for h in os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [h.strip() for h in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if h.strip()]
+
+_trusted_proxy_raw = os.getenv("TRUSTED_PROXY_IPS", "")
+TRUSTED_PROXY_IPS = tuple(x.strip() for x in _trusted_proxy_raw.split(",") if x.strip())
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -37,21 +55,18 @@ INSTALLED_APPS = [
     "apps.incidents",
     "apps.changes",
     "apps.problems",
+    "apps.sla",
     "apps.alerts",
-    "apps.assets",
     "apps.teams",
     "apps.dashboard",
     "apps.integrations",
     "apps.notifications",
     "apps.reports",
     "apps.search",
+    "apps.assets",
     "apps.webhooks",
     "apps.status",
-    "apps.apm",
     "apps.domain",
-    "apps.eod",
-    "apps.illbandwidth",
-    "apps.oms",
 ]
 
 MIDDLEWARE = [
@@ -71,7 +86,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -83,6 +98,15 @@ TEMPLATES = [
         },
     },
 ]
+
+# Email Settings
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Argus Service Desk <noreply@argus.io>")
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
@@ -103,6 +127,9 @@ DATABASES = {
         "ATOMIC_REQUESTS": True,
     }
 }
+
+if not DEBUG and not os.getenv("DB_PASSWORD", "").strip():
+    raise ImproperlyConfigured("DB_PASSWORD is required when DEBUG is False.")
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -133,12 +160,20 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "SIGNING_KEY": JWT_SIGNING_KEY,
 }
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Argus Service Desk Python API",
     "DESCRIPTION": "Production-grade Python backend for Argus Service Desk.",
     "VERSION": "1.0.0",
+    "TAGS": [
+        {"name": "incidents", "description": "Incident lifecycle and SLA"},
+        {"name": "problems", "description": "Problem management"},
+        {"name": "changes", "description": "Change management and approvals"},
+        {"name": "sla", "description": "SLA definitions and calendars"},
+        {"name": "status", "description": "Health and operational probes"},
+    ],
 }
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")

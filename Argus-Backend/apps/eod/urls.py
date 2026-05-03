@@ -1,10 +1,7 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import EODTaskViewSet
+from django.urls import re_path
 
-router = DefaultRouter()
-router.register(r'tasks', EODTaskViewSet)
+from apps.common.stub_views import StubView
 
 urlpatterns = [
-    path('', include(router.urls)),
+    re_path(r"^.*$", StubView.as_view()),
 ]

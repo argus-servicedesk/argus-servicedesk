@@ -3,16 +3,49 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
+from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
+from apps.common.permissions import DenyViewerMutations, IncidentTransitionRBAC
 from apps.common.responses import success, failure
 from apps.changes.models import Change
 from apps.problems.models import Problem
+from apps.sla.services import refresh_incident_sla_state
+from apps.notifications.services import broadcast_notification
 from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem, IncidentChange
 from .serializers import IncidentSerializer, IncidentCreateSerializer, IncidentUpdateSerializer, WorkNoteSerializer
 
 
+ACTIVITY_FIELD_LABELS = {
+    "short_description": "Short description",
+    "description": "Description",
+    "state": "State",
+    "impact": "Impact",
+    "urgency": "Urgency",
+    "priority": "Priority",
+    "category": "Category",
+    "subcategory": "Subcategory",
+    "assigned_to": "Assigned to",
+    "assignment_group": "Assignment group",
+    "hold_reason": "Hold reason",
+    "resolution_code": "Resolution code",
+    "resolution_notes": "Resolution notes",
+}
+
+
+def _activity_value(value):
+    if value is None:
+        return ""
+    if hasattr(value, "number"):
+        return value.number
+    if hasattr(value, "name"):
+        return value.name
+    if hasattr(value, "email"):
+        return value.email
+    return str(value)
+
+
 class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['state', 'priority', 'category', 'assigned_to']
     queryset = Incident.objects.all()
@@ -43,11 +76,26 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         incident = serializer.save()
+        create_activity(
+            request=request,
+            action="CREATED",
+            description=f"Created incident {incident.number}",
+            user=request.user,
+            incident=incident,
+        )
+        
+        broadcast_notification(
+            organization=incident.organization,
+            message=f"New Incident Created: {incident.number} - {incident.short_description}",
+            resource_type="INCIDENT",
+            resource_id=incident.id
+        )
+        
         return success(IncidentSerializer(incident).data, "incident created", 201)
 
 
 class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations, IncidentTransitionRBAC]
     queryset = Incident.objects.all()
 
     def get_serializer_class(self):
@@ -65,10 +113,35 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
+        previous_state = instance.state
+        tracked_before = {
+            field: _activity_value(getattr(instance, field, None))
+            for field in ACTIVITY_FIELD_LABELS
+        }
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return success(IncidentSerializer(instance).data)
+        incident = serializer.save()
+
+        lifecycle_fields = refresh_incident_sla_state(incident, previous_state=previous_state)
+        if lifecycle_fields:
+            incident.save(update_fields=list(set(lifecycle_fields + ["updated_at"])))
+
+        for field, label in ACTIVITY_FIELD_LABELS.items():
+            before = tracked_before[field]
+            after = _activity_value(getattr(incident, field, None))
+            if before != after:
+                create_activity(
+                    request=request,
+                    action="FIELD_CHANGED",
+                    description=f"{label} changed",
+                    old_value=before,
+                    new_value=after,
+                    user=request.user,
+                    incident=incident,
+                )
+
+        incident = self.get_queryset().filter(pk=incident.pk).first()
+        return success(IncidentSerializer(incident).data)
 
 
 class IncidentStatsView(APIView):
@@ -93,7 +166,7 @@ class IncidentStatsView(APIView):
 
 
 class IncidentProblemLinkView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = getattr(request, "organization", None)
@@ -133,7 +206,8 @@ class IncidentProblemLinkView(APIView):
             if changed:
                 link.save(update_fields=["link_type", "notes"])
 
-        Activity.objects.create(
+        create_activity(
+            request=request,
             action="PROBLEM_LINKED",
             description=f"Linked problem {problem.number}",
             user=request.user,
@@ -155,7 +229,7 @@ class IncidentProblemLinkView(APIView):
 
 
 class IncidentChangeLinkView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         organization = getattr(request, "organization", None)
@@ -184,7 +258,8 @@ class IncidentChangeLinkView(APIView):
             link.notes = notes
             link.save(update_fields=["notes"])
 
-        Activity.objects.create(
+        create_activity(
+            request=request,
             action="CHANGE_LINKED",
             description=f"Linked change {change.number}",
             user=request.user,
@@ -205,14 +280,29 @@ class IncidentChangeLinkView(APIView):
         )
 
 
-class WorkNoteCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = WorkNoteSerializer
-    
-    def perform_create(self, serializer):
-        incident_id = self.kwargs.get('incident_id')
-        serializer.save(author=self.request.user, incident_id=incident_id)
+class WorkNoteCreateView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
+    def post(self, request, incident_id):
+        organization = getattr(request, "organization", None)
+        if organization is None:
+            return failure("organization access denied", status_code=403)
+
+        incident = Incident.objects.filter(organization=organization, pk=incident_id).first()
+        if incident is None:
+            return failure("incident not found", status_code=404)
+
+        serializer = WorkNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save(author=request.user, incident=incident)
+        create_activity(
+            request=request,
+            action="WORK_NOTE_ADDED",
+            description="Work note added",
+            user=request.user,
+            incident=incident,
+        )
+        return success(WorkNoteSerializer(note).data, "work note added", 201)
 
 class IncidentTimelineView(APIView):
     permission_classes = [IsAuthenticated]
@@ -238,6 +328,8 @@ class IncidentTimelineView(APIView):
                     "description": activity.description,
                     "oldValue": activity.old_value,
                     "newValue": activity.new_value,
+                    "actorIp": activity.actor_ip,
+                    "userAgent": activity.user_agent or None,
                     "createdAt": activity.created_at.isoformat() if activity.created_at else None,
                     "user": (
                         {

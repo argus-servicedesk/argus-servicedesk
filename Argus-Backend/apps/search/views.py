@@ -3,7 +3,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.alerts.models import Alert
-from apps.assets.models import ConfigurationItem
 from apps.changes.models import Change
 from apps.common.responses import success
 from apps.incidents.models import Incident
@@ -48,7 +47,6 @@ class SearchView(APIView):
             "incidents": [],
             "problems": [],
             "changes": [],
-            "assets": [],
             "alerts": [],
             "teams": [],
         }
@@ -133,31 +131,6 @@ class SearchView(APIView):
             for change in changes
         ]
 
-        assets = (
-            ConfigurationItem.objects.filter(organization=organization)
-            .filter(
-                Q(name__icontains=query)
-                | Q(hostname__icontains=query)
-                | Q(ip_address__icontains=query)
-                | Q(management_ip_address__icontains=query)
-                | Q(serial_number__icontains=query)
-                | Q(asset_tag__icontains=query)
-                | Q(category__icontains=query)
-                | Q(subcategory__icontains=query)
-                | Q(service_name__icontains=query)
-            )
-            .order_by("name")[:limit]
-        )
-        groups["assets"] = [
-            _item(
-                asset.id,
-                "asset",
-                asset.name,
-                f"{asset.category} · {asset.status} · {asset.ip_address or 'N/A'}",
-                f"/assets/{asset.id}",
-            )
-            for asset in assets
-        ]
 
         alerts = (
             Alert.objects.filter(organization=organization)

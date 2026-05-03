@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem, IncidentChange
+from apps.sla.models import TaskSLA
 from apps.accounts.serializers import UserSerializer
 from apps.organizations.serializers import OrganizationSerializer
+from apps.sla.serializers import TaskSLASerializer
+from apps.sla.services import derive_incident_priority, get_sla_targets, apply_incident_sla_targets
 
 
 class IncidentProblemSerializer(serializers.ModelSerializer):
@@ -56,8 +59,18 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Activity
-        fields = ['id', 'action', 'description', 'old_value', 'new_value', 'user', 'created_at']
-        read_only_fields = ['id', 'user', 'created_at']
+        fields = [
+            'id',
+            'action',
+            'description',
+            'old_value',
+            'new_value',
+            'user',
+            'actor_ip',
+            'user_agent',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'user', 'created_at', 'actor_ip', 'user_agent']
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -67,6 +80,9 @@ class AttachmentSerializer(serializers.ModelSerializer):
         model = Attachment
         fields = ['id', 'filename', 'original_name', 'mime_type', 'size', 'path', 'uploaded_by', 'created_at']
         read_only_fields = ['id', 'uploaded_by', 'created_at']
+
+
+
 
 
 class IncidentSerializer(serializers.ModelSerializer):
@@ -80,6 +96,8 @@ class IncidentSerializer(serializers.ModelSerializer):
     attachments = AttachmentSerializer(many=True, read_only=True)
     linked_problems = IncidentProblemSerializer(many=True, read_only=True)
     linked_changes = IncidentChangeSerializer(many=True, read_only=True)
+    task_slas = TaskSLASerializer(many=True, read_only=True)
+    available_transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = Incident
@@ -90,8 +108,9 @@ class IncidentSerializer(serializers.ModelSerializer):
             'sla_breached', 'response_time', 'resolution_time',
             'sla_target_response', 'sla_target_resolution', 'source',
             'source_alert_id', 'source_alert_name', 'resolved_at', 'closed_at',
-            'resolution_code', 'resolution_notes', 'organization',
-            'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes', 'created_at', 'updated_at'
+            'hold_reason', 'resolution_code', 'resolution_notes', 'organization',
+            'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes',
+            'task_slas', 'available_transitions', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at']
 
@@ -104,6 +123,9 @@ class IncidentSerializer(serializers.ModelSerializer):
         if obj.config_item:
             return {'id': str(obj.config_item.id), 'name': obj.config_item.name}
         return None
+
+    def get_available_transitions(self, obj):
+        return IncidentUpdateSerializer.TRANSITIONS.get(obj.state, [])
 
 
 class IncidentCreateSerializer(serializers.ModelSerializer):
@@ -120,13 +142,6 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         import random
         import string
 
-        priority_matrix = {
-            "ENTERPRISE": {"CRITICAL": "P1", "HIGH": "P1", "MEDIUM": "P2", "LOW": "P3"},
-            "DEPARTMENT": {"CRITICAL": "P1", "HIGH": "P2", "MEDIUM": "P2", "LOW": "P3"},
-            "TEAM": {"CRITICAL": "P2", "HIGH": "P2", "MEDIUM": "P3", "LOW": "P4"},
-            "INDIVIDUAL": {"CRITICAL": "P2", "HIGH": "P3", "MEDIUM": "P4", "LOW": "P4"},
-        }
-        
         # Generate incident number
         year = timezone.now().year
         random_str = ''.join(random.choices(string.digits, k=6))
@@ -137,16 +152,74 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         validated_data['organization'] = getattr(self.context['request'], "organization", None) or self.context['request'].user.organization
         impact = validated_data.get("impact", Incident.Impact.TEAM)
         urgency = validated_data.get("urgency", Incident.Urgency.MEDIUM)
-        validated_data["priority"] = priority_matrix.get(impact, priority_matrix["TEAM"]).get(urgency, "P3")
+        validated_data["priority"] = derive_incident_priority(impact, urgency)
+        response_target, resolution_target = get_sla_targets(
+            validated_data["organization"],
+            validated_data["priority"],
+        )
+        validated_data["sla_target_response"] = response_target
+        validated_data["sla_target_resolution"] = resolution_target
         
         return super().create(validated_data)
 
 
 class IncidentUpdateSerializer(serializers.ModelSerializer):
+    TRANSITIONS = {
+        Incident.State.NEW: [Incident.State.IN_PROGRESS, Incident.State.ON_HOLD, Incident.State.RESOLVED, Incident.State.CANCELLED],
+        Incident.State.IN_PROGRESS: [Incident.State.ON_HOLD, Incident.State.ESCALATED, Incident.State.RESOLVED, Incident.State.CANCELLED],
+        Incident.State.ON_HOLD: [Incident.State.IN_PROGRESS, Incident.State.ESCALATED, Incident.State.RESOLVED, Incident.State.CANCELLED],
+        Incident.State.ESCALATED: [Incident.State.IN_PROGRESS, Incident.State.ON_HOLD, Incident.State.RESOLVED, Incident.State.CANCELLED],
+        Incident.State.RESOLVED: [Incident.State.CLOSED, Incident.State.IN_PROGRESS],
+        Incident.State.CLOSED: [Incident.State.IN_PROGRESS],
+        Incident.State.CANCELLED: [],
+    }
+
     class Meta:
         model = Incident
         fields = [
             'short_description', 'description', 'state', 'impact', 'urgency',
             'priority', 'category', 'subcategory', 'assigned_to', 
-            'assignment_group', 'resolution_code', 'resolution_notes'
+            'assignment_group', 'hold_reason', 'resolution_code', 'resolution_notes'
         ]
+
+    def validate_state(self, value):
+        instance = self.instance
+        if not instance or value == instance.state:
+            return value
+        allowed = self.TRANSITIONS.get(instance.state, [])
+        if value not in allowed:
+            raise serializers.ValidationError(
+                f"Cannot transition from '{instance.state}' to '{value}'. Allowed: {allowed or ['none']}."
+            )
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = self.instance
+        target_state = attrs.get("state", instance.state if instance else Incident.State.NEW)
+        resolution_code = attrs.get("resolution_code", instance.resolution_code if instance else None)
+        resolution_notes = attrs.get("resolution_notes", instance.resolution_notes if instance else None)
+        hold_reason = attrs.get("hold_reason", instance.hold_reason if instance else None)
+
+        if target_state == Incident.State.ON_HOLD and not hold_reason:
+            raise serializers.ValidationError({"hold_reason": "Hold reason is required when placing an incident on hold."})
+        if target_state in {Incident.State.RESOLVED, Incident.State.CLOSED}:
+            if not resolution_code:
+                raise serializers.ValidationError({"resolution_code": "Resolution code is required to resolve/close an incident."})
+            if not resolution_notes:
+                raise serializers.ValidationError({"resolution_notes": "Resolution notes are required to resolve/close an incident."})
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        priority_was = instance.priority
+        impact = validated_data.get("impact", instance.impact)
+        urgency = validated_data.get("urgency", instance.urgency)
+        if "priority" not in validated_data and ("impact" in validated_data or "urgency" in validated_data):
+            validated_data["priority"] = derive_incident_priority(impact, urgency)
+
+        incident = super().update(instance, validated_data)
+        if incident.priority != priority_was or incident.sla_target_response is None or incident.sla_target_resolution is None:
+            apply_incident_sla_targets(incident, force=True)
+            incident.save(update_fields=["sla_target_response", "sla_target_resolution", "updated_at"])
+        return incident

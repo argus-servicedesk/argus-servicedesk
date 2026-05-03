@@ -41,8 +41,12 @@ from .serializers import (
 )
 
 
+from rest_framework.exceptions import PermissionDenied
+from apps.common.permissions import DenyViewerMutations, IsAdminOrManager
+
+
 class AssetOrgMixin:
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def org_id(self):
         organization = getattr(self.request, "organization", None)
@@ -647,6 +651,8 @@ class AssetDiscoveryResultListView(AssetOrgMixin, OrgQuerysetMixin, generics.Lis
 
 
 class AssetDiscoveryScanView(AssetOrgMixin, APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
     def post(self, request):
         start = request.data.get("from_ip") or request.data.get("scan_range_start")
         end = request.data.get("to_ip") or request.data.get("scan_range_end") or start
@@ -702,6 +708,8 @@ class AssetOnboardingListView(AssetOrgMixin, OrgQuerysetMixin, generics.ListAPIV
 
 
 class AssetOnboardView(AssetOrgMixin, APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
     def post(self, request):
         discovery_result = None
         discovery_id = request.data.get("discovery_result") or request.data.get("discoveryResultId")

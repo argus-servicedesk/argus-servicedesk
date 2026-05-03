@@ -21,9 +21,6 @@ const ProblemCreate = lazy(() => import('./components/Problems/ProblemCreate'));
 const ProblemDetail = lazy(() => import('./components/Problems/ProblemDetail'));
 const AlertList = lazy(() => import('./components/Alerts/AlertList'));
 const AlertDetail = lazy(() => import('./components/Alerts/AlertDetail'));
-const AssetDashboard = lazy(() => import('./components/Assets/AssetDashboard'));
-const AssetCreate = lazy(() => import('./components/Assets/AssetCreate'));
-const AssetDetail = lazy(() => import('./components/Assets/AssetDetail'));
 const IntegrationHub = lazy(() => import('./components/Integrations/IntegrationHub'));
 const TeamList = lazy(() => import('./components/Teams/TeamList'));
 const ReportsDashboard = lazy(() => import('./components/Reports/ReportsDashboard'));
@@ -55,28 +52,6 @@ const AuditLogViewer = lazy(() => import('./components/Audit/AuditLogViewer'));
 const MFASetup = lazy(() => import('./components/Settings/MFASetup'));
 const ProfilePage = lazy(() => import('./components/Profile/ProfilePage'));
 const LandingPage = lazy(() => import('./components/Landing/LandingPage'));
-const ServerList = lazy(() => import('./components/Inventory/ServerList'));
-const VMList = lazy(() => import('./components/Inventory/VMList'));
-const NetworkDeviceList = lazy(() => import('./components/Inventory/NetworkDeviceList'));
-const FirewallList = lazy(() => import('./components/Inventory/FirewallList'));
-const SwitchList = lazy(() => import('./components/Inventory/SwitchList'));
-const RouterList = lazy(() => import('./components/Inventory/RouterList'));
-const DatabaseList = lazy(() => import('./components/Inventory/DatabaseList'));
-const ApplicationList = lazy(() => import('./components/Inventory/ApplicationList'));
-const K8sClusterList = lazy(() => import('./components/Inventory/K8sClusterList'));
-const StorageList = lazy(() => import('./components/Inventory/StorageList'));
-const ContainerList = lazy(() => import('./components/Inventory/ContainerList'));
-const LoadBalancerList = lazy(() => import('./components/Inventory/LoadBalancerList'));
-const ComputerList = lazy(() => import('./components/Inventory/ComputerList'));
-const UPSList = lazy(() => import('./components/Inventory/UPSList'));
-const MonitorList = lazy(() => import('./components/Inventory/MonitorList'));
-const PhoneList = lazy(() => import('./components/Inventory/PhoneList'));
-const PrinterList = lazy(() => import('./components/Inventory/PrinterList'));
-const RackInfraList = lazy(() => import('./components/Inventory/RackInfraList'));
-const PeripheralList = lazy(() => import('./components/Inventory/PeripheralList'));
-const SoftwareList = lazy(() => import('./components/Inventory/SoftwareList'));
-const SoftwareDetail = lazy(() => import('./components/Inventory/SoftwareDetail'));
-const HardwareMonitoring = lazy(() => import('./components/Hardware/HardwareMonitoring'));
 const NotificationCenter = lazy(() => import('./components/Notifications/NotificationCenter'));
 const BODEODDashboard = lazy(() => import('./components/BOD/BODEODDashboard'));
 const DomainDashboard = lazy(() => import('./components/Domain/DomainDashboard'));
@@ -160,37 +135,6 @@ export default function App() {
         <Route path="/noc" element={<Suspense fallback={<LoadingFallback />}><NOCView /></Suspense>} />
         <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><AlertList /></Suspense>} />
         <Route path="/alerts/:id" element={<Suspense fallback={<LoadingFallback />}><AlertDetail /></Suspense>} />
-        <Route path="/assets" element={<Suspense fallback={<LoadingFallback />}><AssetDashboard /></Suspense>} />
-        <Route path="/assets/create" element={<Suspense fallback={<LoadingFallback />}><AssetCreate /></Suspense>} />
-        <Route path="/assets/:id" element={<Suspense fallback={<LoadingFallback />}><AssetDetail /></Suspense>} />
-        <Route path="/hardware" element={<Suspense fallback={<LoadingFallback />}><HardwareMonitoring /></Suspense>} />
-        {/* ── Inventory: Compute ── */}
-        <Route path="/inventory/servers" element={<Suspense fallback={<LoadingFallback />}><ServerList /></Suspense>} />
-        <Route path="/inventory/virtual-machines" element={<Suspense fallback={<LoadingFallback />}><VMList /></Suspense>} />
-        <Route path="/inventory/kubernetes" element={<Suspense fallback={<LoadingFallback />}><K8sClusterList /></Suspense>} />
-        <Route path="/inventory/containers" element={<Suspense fallback={<LoadingFallback />}><ContainerList /></Suspense>} />
-        {/* ── Inventory: Network ── */}
-        <Route path="/inventory/network-devices" element={<Suspense fallback={<LoadingFallback />}><NetworkDeviceList /></Suspense>} />
-        <Route path="/inventory/firewalls" element={<Suspense fallback={<LoadingFallback />}><FirewallList /></Suspense>} />
-        <Route path="/inventory/switches" element={<Suspense fallback={<LoadingFallback />}><SwitchList /></Suspense>} />
-        <Route path="/inventory/routers" element={<Suspense fallback={<LoadingFallback />}><RouterList /></Suspense>} />
-        <Route path="/inventory/load-balancers" element={<Suspense fallback={<LoadingFallback />}><LoadBalancerList /></Suspense>} />
-        {/* ── Inventory: Data & Apps ── */}
-        <Route path="/inventory/databases" element={<Suspense fallback={<LoadingFallback />}><DatabaseList /></Suspense>} />
-        <Route path="/inventory/applications" element={<Suspense fallback={<LoadingFallback />}><ApplicationList /></Suspense>} />
-        <Route path="/inventory/storage" element={<Suspense fallback={<LoadingFallback />}><StorageList /></Suspense>} />
-        {/* ── Inventory: End-user & Peripherals ── */}
-        <Route path="/inventory/computers" element={<Suspense fallback={<LoadingFallback />}><ComputerList /></Suspense>} />
-        <Route path="/inventory/monitors" element={<Suspense fallback={<LoadingFallback />}><MonitorList /></Suspense>} />
-        <Route path="/inventory/phones" element={<Suspense fallback={<LoadingFallback />}><PhoneList /></Suspense>} />
-        <Route path="/inventory/printers" element={<Suspense fallback={<LoadingFallback />}><PrinterList /></Suspense>} />
-        <Route path="/inventory/peripherals" element={<Suspense fallback={<LoadingFallback />}><PeripheralList /></Suspense>} />
-        {/* ── Inventory: Power & Rack ── */}
-        <Route path="/inventory/ups" element={<Suspense fallback={<LoadingFallback />}><UPSList /></Suspense>} />
-        <Route path="/inventory/rack-infrastructure" element={<Suspense fallback={<LoadingFallback />}><RackInfraList /></Suspense>} />
-        {/* ── Inventory: Software ── */}
-        <Route path="/inventory/software" element={<Suspense fallback={<LoadingFallback />}><SoftwareList /></Suspense>} />
-        <Route path="/inventory/software/:id" element={<Suspense fallback={<LoadingFallback />}><SoftwareDetail /></Suspense>} />
         <Route path="/network" element={<Suspense fallback={<LoadingFallback />}><NetworkTopology /></Suspense>} />
         <Route path="/metrics" element={<Suspense fallback={<LoadingFallback />}><MetricsDashboard /></Suspense>} />
         <Route path="/ai-insights" element={<Suspense fallback={<LoadingFallback />}><AIInsightsDashboard /></Suspense>} />

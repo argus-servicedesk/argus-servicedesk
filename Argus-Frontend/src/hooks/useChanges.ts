@@ -8,6 +8,7 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   risk_level: 'riskLevel',
   assigned_to: 'assignedTo',
   assignment_group: 'assignmentGroup',
+  config_item: 'configItem',
   created_by: 'createdBy',
   implementation_plan: 'implementationPlan',
   rollback_plan: 'rollbackPlan',
@@ -26,11 +27,19 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   review_notes: 'reviewNotes',
   closure_code: 'closureCode',
   affected_cis: 'affectedCis',
+  impact_type: 'impactType',
+  linked_incidents: 'linkedIncidents',
+  work_notes: 'workNotes',
+  old_value: 'oldValue',
+  new_value: 'newValue',
+  is_internal: 'isInternal',
   created_at: 'createdAt',
   updated_at: 'updatedAt',
   first_name: 'firstName',
   last_name: 'lastName',
   approved_at: 'approvedAt',
+  available_transitions: 'availableTransitions',
+  required_fields_for_state: 'requiredFieldsForState',
 };
 
 const FIELD_TO_SNAKE: Record<string, string> = {
@@ -180,5 +189,19 @@ export function useUpdateChange() {
       return { ...data, data: normalizePayload(data?.data) };
     },
     onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: keys.detail(v.id) }); qc.invalidateQueries({ queryKey: keys.all }); },
+  });
+}
+
+export function useApproveChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, state, comments }: { id: string; state: 'APPROVED' | 'REJECTED'; comments?: string }) => {
+      const { data } = await api.post(`/changes/${id}/approvals/decision/`, { state, comments });
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
   });
 }

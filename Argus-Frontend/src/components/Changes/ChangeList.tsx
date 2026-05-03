@@ -1,357 +1,395 @@
-import { useState, useMemo } from 'react';
-import type React from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import clsx from 'clsx';
 import {
-  Search,
-  Plus,
+  CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  ChevronDown,
   Filter,
-  X,
-  GitBranch,
-  Calendar,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
   Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
 } from 'lucide-react';
 import { useChanges } from '../../hooks/useChanges';
+import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+type SortField = 'number' | 'type' | 'state' | 'risk' | 'shortDescription' | 'plannedStartDate' | 'createdAt';
+type SortDir = 'asc' | 'desc';
 
-type ChangeType = 'NORMAL' | 'STANDARD' | 'EMERGENCY';
-type ChangeState = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'SCHEDULED' | 'IMPLEMENTING' | 'COMPLETED' | 'CANCELLED';
-type Risk = 'HIGH' | 'MEDIUM' | 'LOW';
+interface Person {
+  firstName?: string;
+  lastName?: string;
+  first_name?: string;
+  last_name?: string;
+}
 
 interface Change {
   id: string;
-  number: string;
-  type: ChangeType;
-  state: ChangeState;
-  risk: Risk;
-  shortDescription: string;
-  requestedBy: string | { firstName?: string; lastName?: string } | null;
-  plannedStartDate: string;
-  createdAt: string;
+  number?: string;
+  changeNumber?: string;
+  type?: string;
+  state?: string;
+  risk?: string;
+  riskLevel?: string;
+  shortDescription?: string;
+  title?: string;
+  requestedBy?: string | Person | null;
+  assignedTo?: string | Person | null;
+  assignmentGroup?: { name?: string } | null;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  scheduledStart?: string;
+  createdAt?: string;
 }
 
-type SortField = 'number' | 'type' | 'state' | 'risk' | 'shortDescription' | 'plannedStartDate';
-type SortDir = 'asc' | 'desc';
+const PAGE_SIZE = 25;
+const TYPES = ['NORMAL', 'STANDARD', 'EMERGENCY'] as const;
+const STATES = ['NEW', 'ASSESSMENT', 'APPROVAL', 'DRAFT', 'SUBMITTED', 'APPROVED', 'SCHEDULED', 'IMPLEMENTING', 'REVIEW', 'COMPLETED', 'CLOSED', 'CANCELLED'] as const;
+const RISKS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 
-const ALL_STATES: ChangeState[] = ['DRAFT', 'SUBMITTED', 'APPROVED', 'SCHEDULED', 'IMPLEMENTING', 'COMPLETED', 'CANCELLED'];
-const ALL_TYPES: ChangeType[] = ['NORMAL', 'STANDARD', 'EMERGENCY'];
-const ALL_RISKS: Risk[] = ['HIGH', 'MEDIUM', 'LOW'];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const typeStyle: Record<ChangeType, React.CSSProperties> = {
-  NORMAL: { background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' },
-  STANDARD: { background: 'rgba(99,102,241,0.06)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.12)' },
-  EMERGENCY: { background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.15)' },
+const typeLabel: Record<string, string> = {
+  NORMAL: 'Normal',
+  STANDARD: 'Standard',
+  EMERGENCY: 'Emergency',
 };
 
-const stateStyle: Record<ChangeState, React.CSSProperties> = {
-  DRAFT: { background: 'rgba(100,116,139,0.06)', color: '#94a3b8', border: '1px solid rgba(100,116,139,0.12)' },
-  SUBMITTED: { background: 'rgba(245,158,11,0.08)', color: '#d97706', border: '1px solid rgba(245,158,11,0.15)' },
-  APPROVED: { background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' },
-  SCHEDULED: { background: 'rgba(99,102,241,0.06)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.12)' },
-  IMPLEMENTING: { background: 'rgba(245,158,11,0.08)', color: '#d97706', border: '1px solid rgba(245,158,11,0.15)' },
-  COMPLETED: { background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.15)' },
-  CANCELLED: { background: 'rgba(100,116,139,0.04)', color: '#94a3b8', border: '1px solid rgba(100,116,139,0.08)' },
+const stateLabel: Record<string, string> = {
+  NEW: 'New',
+  ASSESSMENT: 'Assessment',
+  APPROVAL: 'Approval',
+  DRAFT: 'Draft',
+  SUBMITTED: 'Submitted',
+  APPROVED: 'Approved',
+  SCHEDULED: 'Scheduled',
+  IMPLEMENTING: 'Implementing',
+  REVIEW: 'Review',
+  COMPLETED: 'Completed',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
 };
 
-const riskStyle: Record<Risk, React.CSSProperties> = {
-  HIGH: { background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.15)' },
-  MEDIUM: { background: 'rgba(245,158,11,0.08)', color: '#d97706', border: '1px solid rgba(245,158,11,0.15)' },
-  LOW: { background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.15)' },
+const riskTone: Record<string, { bg: string; fg: string; border: string; dot: string }> = {
+  LOW: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#12b76a' },
+  MEDIUM: { bg: '#fff7e8', fg: '#b45309', border: '#f5c266', dot: '#f59e0b' },
+  HIGH: { bg: '#fff6f6', fg: '#d0272b', border: '#fca5a5', dot: '#d0272b' },
+  CRITICAL: { bg: '#fff6f6', fg: '#b42318', border: '#f97066', dot: '#b42318' },
 };
 
-const riskWeight: Record<Risk, number> = { HIGH: 1, MEDIUM: 2, LOW: 3 };
+const stateTone: Record<string, { bg: string; fg: string; border: string; dot: string }> = {
+  NEW: { bg: '#eef2ff', fg: '#1d4ed8', border: '#bfdbfe', dot: '#2563eb' },
+  ASSESSMENT: { bg: '#eff6ff', fg: '#075985', border: '#bfdbfe', dot: '#0ea5e9' },
+  APPROVAL: { bg: '#fff7e8', fg: '#b45309', border: '#f5c266', dot: '#f59e0b' },
+  DRAFT: { bg: '#f5f6f7', fg: '#475467', border: '#d8dde6', dot: '#98a2b3' },
+  SUBMITTED: { bg: '#fff7e8', fg: '#b45309', border: '#f5c266', dot: '#f59e0b' },
+  APPROVED: { bg: '#eff6ff', fg: '#075985', border: '#bfdbfe', dot: '#0ea5e9' },
+  SCHEDULED: { bg: '#eef2ff', fg: '#1d4ed8', border: '#bfdbfe', dot: '#2563eb' },
+  IMPLEMENTING: { bg: '#fff1df', fg: '#f05a00', border: '#fed7aa', dot: '#f05a00' },
+  REVIEW: { bg: '#f4f3ff', fg: '#5925dc', border: '#d9d6fe', dot: '#7a5af8' },
+  COMPLETED: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#12b76a' },
+  CLOSED: { bg: '#f5f6f7', fg: '#475467', border: '#d8dde6', dot: '#98a2b3' },
+  CANCELLED: { bg: '#f5f6f7', fg: '#475467', border: '#d8dde6', dot: '#98a2b3' },
+};
 
-function formatShortDate(iso: string): string {
+const typeTone: Record<string, { bg: string; fg: string; border: string; dot: string }> = {
+  NORMAL: { bg: '#eff6ff', fg: '#075985', border: '#bfdbfe', dot: '#0ea5e9' },
+  STANDARD: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#12b76a' },
+  EMERGENCY: { bg: '#fff6f6', fg: '#d0272b', border: '#fca5a5', dot: '#d0272b' },
+};
+
+function personName(value: string | Person | null | undefined): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  const first = value.firstName ?? value.first_name ?? '';
+  const last = value.lastName ?? value.last_name ?? '';
+  return `${first} ${last}`.trim();
+}
+
+function changeNumber(change: Change): string {
+  return change.number ?? change.changeNumber ?? '';
+}
+
+function changeTitle(change: Change): string {
+  return change.shortDescription ?? change.title ?? '';
+}
+
+function riskValue(change: Change): string {
+  return change.risk ?? change.riskLevel ?? '';
+}
+
+function startDate(change: Change): string {
+  return change.plannedStartDate ?? change.scheduledStart ?? '';
+}
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return '';
   const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return 'N/A';
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
-function getDisplayName(requestedBy: string | { firstName?: string; lastName?: string } | null): string {
-  if (!requestedBy) return 'Unknown';
-  if (typeof requestedBy === 'string') return requestedBy;
-  const first = requestedBy.firstName || '';
-  const last = requestedBy.lastName || '';
-  return `${first} ${last}`.trim() || 'Unknown';
+function compareValues(a: string | number, b: string | number, dir: SortDir): number {
+  const result = typeof a === 'number' && typeof b === 'number'
+    ? a - b
+    : String(a).localeCompare(String(b));
+  return dir === 'asc' ? result : -result;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+function SortButton({
+  field,
+  activeField,
+  sortDir,
+  children,
+  onSort,
+}: {
+  field: SortField;
+  activeField: SortField;
+  sortDir: SortDir;
+  children: string;
+  onSort: (field: SortField) => void;
+}) {
+  const active = field === activeField;
+  return (
+    <button type="button" onClick={() => onSort(field)} className="flex w-full items-center justify-between gap-2 text-left">
+      <span>{children}</span>
+      {active ? (
+        sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+      ) : (
+        <ChevronDown size={14} style={{ color: '#98a2b3' }} />
+      )}
+    </button>
+  );
+}
+
+function StatusChip({ value, tones, fallback }: {
+  value?: string;
+  tones: Record<string, { bg: string; fg: string; border: string; dot: string }>;
+  fallback?: string;
+}) {
+  const tone = tones[value ?? ''] ?? { bg: '#f5f6f7', fg: '#344054', border: '#d8dde6', dot: '#98a2b3' };
+  return (
+    <span className="sn-status-chip" style={{ background: tone.bg, color: tone.fg, borderColor: tone.border }}>
+      <span className="h-2 w-2 rounded-full" style={{ background: tone.dot }} />
+      {fallback ?? value ?? ''}
+    </span>
+  );
+}
 
 export default function ChangeList() {
   const navigate = useNavigate();
-
   const [search, setSearch] = useState('');
-  const [selectedStates, setSelectedStates] = useState<string[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
+  const [type, setType] = useState('');
+  const [state, setState] = useState('');
+  const [risk, setRisk] = useState('');
   const [sortField, setSortField] = useState<SortField>('plannedStartDate');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [page, setPage] = useState(1);
-  const pageSize = 25;
 
-  const hasFilters = search || selectedStates.length > 0 || selectedTypes.length > 0 || selectedRisks.length > 0;
-
-  const clearFilters = () => {
-    setSearch('');
-    setSelectedStates([]);
-    setSelectedTypes([]);
-    setSelectedRisks([]);
-    setPage(1);
-  };
-
-  // ─── API Call ────────────────────────────────────────────────────────────────
-  const { data, isLoading, isError } = useChanges({
+  const { data, isLoading, isError, refetch, isFetching } = useChanges({
     page,
-    limit: pageSize,
+    limit: PAGE_SIZE,
     search: search || undefined,
-    state: selectedStates.length > 0 ? selectedStates[0] : undefined,
-    type: selectedTypes.length > 0 ? selectedTypes[0] : undefined,
-    risk: selectedRisks.length > 0 ? selectedRisks[0] : undefined,
+    type: type || undefined,
+    state: state || undefined,
+    risk: risk || undefined,
     sortBy: sortField,
     sortDir,
   });
 
-  const changes: Change[] = data?.data || [];
+  const changes: Change[] = data?.data ?? [];
   const pagination = data?.pagination;
   const totalItems = pagination?.total ?? changes.length;
-  const totalPages = pagination?.pages ?? Math.max(1, Math.ceil(totalItems / pageSize));
+  const totalPages = pagination?.totalPages ?? pagination?.pages ?? Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const hasFilters = Boolean(search || type || state || risk);
 
-  // ─── Compute KPI from real data ──────────────────────────────────────────────
-  const kpiData = useMemo(() => {
-    const open = changes.filter((c: Change) => !['COMPLETED', 'CANCELLED'].includes(c.state)).length;
-    const implementing = changes.filter((c: Change) => c.state === 'IMPLEMENTING').length;
-    const scheduledThisWeek = changes.filter((c: Change) => {
-      if (c.state !== 'SCHEDULED') return false;
-      const now = new Date();
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 7);
-      const scheduled = new Date(c.plannedStartDate);
-      return scheduled >= startOfWeek && scheduled < endOfWeek;
-    }).length;
-    const completedThisMonth = changes.filter((c: Change) => {
-      if (c.state !== 'COMPLETED') return false;
-      const now = new Date();
-      const created = new Date(c.createdAt);
-      return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
-    }).length;
-    const emergencyCount = changes.filter((c: Change) => c.type === 'EMERGENCY' && !['COMPLETED', 'CANCELLED'].includes(c.state)).length;
-    return { open, implementing, scheduledThisWeek, completedThisMonth, emergencyCount };
-  }, [changes]);
-
-  // ─── Client-side sort for the current page (backend may already sort) ───────
-  const sorted = useMemo(() => {
-    const arr = [...changes];
-    arr.sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case 'number': cmp = a.number.localeCompare(b.number); break;
-        case 'type': cmp = a.type.localeCompare(b.type); break;
-        case 'state': cmp = a.state.localeCompare(b.state); break;
-        case 'risk': cmp = riskWeight[a.risk] - riskWeight[b.risk]; break;
-        case 'shortDescription': cmp = a.shortDescription.localeCompare(b.shortDescription); break;
-        case 'plannedStartDate': cmp = new Date(a.plannedStartDate).getTime() - new Date(b.plannedStartDate).getTime(); break;
+  const rows = useMemo(() => {
+    return [...changes].sort((a, b) => {
+      if (sortField === 'risk') {
+        const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+        return compareValues(rank[riskValue(a)] ?? 99, rank[riskValue(b)] ?? 99, sortDir);
       }
-      return sortDir === 'asc' ? cmp : -cmp;
+      if (sortField === 'plannedStartDate') {
+        return compareValues(new Date(startDate(a) || 0).getTime(), new Date(startDate(b) || 0).getTime(), sortDir);
+      }
+      if (sortField === 'createdAt') {
+        return compareValues(new Date(a.createdAt ?? 0).getTime(), new Date(b.createdAt ?? 0).getTime(), sortDir);
+      }
+      if (sortField === 'number') return compareValues(changeNumber(a), changeNumber(b), sortDir);
+      if (sortField === 'shortDescription') return compareValues(changeTitle(a), changeTitle(b), sortDir);
+      return compareValues(String(a[sortField] ?? ''), String(b[sortField] ?? ''), sortDir);
     });
-    return arr;
   }, [changes, sortField, sortDir]);
 
+  const openCount = changes.filter((item) => !['COMPLETED', 'CLOSED', 'CANCELLED'].includes(item.state ?? '')).length;
+  const emergencyCount = changes.filter((item) => item.type === 'EMERGENCY').length;
+  const implementingCount = changes.filter((item) => item.state === 'IMPLEMENTING').length;
+
   const handleSort = (field: SortField) => {
-    if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortField(field); setSortDir('asc'); }
+    if (field === sortField) {
+      setSortDir((current) => current === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'plannedStartDate' ? 'asc' : 'desc');
+    }
     setPage(1);
   };
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ChevronUp size={14} style={{ color: '#94a3b8' }} />;
-    return sortDir === 'asc' ? <ChevronUp size={14} style={{ color: '#6366f1' }} /> : <ChevronDown size={14} style={{ color: '#6366f1' }} />;
+  const clearFilters = () => {
+    setSearch('');
+    setType('');
+    setState('');
+    setRisk('');
+    setPage(1);
   };
 
   return (
-    <div className="animate-fade-in space-y-0" style={{ background: '#F8FAFC', minHeight: '100vh', margin: '-1.5rem', padding: '1.5rem' }}>
-      {/* ── HERO BANNER ── */}
-      <div className="relative rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #1E293B 0%, #334155 50%, #1E293B 100%)' }}>
-        {/* Dot grid texture overlay */}
-        <div className="absolute inset-0 opacity-[0.12]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.4) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
-        {/* Ambient glow blobs — indigo + violet */}
-        <div className="absolute -top-24 left-1/4 w-[480px] h-[320px] rounded-full blur-[90px] pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(79,70,229,0.40) 0%, transparent 70%)' }} />
-        <div className="absolute -bottom-16 right-10 w-[320px] h-[260px] rounded-full blur-[70px] pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.30) 0%, transparent 70%)' }} />
-
-        <div className="relative px-6 pt-6 pb-14">
-          {/* Title row + quick-action buttons */}
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2.5 mb-1.5">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(79,70,229,0.25)', border: '1px solid rgba(79,70,229,0.35)' }}>
-                  <GitBranch size={16} style={{ color: '#818CF8' }} />
-                </div>
-                <h1 className="font-display text-2xl font-bold tracking-tight" style={{ color: '#ffffff' }}>Change Management</h1>
-              </div>
-              <p className="text-sm ml-[42px]" style={{ color: 'rgba(255,255,255,0.55)' }}>Plan, approve, and track infrastructure changes &middot; <span className="font-mono" style={{ color: '#A5B4FC' }}>{totalItems}</span> total</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => navigate('/changes/calendar')}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)' }}
-              >
-                <Calendar size={15} /> Calendar View
-              </button>
-              <button
-                onClick={() => navigate('/changes/create')}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
-                style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', border: '1px solid rgba(255,255,255,0.20)', boxShadow: '0 4px 20px rgba(79,70,229,0.35)' }}
-              >
-                <Plus size={15} /> New Change
-              </button>
+    <SNPage className="min-h-full" style={{ margin: '-24px', padding: 24, background: sn.shellBg }}>
+      <div className="sn-list-shell">
+        <div className="sn-list-titlebar flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-[22px] font-bold" style={{ color: sn.navy }}>Changes</div>
+            <div className="mt-1 text-[12px]" style={{ color: '#667085' }}>
+              List view: <span className="font-bold">All</span> | Total rows: <span className="font-bold">{totalItems}</span> | Open: <span className="font-bold">{openCount}</span> | Implementing: <span className="font-bold">{implementingCount}</span> | Emergency: <span className="font-bold">{emergencyCount}</span>
             </div>
           </div>
-
-          {/* KPI pills */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-6">
-            {[
-              { label: 'Total Changes', value: totalItems, icon: GitBranch, iconColor: '#A5B4FC' },
-              { label: 'Planned', value: kpiData.scheduledThisWeek, icon: Calendar, iconColor: '#C4B5FD' },
-              { label: 'Implementing', value: kpiData.implementing, icon: Clock, iconColor: '#FCD34D' },
-              { label: 'Emergency', value: kpiData.emergencyCount, icon: AlertTriangle, iconColor: '#FCA5A5' },
-              { label: 'Completed', value: kpiData.completedThisMonth, icon: CheckCircle, iconColor: '#6EE7B7' },
-            ].map((s, i) => (
-              <div
-                key={s.label}
-                className="backdrop-blur-sm rounded-xl p-4 animate-fade-in"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', backdropFilter: 'blur(12px)', animationDelay: `${i * 80}ms` }}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-wide mb-1" style={{ color: 'rgba(255,255,255,0.45)' }}>{s.label}</p>
-                    <p className="font-display text-2xl font-extrabold" style={{ color: '#ffffff' }}>{s.value}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                    <s.icon size={18} style={{ color: s.iconColor }} />
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={() => navigate('/changes/calendar')}>
+              <CalendarDays size={15} />
+              Calendar
+            </button>
+            <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={() => refetch()}>
+              {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+              Refresh
+            </button>
+            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
+              <Plus size={16} />
+              New
+            </button>
           </div>
         </div>
-      </div>
-      {/* Gradient accent line separator */}
-      <div className="h-[3px]" style={{ background: 'linear-gradient(90deg, #4F46E5, #7C3AED, #A5B4FC, transparent)' }} />
 
-      {/* ── FILTER BAR ── */}
-      <div className="-mt-3 relative z-10 rounded-xl p-3 mb-4" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
-            <input type="text" placeholder="Search changes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-full pl-9 pr-3 py-2 rounded-lg text-sm focus:outline-none transition-all" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.12)', color: '#0f172a' }} />
+        <div className="sn-list-toolbar flex flex-col gap-3 px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
+            <div className="relative min-w-[260px] max-w-[520px] flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#667085' }} />
+              <input
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                className="sn-list-input"
+                placeholder="Search changes"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Filter size={16} style={{ color: '#667085' }} />
+              <select value={type} onChange={(event) => { setType(event.target.value); setPage(1); }} className="sn-list-select">
+                <option value="">Type: All</option>
+                {TYPES.map((item) => <option key={item} value={item}>{typeLabel[item]}</option>)}
+              </select>
+              <select value={state} onChange={(event) => { setState(event.target.value); setPage(1); }} className="sn-list-select">
+                <option value="">State: All</option>
+                {STATES.map((item) => <option key={item} value={item}>{stateLabel[item]}</option>)}
+              </select>
+              <select value={risk} onChange={(event) => { setRisk(event.target.value); setPage(1); }} className="sn-list-select">
+                <option value="">Risk: All</option>
+                {RISKS.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}
+              </select>
+              {hasFilters && (
+                <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
+                  <X size={14} />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
-          <div className="w-px h-7 hidden sm:block" style={{ background: 'rgba(99,102,241,0.12)' }} />
-          <div className="flex items-center gap-1.5" style={{ color: '#94a3b8' }}>
-            <Filter size={13} />
-            <span className="text-[10px] font-semibold uppercase tracking-widest">Filters</span>
+
+          <div className="flex items-center gap-2 text-[12px]" style={{ color: '#667085' }}>
+            Page {page} of {totalPages}
+            <button type="button" className="sn-soft-button inline-flex items-center" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+              <ChevronLeft size={15} />
+            </button>
+            <button type="button" className="sn-soft-button inline-flex items-center" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+              <ChevronRight size={15} />
+            </button>
           </div>
-          <select value={selectedTypes[0] || ''} onChange={(e) => setSelectedTypes(e.target.value ? [e.target.value] : [])} className="rounded-lg text-sm px-3 py-1.5 focus:outline-none" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.12)', color: '#0f172a' }}>
-            <option value="" style={{ background: '#ffffff' }}>All Types</option>
-            {ALL_TYPES.map((t) => <option key={t} value={t} style={{ background: '#ffffff' }}>{t}</option>)}
-          </select>
-          <select value={selectedStates[0] || ''} onChange={(e) => setSelectedStates(e.target.value ? [e.target.value] : [])} className="rounded-lg text-sm px-3 py-1.5 focus:outline-none" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.12)', color: '#0f172a' }}>
-            <option value="" style={{ background: '#ffffff' }}>All States</option>
-            {ALL_STATES.map((s) => <option key={s} value={s} style={{ background: '#ffffff' }}>{s}</option>)}
-          </select>
-          <select value={selectedRisks[0] || ''} onChange={(e) => setSelectedRisks(e.target.value ? [e.target.value] : [])} className="rounded-lg text-sm px-3 py-1.5 focus:outline-none" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.12)', color: '#0f172a' }}>
-            <option value="" style={{ background: '#ffffff' }}>All Risks</option>
-            {ALL_RISKS.map((r) => <option key={r} value={r} style={{ background: '#ffffff' }}>{r}</option>)}
-          </select>
-          {hasFilters && (
-            <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all" style={{ color: '#94a3b8', border: '1px solid rgba(99,102,241,0.12)' }}><X size={13} /> Clear</button>
-          )}
         </div>
-      </div>
 
-      {/* Data Table */}
-      <div className="rounded-xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'rgba(99,102,241,0.04)', borderBottom: '1px solid rgba(99,102,241,0.12)' }}>
-                {([['number', 'Number'], ['type', 'Type'], ['state', 'State'], ['risk', 'Risk'], ['shortDescription', 'Description'], ['plannedStartDate', 'Scheduled']] as [SortField, string][]).map(([field, label]) => (
-                  <th key={field} onClick={() => handleSort(field)} className="px-4 py-2.5 text-left cursor-pointer select-none transition-colors">
-                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#94a3b8' }}>{label} <SortIcon field={field} /></span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid rgba(99,102,241,0.08)' }} className="animate-pulse">
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 rounded w-3/4" style={{ background: 'rgba(99,102,241,0.10)' }} /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : isError ? (
-                <tr><td colSpan={6} className="px-4 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <AlertTriangle size={40} style={{ color: '#EF4444' }} />
-                    <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Failed to load changes</p>
-                    <p className="text-sm" style={{ color: '#94a3b8' }}>Please try again later.</p>
-                  </div>
-                </td></tr>
-              ) : sorted.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-16 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <GitBranch size={40} style={{ color: '#94a3b8' }} />
-                    <p className="text-lg font-medium" style={{ color: '#94a3b8' }}>No changes found</p>
-                  </div>
-                </td></tr>
-              ) : sorted.map((chg) => (
-                <tr key={chg.id} onClick={() => navigate(`/changes/${chg.id}`)} className="cursor-pointer transition-colors group" style={{ borderBottom: '1px solid rgba(99,102,241,0.08)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.06)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <td className="px-4 py-3"><span className="font-mono group-hover:underline" style={{ color: '#6366f1' }}>{chg.number}</span></td>
-                  <td className="px-4 py-3"><span className="badge text-[10px] px-2 py-0.5 rounded-md font-mono" style={typeStyle[chg.type]}>{chg.type}</span></td>
-                  <td className="px-4 py-3"><span className="badge text-[10px] px-2 py-0.5 rounded-md" style={stateStyle[chg.state]}>{chg.state.replace('_', ' ')}</span></td>
-                  <td className="px-4 py-3"><span className="badge text-[10px] px-2 py-0.5 rounded-md" style={riskStyle[chg.risk]}>{chg.risk}</span></td>
-                  <td className="px-4 py-3 max-w-xs truncate" style={{ color: '#6366f1' }}>{chg.shortDescription}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs font-mono" style={{ color: '#94a3b8' }}>{formatShortDate(chg.plannedStartDate)}</td>
+        {isError ? (
+          <div className="sn-list-empty flex items-center justify-center text-sm font-bold" style={{ color: sn.critical }}>
+            Unable to load changes.
+          </div>
+        ) : isLoading ? (
+          <div className="sn-list-empty flex items-center justify-center gap-3 text-sm font-bold" style={{ color: '#667085' }}>
+            <Loader2 size={18} className="animate-spin" />
+            Loading changes...
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
+            <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
+            <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new change record.</div>
+            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
+              <Plus size={16} />
+              New Change
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="sn-list-table">
+              <colgroup>
+                <col style={{ width: 42 }} />
+                <col style={{ width: 132 }} />
+                <col style={{ width: 118 }} />
+                <col style={{ width: 142 }} />
+                <col style={{ width: 118 }} />
+                <col style={{ width: 410 }} />
+                <col style={{ width: 160 }} />
+                <col style={{ width: 168 }} />
+                <col style={{ width: 168 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th><input type="checkbox" aria-label="Select all changes" /></th>
+                  <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
+                  <th><SortButton field="type" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Type</SortButton></th>
+                  <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
+                  <th><SortButton field="risk" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Risk</SortButton></th>
+                  <th><SortButton field="shortDescription" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Short description</SortButton></th>
+                  <th>Requested by</th>
+                  <th><SortButton field="plannedStartDate" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Planned start</SortButton></th>
+                  <th><SortButton field="createdAt" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Created</SortButton></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {!isLoading && totalItems > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 text-sm" style={{ borderTop: '1px solid rgba(99,102,241,0.12)' }}>
-            <span style={{ color: '#94a3b8' }}>{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} of {totalItems}</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg transition-colors" style={{ color: page === 1 ? '#94a3b8' : '#64748b' }}><ChevronLeft size={18} /></button>
-              <span className="px-3" style={{ color: '#94a3b8' }}>{page} / {totalPages}</span>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded-lg transition-colors" style={{ color: page === totalPages ? '#94a3b8' : '#64748b' }}><ChevronRight size={18} /></button>
-            </div>
+              </thead>
+              <tbody>
+                {rows.map((change) => (
+                  <tr key={change.id} onDoubleClick={() => navigate(`/changes/${change.id}`)}>
+                    <td><input type="checkbox" aria-label={`Select ${changeNumber(change)}`} /></td>
+                    <td>
+                      <button type="button" className="sn-list-link" onClick={() => navigate(`/changes/${change.id}`)}>
+                        {changeNumber(change)}
+                      </button>
+                    </td>
+                    <td><StatusChip value={change.type} tones={typeTone} fallback={typeLabel[change.type ?? ''] ?? change.type} /></td>
+                    <td><StatusChip value={change.state} tones={stateTone} fallback={stateLabel[change.state ?? ''] ?? change.state} /></td>
+                    <td><StatusChip value={riskValue(change)} tones={riskTone} fallback={riskValue(change)} /></td>
+                    <td className="truncate" title={changeTitle(change)}>{changeTitle(change)}</td>
+                    <td className="truncate" title={personName(change.requestedBy ?? change.assignedTo)}>{personName(change.requestedBy ?? change.assignedTo) || '-'}</td>
+                    <td>{formatDateTime(startDate(change))}</td>
+                    <td>{formatDateTime(change.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
-
-      {/* Loading overlay */}
-      {isLoading && (
-        <div className="flex justify-center py-8">
-          <Loader2 size={28} className="animate-spin" style={{ color: '#6366f1' }} />
-        </div>
-      )}
-    </div>
+    </SNPage>
   );
 }

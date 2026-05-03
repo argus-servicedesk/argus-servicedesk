@@ -5,15 +5,18 @@ from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
 from apps.common.mixins import OrgQuerysetMixin
+from apps.common.permissions import DenyViewerMutations, IsAdminOrManager
 from apps.common.responses import success
-from apps.incidents.models import Incident
+
 
 from .models import Team, TeamMember
-from .serializers import TeamCreateSerializer, TeamMemberSerializer, TeamSerializer, TeamUpdateSerializer
+from .serializers import (
+    TeamCreateSerializer, TeamMemberSerializer, TeamSerializer, TeamUpdateSerializer
+)
 
 
 class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['is_active']
     queryset = Team.objects.all()
@@ -40,6 +43,8 @@ class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
         return self.get_paginated_response(serializer.data)
     
     def create(self, request, *args, **kwargs):
+        if not IsAdminOrManager().has_permission(request, self):
+            return success({}, "Only admins and managers can create teams", 403)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         team = serializer.save()
@@ -47,7 +52,7 @@ class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
 
 
 class TeamDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
     queryset = Team.objects.all()
     
     def get_serializer_class(self):
@@ -58,9 +63,14 @@ class TeamDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
     def get_queryset(self):
         return super().get_queryset().select_related('manager').prefetch_related('members')
 
+    def partial_update(self, request, *args, **kwargs):
+        if not IsAdminOrManager().has_permission(request, self):
+            return success({}, "Only admins and managers can update teams", 403)
+        return super().partial_update(request, *args, **kwargs)
+
 
 class TeamMemberCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
     serializer_class = TeamMemberSerializer
     
     def perform_create(self, serializer):
@@ -113,7 +123,7 @@ class OnCallOverviewView(generics.GenericAPIView):
 
 
 class TeamOnCallView(generics.GenericAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def get(self, request, team_id):
         team = Team.objects.filter(id=team_id, organization=request.organization).first()
@@ -123,6 +133,8 @@ class TeamOnCallView(generics.GenericAPIView):
         return success({"schedules": [_member_payload(member) for member in members]})
 
     def post(self, request, team_id):
+        if not IsAdminOrManager().has_permission(request, self):
+            return success({}, "Only admins and managers can manage on-call", 403)
         return success(
             {
                 "teamId": team_id,

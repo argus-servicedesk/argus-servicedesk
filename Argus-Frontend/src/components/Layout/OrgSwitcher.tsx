@@ -18,7 +18,7 @@ const envColors: Record<string, { bg: string; color: string; border: string }> =
   PROD: { bg: 'rgba(5,150,105,0.08)', color: '#059669', border: '1px solid rgba(5,150,105,0.2)' },
   DR: { bg: 'rgba(217,119,6,0.08)', color: '#D97706', border: '1px solid rgba(217,119,6,0.2)' },
   UAT: { bg: 'rgba(14,165,233,0.08)', color: '#0EA5E9', border: '1px solid rgba(14,165,233,0.2)' },
-  DEV: { bg: 'rgba(168,85,247,0.08)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.2)' },
+  DEV: { bg: '#eef2f6', color: '#344054', border: '1px solid #d8dde6' },
 };
 
 export default function OrgSwitcher() {
@@ -59,7 +59,7 @@ export default function OrgSwitcher() {
 
   if (!isSuperAdmin) return null;
 
-  const defaultEnvStyle = { bg: 'rgba(99,102,241,0.04)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' };
+  const defaultEnvStyle = { bg: '#eef2f6', color: '#344054', border: '1px solid #d8dde6' };
 
   return (
     <div ref={ref} className="relative px-3 mb-2">
@@ -67,8 +67,8 @@ export default function OrgSwitcher() {
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
         style={{
-          background: '#e8e4fd',
-          border: '1px solid rgba(99,102,241,0.12)',
+          background: '#ffffff',
+          border: '1px solid #c6ccd5',
           color: '#0f172a',
         }}
         onMouseEnter={(e) => {
@@ -80,7 +80,7 @@ export default function OrgSwitcher() {
           e.currentTarget.style.borderColor = '#e2e8f0';
         }}
       >
-        <Building2 size={14} style={{ color: '#6366f1' }} className="shrink-0" />
+        <Building2 size={14} style={{ color: '#001d5b' }} className="shrink-0" />
         <span className="truncate flex-1 text-left">
           {selected ? selected.name : 'All Organizations'}
         </span>

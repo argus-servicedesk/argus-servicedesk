@@ -3,9 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import {
   Eye, EyeOff, Shield, Zap, ArrowRight,
   Server, Bell, Brain, Lock, ChevronRight,
-  CheckCircle2, Globe, User, Mail, KeyRound,
+  CheckCircle2, Globe, User as UserIcon, Mail, KeyRound,
 } from 'lucide-react';
-import { useAuthStore } from '../../stores/authStore';
+import { useAuthStore, type User } from '../../stores/authStore';
 
 // ══════════════════════════════════════════════════════════════
 // Feature bullet for left panel (shared with LoginPage design)
@@ -144,18 +144,66 @@ export default function SignupPage() {
           role: 'ENGINEER',
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        // Show detailed validation errors if available
-        if (data.details?.length) {
-          throw new Error(data.details.map((d: any) => d.msg).join('\n'));
-        }
-        throw new Error(data.error || 'Signup failed');
+      const envelope = await res.json();
+
+      function formatApiFailure(body: Record<string, unknown>): string {
+        const flattenErrors = (
+          errObj: Record<string, unknown> | null
+        ): string | null => {
+          if (!errObj) return null;
+          const parts = Object.entries(errObj).flatMap(([k, v]) => {
+            const s = Array.isArray(v)
+              ? (v as unknown[]).map((x: unknown) => String(x)).join(', ')
+              : typeof v === 'object' && v !== null
+                ? JSON.stringify(v)
+                : String(v ?? '');
+            return s ? `${k}: ${s}` : [];
+          });
+          return parts.length ? parts.join('\n') : null;
+        };
+
+        const msg = body.message;
+        const errObj =
+          typeof body.errors === 'object' &&
+          body.errors !== null &&
+          Object.keys(body.errors as object).length > 0
+            ? (body.errors as Record<string, unknown>)
+            : typeof body.message === 'object' && body.message !== null
+              ? (body.message as Record<string, unknown>)
+              : null;
+
+        const fieldLines = flattenErrors(errObj);
+        if (fieldLines) return fieldLines;
+
+        if (typeof msg === 'string' && msg.trim()) return msg.trim();
+        const errSingle =
+          typeof (body as Record<string, unknown>).error === 'string'
+            ? ((body as Record<string, unknown>).error as string)
+            : '';
+        return errSingle || 'Signup failed';
       }
 
-      // Auto-login: tokens now in httpOnly cookies, just set user in store
+      if (!res.ok || envelope.success === false) {
+        if (typeof envelope.details !== 'undefined' && Array.isArray((envelope as any).details)) {
+          throw new Error(
+            ((envelope as any).details as { msg?: string }[]).map((d) => d.msg).join('\n')
+          );
+        }
+        throw new Error(formatApiFailure(envelope as Record<string, unknown>));
+      }
+
+      const bundle = envelope.data ?? {};
+      const rawUser = (bundle as { user?: unknown }).user ?? bundle;
+      const { access, refresh } = bundle as {
+        access?: string;
+        refresh?: string;
+      };
+
       const { setUser } = useAuthStore.getState();
-      setUser(data.data.user);
+      setUser(rawUser as User, {
+        access: access ?? null,
+        refresh: refresh ?? null,
+      });
 
       navigate('/dashboard');
     } catch (err: any) {
@@ -404,7 +452,7 @@ export default function SignupPage() {
                       }}
                       autoFocus
                     />
-                    <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
+                    <UserIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
                   </div>
                 </div>
                 <div>

@@ -20,6 +20,7 @@ from rest_framework import serializers
 
 from apps.changes.models import Change
 from apps.accounts.serializers import UserSerializer
+from apps.incidents.models import Activity
 from apps.organizations.serializers import OrganizationSerializer
 from apps.teams.models import Team
 
@@ -34,6 +35,11 @@ def _generate_problem_number() -> str:
     """PRB + 4-digit year + 6 random digits, e.g. PRB20260012345."""
     suffix = "".join(random.choices(string.digits, k=6))
     return f"PRB{timezone.now().year}{suffix}"
+
+
+def _generate_known_error_id() -> str:
+    suffix = "".join(random.choices(string.digits, k=6))
+    return f"KE{timezone.now().year}{suffix}"
 
 
 # ─── Nested serializers ───────────────────────────────────────────────────────
@@ -67,6 +73,14 @@ class WorkNoteReadSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
+class ActivityReadSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Activity
+        fields = ["id", "action", "description", "old_value", "new_value", "user", "created_at"]
+
+
 # ─── Main serializers ─────────────────────────────────────────────────────────
 
 class ProblemSerializer(serializers.ModelSerializer):
@@ -81,6 +95,8 @@ class ProblemSerializer(serializers.ModelSerializer):
     related_change_info = serializers.SerializerMethodField()
     linked_incidents = LinkedIncidentSerializer(many=True, read_only=True)
     work_notes = WorkNoteReadSerializer(many=True, read_only=True)
+    activities = ActivityReadSerializer(many=True, read_only=True)
+    available_transitions = serializers.SerializerMethodField()
 
     class Meta:
         model = Problem
@@ -108,9 +124,11 @@ class ProblemSerializer(serializers.ModelSerializer):
             "related_change_info",
             "is_known_error",
             "known_error_id",
+            "available_transitions",
             # nested
             "linked_incidents",
             "work_notes",
+            "activities",
             # meta
             "organization",
             "created_at",
@@ -134,6 +152,23 @@ class ProblemSerializer(serializers.ModelSerializer):
                 "short_description": obj.related_change.short_description,
             }
         return None
+
+    def get_available_transitions(self, obj: Problem) -> list[str]:
+        transitions: dict[str, list[str]] = {
+            Problem.State.NEW: [Problem.State.INVESTIGATION],
+            Problem.State.INVESTIGATION: [
+                Problem.State.RCA_IN_PROGRESS,
+                Problem.State.KNOWN_ERROR,
+            ],
+            Problem.State.RCA_IN_PROGRESS: [
+                Problem.State.KNOWN_ERROR,
+                Problem.State.RESOLVED,
+            ],
+            Problem.State.KNOWN_ERROR: [Problem.State.RESOLVED],
+            Problem.State.RESOLVED: [Problem.State.CLOSED, Problem.State.INVESTIGATION],
+            Problem.State.CLOSED: [Problem.State.INVESTIGATION],
+        }
+        return transitions.get(obj.state, [])
 
 
 class ProblemCreateSerializer(serializers.ModelSerializer):
@@ -164,6 +199,9 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
             "assigned_to",
             "assignment_group",
             "related_change",
+            "root_cause",
+            "workaround",
+            "permanent_fix",
         ]
 
     def validate_short_description(self, value: str) -> str:
@@ -262,8 +300,8 @@ class ProblemUpdateSerializer(serializers.ModelSerializer):
                 Problem.State.RESOLVED,
             ],
             Problem.State.KNOWN_ERROR: [Problem.State.RESOLVED],
-            Problem.State.RESOLVED: [Problem.State.CLOSED],
-            Problem.State.CLOSED: [],
+            Problem.State.RESOLVED: [Problem.State.CLOSED, Problem.State.INVESTIGATION],
+            Problem.State.CLOSED: [Problem.State.INVESTIGATION],
         }
 
         allowed = transitions.get(instance.state, [])
@@ -273,6 +311,14 @@ class ProblemUpdateSerializer(serializers.ModelSerializer):
                 f"Allowed: {allowed or ['none']}."
             )
         return value
+
+    def update(self, instance: Problem, validated_data: dict) -> Problem:
+        target_state = validated_data.get("state", instance.state)
+        target_known_error = validated_data.get("is_known_error", instance.is_known_error)
+        if (target_state == Problem.State.KNOWN_ERROR or target_known_error) and not instance.known_error_id and not validated_data.get("known_error_id"):
+            validated_data["is_known_error"] = True
+            validated_data["known_error_id"] = _generate_known_error_id()
+        return super().update(instance, validated_data)
 
 
 class WorkNoteCreateSerializer(serializers.Serializer):
