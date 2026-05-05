@@ -130,7 +130,7 @@ export default function ProblemCreate() {
               <SNReadOnly>{nowForHeader()}</SNReadOnly>
             </SNRecordField>
 
-            <SNRecordField label="Reporter" required>
+            <SNRecordField label="Requested By" required>
               <SNReadOnly>Current User</SNReadOnly>
             </SNRecordField>
             <SNRecordField label="Category">
@@ -140,10 +140,7 @@ export default function ProblemCreate() {
               </select>
             </SNRecordField>
 
-            <SNRecordField label="State">
-              <SNReadOnly>New</SNReadOnly>
-            </SNRecordField>
-            <SNRecordField label="Priority">
+            <SNRecordField label="Priority Level">
               <select className="sn-field" {...register('priority')}>
                 {PRIORITIES.map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}
               </select>

@@ -179,7 +179,7 @@ export default function IncidentCreate() {
               <SNReadOnly>{nowForHeader()}</SNReadOnly>
             </SNRecordField>
 
-            <SNRecordField label="Caller" required>
+            <SNRecordField label="Requested By" required>
               <SNReadOnly>Monitoring System</SNReadOnly>
             </SNRecordField>
             <SNRecordField label="Category">
@@ -192,15 +192,12 @@ export default function IncidentCreate() {
             <SNRecordField label="Subcategory">
               <input className="sn-field" placeholder="Optional subcategory" {...register('subcategory')} />
             </SNRecordField>
-            <SNRecordField label="Contact Type">
+            <SNRecordField label="Source">
               <select className="sn-field" {...register('source')}>
                 {SOURCES.map((source) => <option key={source} value={source}>{labelize(source)}</option>)}
               </select>
             </SNRecordField>
 
-            <SNRecordField label="State">
-              <SNReadOnly>New</SNReadOnly>
-            </SNRecordField>
             <SNRecordField label="Impact">
               <select className="sn-field" {...register('impact')}>
                 {IMPACTS.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}
@@ -212,10 +209,7 @@ export default function IncidentCreate() {
                 {URGENCIES.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}
               </select>
             </SNRecordField>
-            <SNRecordField label="Priority">
-              <SNReadOnly color={priority === 'P1' ? sn.critical : undefined}>{PRIORITY_LABEL[priority]}</SNReadOnly>
-            </SNRecordField>
-
+            
             <SNRecordField label="Assignment Group">
               <select className="sn-field" {...register('assignmentGroupId')}>
                 <option value="">-- None --</option>
@@ -235,10 +229,7 @@ export default function IncidentCreate() {
                 {configItems.map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
               </select>
             </SNRecordField>
-            <SNRecordField label="SLA">
-              <SNReadOnly>Calculated after insert</SNReadOnly>
-            </SNRecordField>
-
+            
             <SNRecordField label="Short Description" required fullWidth>
               <div className="w-full">
                 <input

@@ -146,16 +146,13 @@ export default function ChangeCreate() {
             <SNRecordField label="Requested By" required>
               <SNReadOnly>Current User</SNReadOnly>
             </SNRecordField>
-            <SNRecordField label="Type">
+            <SNRecordField label="Change Type">
               <select className="sn-field" {...register('type')}>
                 {CHANGE_TYPES.map((type) => <option key={type} value={type}>{labelize(type)}</option>)}
               </select>
             </SNRecordField>
 
-            <SNRecordField label="State">
-              <SNReadOnly>New</SNReadOnly>
-            </SNRecordField>
-            <SNRecordField label="Risk">
+            <SNRecordField label="Risk Level">
               <select className="sn-field" {...register('riskLevel')}>
                 {RISK_LEVELS.map((risk) => <option key={risk} value={risk}>{labelize(risk)}</option>)}
               </select>
