@@ -20,7 +20,7 @@ import {
 type Impact = 'ENTERPRISE' | 'DEPARTMENT' | 'TEAM' | 'INDIVIDUAL';
 type Urgency = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 type Priority = 'P1' | 'P2' | 'P3' | 'P4';
-type Source = 'MANUAL' | 'PROMETHEUS' | 'GRAFANA' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
+type Source = 'MANUAL' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
 
 interface IncidentFormData {
   shortDescription: string;
@@ -52,7 +52,7 @@ const PRIORITY_LABEL: Record<Priority, string> = {
 const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', 'Cloud Infrastructure', 'Application', 'Monitoring', 'Access Management', 'Other'];
 const IMPACTS: Impact[] = ['ENTERPRISE', 'DEPARTMENT', 'TEAM', 'INDIVIDUAL'];
 const URGENCIES: Urgency[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-const SOURCES: Source[] = ['MANUAL', 'PROMETHEUS', 'GRAFANA', 'API', 'EMAIL', 'VOICE', 'SLACK'];
+const SOURCES: Source[] = ['MANUAL', 'API', 'EMAIL', 'VOICE', 'SLACK'];
 
 function labelize(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());

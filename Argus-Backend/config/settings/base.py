@@ -152,6 +152,8 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "FORMAT_SUFFIX_KWARG": None,
+    "URL_FORMAT_OVERRIDE": None,
 }
 
 SIMPLE_JWT = {

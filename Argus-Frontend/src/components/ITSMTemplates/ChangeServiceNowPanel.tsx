@@ -114,9 +114,7 @@ export default function ChangeServiceNowPanel({
     setClosureCode(change.closureCode || '');
   }, [change.id, change.updatedAt]);
 
-  const stateOptions = Array.from(
-    new Set([change.state, ...(((change as any).availableTransitions || []) as string[])].filter(Boolean)),
-  );
+  const stateOptions = Object.keys(CHANGE_STATE_LABELS);
   const approvals = Array.isArray(change.approvals) ? change.approvals : [];
   const affectedCis = Array.isArray(change.affectedCIs || change.affectedCis) ? (change.affectedCIs || change.affectedCis) : [];
   const linkedIncidents = Array.isArray(change.linkedIncidents) ? change.linkedIncidents : [];

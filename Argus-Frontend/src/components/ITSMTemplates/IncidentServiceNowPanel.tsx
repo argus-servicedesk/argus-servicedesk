@@ -194,16 +194,11 @@ export default function IncidentServiceNowPanel({
     setResolutionNotes(incident.resolutionNotes || '');
   }, [incident.id, incident.updatedAt, state]);
 
-  const stateDropdownOptions = (() => {
-    const opts: { value: IncidentState; label: string }[] = [];
-    const add = (v: IncidentState) => {
-      if (opts.some((o) => o.value === v)) return;
-      opts.push({ value: v, label: STATE_LABEL[v] || String(v).replace(/_/g, ' ') });
-    };
-    add(state);
-    (incTransitions as IncidentState[]).forEach(add);
-    return opts;
-  })();
+  const stateDropdownOptions = Object.keys(STATE_LABEL).map((value) => ({
+    value: value as IncidentState,
+    label: STATE_LABEL[value] || String(value).replace(/_/g, ' '),
+    isTransition: (incTransitions as string[]).includes(value)
+  }));
 
   async function handleUpdate() {
     const data: Record<string, unknown> = {};
@@ -240,8 +235,15 @@ export default function IncidentServiceNowPanel({
       await updateIncident.mutateAsync({ id: incidentId, data });
       toast.success('Record updated');
     } catch (e: unknown) {
-      const err = e as { message?: string };
-      toast.error(err?.message || 'Update failed');
+      const err = e as { response?: { data?: { error?: string; code?: string; details?: any } }; message?: string };
+      const errorMessage = err?.response?.data?.error || err?.message || 'Update failed';
+      
+      // Show specific error for invalid state transitions
+      if (err?.response?.data?.code === 'INVALID_STATE_TRANSITION' || errorMessage.includes('Cannot transition')) {
+        toast.error(`Invalid state transition: ${errorMessage}`);
+      } else {
+        toast.error(errorMessage);
+      }
     }
   }
 
@@ -362,8 +364,15 @@ export default function IncidentServiceNowPanel({
             <SNFormRow label="State">
               <select className="sn-field" value={stateSel} onChange={(e) => setStateSel(e.target.value as IncidentState)}>
                 {stateDropdownOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+                  <option 
+                    key={o.value} 
+                    value={o.value}
+                    style={{ 
+                      color: o.isTransition || o.value === state ? 'inherit' : '#999',
+                      fontWeight: o.isTransition || o.value === state ? 'normal' : 'normal'
+                    }}
+                  >
+                    {o.label} {!o.isTransition && o.value !== state ? '(Invalid)' : ''}
                   </option>
                 ))}
               </select>

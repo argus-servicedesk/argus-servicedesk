@@ -97,9 +97,7 @@ export default function ProblemServiceNowPanel({
     setPermanentFix(problem.permanentFix || '');
   }, [problem.id, problem.updatedAt]);
 
-  const stateOptions = Array.from(
-    new Set([problem.state, ...(((problem as any).availableTransitions || []) as string[])].filter(Boolean)),
-  );
+  const stateOptions = Object.keys(PROBLEM_STATE_LABELS);
   const linkedIncidents = Array.isArray(problem.linkedIncidents) ? problem.linkedIncidents : [];
   const workNotes = Array.isArray(problem.workNotes) ? problem.workNotes : [];
   const activities = Array.isArray(problem.activities) ? problem.activities : [];

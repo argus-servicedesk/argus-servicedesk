@@ -113,7 +113,7 @@ urlpatterns = [
     path("api/v1/search/", include("apps.search.urls")),
     path("api/v1/search", include("apps.search.urls")),
     path("api/v1/apm/", include("apps.apm.urls")),
-    path("api/v1/domain/", include("apps.domain.urls")),
+    # path("api/v1/domain/", include("apps.domain.urls")),  # Temporarily disabled due to converter conflict
     path("api/v1/eod/", include("apps.eod.urls")),
     path("api/v1/ill-bandwidth/", include("apps.illbandwidth.urls")),
     path("api/v1/oms/", include("apps.oms.urls")),

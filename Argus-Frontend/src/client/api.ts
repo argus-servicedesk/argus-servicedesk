@@ -3490,15 +3490,13 @@ export interface components {
         SeverityEnum: "CRITICAL" | "WARNING" | "INFO";
         /**
          * @description * `MANUAL` - Manual
-         *     * `PROMETHEUS` - Prometheus
-         *     * `GRAFANA` - Grafana
          *     * `API` - API
          *     * `EMAIL` - Email
          *     * `VOICE` - Voice
          *     * `SLACK` - Slack
          * @enum {string}
          */
-        Source488Enum: "MANUAL" | "PROMETHEUS" | "GRAFANA" | "API" | "EMAIL" | "VOICE" | "SLACK";
+        Source488Enum: "MANUAL" | "API" | "EMAIL" | "VOICE" | "SLACK";
         /**
          * @description * `NEW` - New
          *     * `IN_PROGRESS` - In Progress

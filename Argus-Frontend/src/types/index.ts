@@ -10,7 +10,7 @@ export type IncidentState = 'NEW' | 'IN_PROGRESS' | 'ON_HOLD' | 'ESCALATED' | 'R
 export type Impact = 'ENTERPRISE' | 'DEPARTMENT' | 'TEAM' | 'INDIVIDUAL';
 export type Urgency = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
-export type IncidentSource = 'MANUAL' | 'PROMETHEUS' | 'GRAFANA' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
+export type IncidentSource = 'MANUAL' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
 
 export type ChangeType = 'NORMAL' | 'STANDARD' | 'EMERGENCY';
 export type ChangeState = 'NEW' | 'ASSESSMENT' | 'APPROVAL' | 'SCHEDULED' | 'IMPLEMENTING' | 'REVIEW' | 'CLOSED' | 'CANCELLED';

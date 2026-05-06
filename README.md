@@ -120,3 +120,6 @@ Proprietary - FinSpot Technology Solutions Pvt Ltd
 ## Support
 
 For support, contact the development team.
+
+
+python manage.py runserver 0.0.0.0:8000
