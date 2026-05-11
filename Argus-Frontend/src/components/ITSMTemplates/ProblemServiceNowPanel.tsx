@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, Send, FileText, CheckCircle } from 'lucide-react';
 import {
   SNFieldGrid,
   SNFormRow,
@@ -15,6 +15,8 @@ import {
   SNEmptyRelatedList,
   sn,
 } from './ServiceNowUI';
+import { useAuth } from '../../hooks/useAuth';
+import { useAiRCA, useAddProblemWorkNote } from '../../hooks/useProblems';
 
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
 const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', 'Cloud', 'Infrastructure', 'Application', 'Configuration', 'Human Error', 'Other'];
@@ -77,6 +79,12 @@ export default function ProblemServiceNowPanel({
   };
 }) {
   const navigate = useNavigate();
+  const { isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
+  const canModify = canManage('problems');
+
+  const aiRCA = useAiRCA();
+  const addWorkNote = useAddProblemWorkNote(problem?.id || '');
+
   const [shortDescription, setShortDescription] = useState(problem.shortDescription || '');
   const [description, setDescription] = useState(problem.description || '');
   const [priority, setPriority] = useState(problem.priority || 'P3');
@@ -85,6 +93,8 @@ export default function ProblemServiceNowPanel({
   const [rootCause, setRootCause] = useState(problem.rootCause || '');
   const [workaround, setWorkaround] = useState(problem.workaround || '');
   const [permanentFix, setPermanentFix] = useState(problem.permanentFix || '');
+  
+  const [newWorkNote, setNewWorkNote] = useState('');
 
   useEffect(() => {
     setShortDescription(problem.shortDescription || '');
@@ -146,6 +156,26 @@ export default function ProblemServiceNowPanel({
     });
   }
 
+  async function handleAiRCA() {
+    try {
+      await aiRCA.mutateAsync(problem.id);
+      toast.success('AI RCA Analysis Complete. See Work Notes.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || err?.message || 'AI RCA failed');
+    }
+  }
+
+  async function handleAddWorkNote() {
+    if (!newWorkNote.trim()) return;
+    try {
+      await addWorkNote.mutateAsync({ content: newWorkNote, isInternal: true });
+      toast.success('Work note added');
+      setNewWorkNote('');
+    } catch (err: any) {
+      toast.error('Failed to add work note');
+    }
+  }
+
   const stateTone = state === 'RESOLVED' || state === 'CLOSED' ? 'success' : state === 'KNOWN_ERROR' ? 'critical' : state === 'NEW' ? 'warn' : 'progress';
 
   return (
@@ -156,26 +186,43 @@ export default function ProblemServiceNowPanel({
         priorityPill={<SNPillBadge label={PRIORITY_LABELS[priority] || priority} tone={priorityTone(priority)} dot={priority === 'P1'} />}
         statePill={<SNPillBadge label={(PROBLEM_STATE_LABELS[state] || state).toUpperCase()} tone={stateTone} icon={stateTone === 'progress' ? Loader2 : undefined} />}
         extraBadges={problem.isKnownError ? <SNPillBadge label={problem.knownErrorId || 'Known Error'} tone="critical" /> : null}
-        onClone={handleClone}
+        onClone={canModify ? handleClone : undefined}
         onLink={() => {
           navigator.clipboard.writeText(window.location.href);
           toast.success('Problem link copied');
         }}
         onPrint={() => window.print()}
-        onUpdate={handleUpdate}
+        onUpdate={canModify ? handleUpdate : undefined}
         updateLoading={Boolean(updateProblem.isPending)}
-        secondaryActions={state === 'RESOLVED' || state === 'CLOSED' ? (
-          <button
-            type="button"
-            className="sn-soft-button"
-            onClick={() => {
-              setState('INVESTIGATION');
-              toast('State set to Investigation. Click Update to confirm.');
-            }}
-          >
-            Reopen
-          </button>
-        ) : undefined}
+        secondaryActions={
+          <div className="flex items-center gap-2 flex-wrap">
+            {canManage && state !== 'RESOLVED' && state !== 'CLOSED' && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => {
+                  setState('RESOLVED');
+                  toast('State set to Resolved. Click Update to confirm.');
+                }}
+                style={{ borderColor: '#067647', color: '#067647' }}
+              >
+                <CheckCircle size={12} /> Resolve
+              </button>
+            )}
+            {canManage && (state === 'RESOLVED' || state === 'CLOSED') && (
+              <button
+                type="button"
+                className="sn-soft-button"
+                onClick={() => {
+                  setState('INVESTIGATION');
+                  toast('State set to Investigation. Click Update to confirm.');
+                }}
+              >
+                Reopen
+              </button>
+            )}
+          </div>
+        }
       />
 
       <SNProcessRibbon steps={['NEW', 'INVESTIGATION', 'RCA_IN_PROGRESS', 'KNOWN_ERROR', 'RESOLVED', 'CLOSED']} current={state} />
@@ -228,21 +275,39 @@ export default function ProblemServiceNowPanel({
             <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Description" fullWidth>
-            <textarea className="sn-field" value={description} onChange={(event) => setDescription(event.target.value)} />
+            <textarea className="sn-field" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
 
       <SNCollapsibleSection title="Root cause analysis">
         <SNFieldGrid>
+          <SNFormRow label="AI RCA Assistance" fullWidth>
+            <div className="flex items-center gap-4 bg-slate-50 p-3 border rounded-md">
+              <Sparkles className="text-purple-600 shrink-0" size={24} />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-900">Run Automated Root Cause Analysis</p>
+                <p className="text-xs text-slate-500">Analyze linked incidents and problem description to generate a preliminary RCA.</p>
+              </div>
+              <button
+                type="button"
+                className="sn-primary-button whitespace-nowrap"
+                style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                onClick={handleAiRCA}
+                disabled={aiRCA.isPending}
+              >
+                {aiRCA.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Analyzing...</> : 'Generate RCA'}
+              </button>
+            </div>
+          </SNFormRow>
           <SNFormRow label="Root cause" fullWidth>
-            <textarea className="sn-field" value={rootCause} onChange={(event) => setRootCause(event.target.value)} />
+            <textarea className="sn-field" rows={4} value={rootCause} onChange={(event) => setRootCause(event.target.value)} placeholder="Describe the underlying cause..." />
           </SNFormRow>
           <SNFormRow label="Workaround" fullWidth>
-            <textarea className="sn-field" value={workaround} onChange={(event) => setWorkaround(event.target.value)} />
+            <textarea className="sn-field" rows={3} value={workaround} onChange={(event) => setWorkaround(event.target.value)} placeholder="Temporary fix or mitigation..." />
           </SNFormRow>
           <SNFormRow label="Permanent fix" fullWidth>
-            <textarea className="sn-field" value={permanentFix} onChange={(event) => setPermanentFix(event.target.value)} />
+            <textarea className="sn-field" rows={3} value={permanentFix} onChange={(event) => setPermanentFix(event.target.value)} placeholder="Long-term resolution..." />
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
@@ -327,7 +392,29 @@ export default function ProblemServiceNowPanel({
           )}
         </SNRelatedList>
 
-        <SNRelatedList title="Activity" count={workNotes.length + activities.length}>
+        <SNRelatedList title="Activity and Work Notes" count={workNotes.length + activities.length}>
+          {canManage && (
+            <div className="p-4 border-b bg-slate-50 flex gap-2 items-start">
+              <FileText className="text-slate-400 mt-2 shrink-0" size={18} />
+              <div className="flex-1">
+                <textarea
+                  className="sn-field bg-yellow-50 focus:bg-yellow-50"
+                  rows={2}
+                  placeholder="Type a work note (Internal)..."
+                  value={newWorkNote}
+                  onChange={(e) => setNewWorkNote(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                className="sn-primary-button self-end"
+                onClick={handleAddWorkNote}
+                disabled={!newWorkNote.trim() || addWorkNote.isPending}
+              >
+                {addWorkNote.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          )}
           {workNotes.length + activities.length === 0 ? (
             <SNEmptyRelatedList message="No activity has been recorded yet." />
           ) : (
@@ -342,11 +429,11 @@ export default function ProblemServiceNowPanel({
               </thead>
               <tbody>
                 {workNotes.map((note: any, index: number) => (
-                  <tr key={`note-${note.id || index}`}>
+                  <tr key={`note-${note.id || index}`} className="bg-yellow-50/50">
                     <td>Work note</td>
                     <td>{formatDateTime(note.createdAt || note.created_at)}</td>
                     <td>{formatPersonName(note.createdBy || note.user || note.author)}</td>
-                    <td>{note.content || note.note || '-'}</td>
+                    <td className="font-medium">{note.content || note.note || '-'}</td>
                   </tr>
                 ))}
                 {activities.map((activity: any, index: number) => (

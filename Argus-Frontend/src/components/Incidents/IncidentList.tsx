@@ -10,10 +10,15 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Download,
   X,
 } from 'lucide-react';
 import { useIncidents } from '../../hooks/useIncidents';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
+import clsx from 'clsx';
+import api from '../../lib/api';
+import toast from 'react-hot-toast';
+import { useAuth } from '../../hooks/useAuth';
 
 type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 type SortField = 'number' | 'priority' | 'state' | 'shortDescription' | 'assignedTo' | 'createdAt';
@@ -150,12 +155,14 @@ function StatusChip({ value, tones, fallback }: {
 
 export default function IncidentList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('');
   const [state, setState] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
+  const [assignedToMe, setAssignedToMe] = useState(false);
 
   const { data, isLoading, isError, refetch, isFetching } = useIncidents({
     page,
@@ -165,6 +172,7 @@ export default function IncidentList() {
     state: state || undefined,
     sortBy: sortField,
     sortDir,
+    assigned_to_me: assignedToMe || undefined,
   });
 
   const incidents: Incident[] = data?.data ?? [];
@@ -210,14 +218,45 @@ export default function IncidentList() {
     setPage(1);
   };
 
+  const handleExport = async () => {
+    try {
+      const response = await api.get('/incidents/export/', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `incidents_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      toast.error('Export failed');
+    }
+  };
+
   return (
     <SNPage className="min-h-full" style={{ margin: '-24px', padding: 24, background: sn.shellBg }}>
       <div className="sn-list-shell">
         <div className="sn-list-titlebar flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-[22px] font-bold" style={{ color: sn.navy }}>Incidents</div>
+            <div className="flex items-end gap-6">
+              <div className="text-[22px] font-bold" style={{ color: sn.navy }}>Incidents</div>
+              <div className="flex items-center gap-1 mb-1">
+                 <button 
+                   onClick={() => { setAssignedToMe(false); setPage(1); }} 
+                   className={clsx("px-3 py-1 text-xs font-bold rounded", !assignedToMe ? "bg-slate-200" : "hover:bg-slate-100")}
+                 >
+                   All
+                 </button>
+                 <button 
+                   onClick={() => { setAssignedToMe(true); setPage(1); }} 
+                   className={clsx("px-3 py-1 text-xs font-bold rounded", assignedToMe ? "bg-slate-200" : "hover:bg-slate-100")}
+                 >
+                   My Incidents
+                 </button>
+              </div>
+            </div>
             <div className="mt-1 text-[12px]" style={{ color: '#667085' }}>
-              List view: <span className="font-bold">All</span> | Total rows: <span className="font-bold">{totalItems}</span> | Open: <span className="font-bold">{openCount}</span> | P1: <span className="font-bold">{p1Count}</span> | SLA breached: <span className="font-bold">{breachedCount}</span>
+              List view: <span className="font-bold">{assignedToMe ? 'My Incidents' : 'All'}</span> | Total rows: <span className="font-bold">{totalItems}</span> | Open: <span className="font-bold">{openCount}</span> | P1: <span className="font-bold">{p1Count}</span> | SLA breached: <span className="font-bold">{breachedCount}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -225,10 +264,16 @@ export default function IncidentList() {
               {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               Refresh
             </button>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
-              <Plus size={16} />
-              New
+            <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={handleExport}>
+              <Download size={15} />
+              Export
             </button>
+            {canManage('incidents') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
+                <Plus size={16} />
+                New
+              </button>
+            )}
           </div>
         </div>
 
@@ -286,10 +331,12 @@ export default function IncidentList() {
           <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
             <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
             <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new incident record.</div>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
-              <Plus size={16} />
-              New Incident
-            </button>
+            {canManage('incidents') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
+                <Plus size={16} />
+                New Incident
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

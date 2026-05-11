@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useTeams, useCreateTeam } from '../../hooks/useTeams';
 import { useAuthStore } from '../../stores/authStore';
+import { useAuth } from '../../hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
 
@@ -365,8 +366,9 @@ export default function TeamList() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { data: teamsData, isLoading, isError, refetch } = useTeams();
+  const { canManage } = useAuth();
   const user = useAuthStore(s => s.user);
-  const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const canModify = canManage('teams');
 
   // Fetch orgs for admin view
   const { data: orgsData } = useQuery({
@@ -457,7 +459,7 @@ export default function TeamList() {
                 </div>
               </div>
             </div>
-            {canManage && (
+            {canModify && (
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.02]"
@@ -543,7 +545,7 @@ export default function TeamList() {
           <p className="text-sm mt-1" style={{ color: '#94a3b8' }}>
             {searchQuery || typeFilter !== 'ALL' ? 'Try adjusting your filters' : 'Create your first team to get started'}
           </p>
-          {canManage && !searchQuery && typeFilter === 'ALL' && (
+          {canModify && !searchQuery && typeFilter === 'ALL' && (
             <button
               onClick={() => setShowCreateModal(true)}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"

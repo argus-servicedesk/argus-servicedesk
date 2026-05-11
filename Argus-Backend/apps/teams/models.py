@@ -45,3 +45,41 @@ class TeamMember(models.Model):
     class Meta:
         db_table = "team_members"
         unique_together = ['team', 'user']
+
+class EscalationPolicy(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='escalation_policies')
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='escalation_policies')
+    
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "escalation_policies"
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.team.name})"
+
+class EscalationStep(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    policy = models.ForeignKey(EscalationPolicy, on_delete=models.CASCADE, related_name='steps')
+    step_number = models.PositiveIntegerField()
+    wait_time_minutes = models.PositiveIntegerField(help_text="Minutes to wait before escalating to the next level")
+    
+    # Notification targets
+    notify_users = models.ManyToManyField('accounts.User', blank=True, related_name='escalation_steps')
+    notify_roles = models.ManyToManyField('accounts.Role', blank=True, related_name='escalation_steps')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "escalation_steps"
+        ordering = ["step_number"]
+        unique_together = ['policy', 'step_number']
+
+    def __str__(self):
+        return f"Step {self.step_number} for {self.policy.name}"

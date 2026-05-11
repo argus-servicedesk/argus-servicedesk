@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useChanges } from '../../hooks/useChanges';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
+import { useAuth } from '../../hooks/useAuth';
 
 type SortField = 'number' | 'type' | 'state' | 'risk' | 'shortDescription' | 'plannedStartDate' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -186,6 +187,7 @@ function StatusChip({ value, tones, fallback }: {
 
 export default function ChangeList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [state, setState] = useState('');
@@ -270,10 +272,12 @@ export default function ChangeList() {
               {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               Refresh
             </button>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
-              <Plus size={16} />
-              New
-            </button>
+            {canManage('changes') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
+                <Plus size={16} />
+                New
+              </button>
+            )}
           </div>
         </div>
 
@@ -335,10 +339,12 @@ export default function ChangeList() {
           <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
             <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
             <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new change record.</div>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
-              <Plus size={16} />
-              New Change
-            </button>
+            {canManage('changes') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
+                <Plus size={16} />
+                New Change
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

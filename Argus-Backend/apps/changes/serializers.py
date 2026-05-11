@@ -121,18 +121,17 @@ class ChangeCreateSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        from django.utils import timezone
-        import random
-        import string
-        
-        year = timezone.now().year
-        random_str = ''.join(random.choices(string.digits, k=6))
-        number = f"CHG{year}{random_str}"
-        
-        validated_data['number'] = number
+        from apps.common.utils import generate_record_number
+
+        organization = self.context['request'].organization
+        validated_data['number'] = generate_record_number("CHG", organization, "last_change_number")
         validated_data['created_by'] = self.context['request'].user
-        validated_data['organization'] = self.context['request'].organization
-        
+        validated_data['organization'] = organization
+
+        # Emergency changes skip straight to IMPLEMENTING
+        if validated_data.get('type') == Change.Type.EMERGENCY:
+            validated_data.setdefault('state', Change.State.IMPLEMENTING)
+
         return super().create(validated_data)
 
 

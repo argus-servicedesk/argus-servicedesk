@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { CatalogItem, CatalogItemType } from '../../types/index';
 import { useCatalogItem, useUpdateCatalogItem } from '../../hooks/useCatalog';
+import { useAuth } from '../../hooks/useAuth';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const PRIMARY = '#6366f1';
@@ -61,6 +62,7 @@ const labelStyle: React.CSSProperties = {
 function CatalogItemDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [editing, setEditing] = useState(false);
 
   const { data: itemRes, isLoading } = useCatalogItem(id ?? '');
@@ -182,7 +184,7 @@ function CatalogItemDetail() {
                 </p>
               </div>
             </div>
-            {!editing && (
+            {canManage('catalog') && !editing && (
               <button
                 onClick={startEditing}
                 style={{

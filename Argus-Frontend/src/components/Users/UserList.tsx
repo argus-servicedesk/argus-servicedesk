@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useAuth } from '../../hooks/useAuth';
 import type { User, Role, UserStatus } from '../../types';
 
 // ── Constants ──
@@ -162,6 +163,8 @@ export default function UserList() {
   const [pageSize] = useState(20);
   const debouncedSearch = useDebounce(searchInput, 350);
   const currentUser = useAuthStore(s => s.user);
+  const { canManage } = useAuth();
+  const canModify = canManage('users');
 
   useEffect(() => { setPage(1); }, [debouncedSearch, roleFilter, statusFilter]);
 
@@ -241,14 +244,16 @@ export default function UserList() {
                 {isLoading ? 'Loading users...' : <>Manage accounts, roles & permissions across your organization &middot; <span className="font-mono font-bold" style={{ color: '#ffffff' }}>{totalCount}</span> users</>}
               </p>
             </div>
-            <button
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
-              style={{ background: 'rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
-            >
-              <UserPlus className="w-4 h-4" /> Invite User
-            </button>
+            {canModify && (
+              <button
+                className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
+                style={{ background: 'rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
+              >
+                <UserPlus className="w-4 h-4" /> Invite User
+              </button>
+            )}
           </div>
 
           {/* Role distribution pills */}
@@ -492,24 +497,26 @@ export default function UserList() {
 
                       {/* Actions */}
                       <td className="px-5 py-3.5">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleEdit(user)} className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100" style={{ color: '#94a3b8' }} title="Edit"
-                            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; e.currentTarget.style.background = 'rgba(99,102,241,0.08)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleLock(user)}
-                            className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                            style={{ color: '#94a3b8' }}
-                            title={user.status === 'LOCKED' ? 'Unlock' : 'Lock'}
-                            onMouseEnter={e => { e.currentTarget.style.color = user.status === 'LOCKED' ? '#10B981' : '#F59E0B'; e.currentTarget.style.background = user.status === 'LOCKED' ? 'rgba(5,150,105,0.12)' : 'rgba(217,119,6,0.12)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
-                          >
-                            {user.status === 'LOCKED' ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                          </button>
-                          <ActionsDropdown user={user} onEdit={handleEdit} onToggleLock={handleToggleLock} />
-                        </div>
+                        {canModify && (
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => handleEdit(user)} className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100" style={{ color: '#94a3b8' }} title="Edit"
+                              onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; e.currentTarget.style.background = 'rgba(99,102,241,0.08)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleLock(user)}
+                              className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                              style={{ color: '#94a3b8' }}
+                              title={user.status === 'LOCKED' ? 'Unlock' : 'Lock'}
+                              onMouseEnter={e => { e.currentTarget.style.color = user.status === 'LOCKED' ? '#10B981' : '#F59E0B'; e.currentTarget.style.background = user.status === 'LOCKED' ? 'rgba(5,150,105,0.12)' : 'rgba(217,119,6,0.12)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              {user.status === 'LOCKED' ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                            </button>
+                            <ActionsDropdown user={user} onEdit={handleEdit} onToggleLock={handleToggleLock} />
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

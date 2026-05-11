@@ -1,14 +1,15 @@
 import uuid
-from datetime import time
-
+from datetime import time, timedelta
 from django.db import models
 from django.utils import timezone
-from datetime import timedelta
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 
 class SLADefinition(models.Model):
     class AppliesTo(models.TextChoices):
         INCIDENT = "INCIDENT", "Incident"
         CHANGE = "CHANGE", "Change"
+        PROBLEM = "PROBLEM", "Problem"
 
     class Priority(models.TextChoices):
         P1 = "P1", "P1 - Critical"
@@ -94,11 +95,12 @@ class TaskSLA(models.Model):
         CANCELLED = "CANCELLED", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    incident = models.ForeignKey(
-        "incidents.Incident",
-        on_delete=models.CASCADE,
-        related_name="task_slas",
-    )
+    
+    # Generic relation to Incident, Problem, or Change
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.UUIDField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
     sla_definition = models.ForeignKey(
         SLADefinition,
         on_delete=models.CASCADE,
@@ -111,11 +113,12 @@ class TaskSLA(models.Model):
     stop_time = models.DateTimeField(blank=True, null=True)
     
     # Track the exact amount of time spent paused
-    total_pause_duration = models.DurationField(default="00:00:00")
+    total_pause_duration = models.DurationField(default=timedelta(0))
     
-    business_elapsed_time = models.DurationField(default="00:00:00")
+    business_elapsed_time = models.DurationField(default=timedelta(0))
     percentage_elapsed = models.FloatField(default=0.0)
     has_breached = models.BooleanField(default=False)
+    notified_thresholds = models.JSONField(default=list, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -123,6 +126,9 @@ class TaskSLA(models.Model):
     class Meta:
         db_table = "task_slas"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+        ]
 
     def __str__(self):
-        return f"{self.sla_definition.name} for {self.incident.number} - {self.stage}"
+        return f"{self.sla_definition.name} for {self.content_object} - {self.stage}"

@@ -110,3 +110,16 @@ class MarkNotificationReadView(generics.GenericAPIView):
                 notification.read_at = timezone.now()
             notification.save(update_fields=["is_read", "read_at"])
         return success(message="notification marked as read")
+
+from rest_framework import viewsets
+from .models import NotificationTemplate
+from .serializers import NotificationTemplateSerializer
+from apps.common.permissions import IsAdminOrManager
+
+class NotificationTemplateViewSet(OrgQuerysetMixin, viewsets.ModelViewSet):
+    queryset = NotificationTemplate.objects.all()
+    serializer_class = NotificationTemplateSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def perform_create(self, serializer):
+        serializer.save(organization=self.request.organization)

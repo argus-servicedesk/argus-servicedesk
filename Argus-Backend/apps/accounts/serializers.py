@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from .models import Role, Permission
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
@@ -8,7 +9,28 @@ from apps.organizations.serializers import OrganizationSerializer
 User = get_user_model()
 
 
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permission
+        fields = ("id", "name", "code", "description")
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = PermissionSerializer(many=True, read_only=True)
+    permission_ids = serializers.PrimaryKeyRelatedField(
+        many=True, write_only=True, queryset=Permission.objects.all(), source="permissions"
+    )
+
+    class Meta:
+        model = Role
+        fields = ("id", "name", "description", "permissions", "permission_ids", "is_system")
+
 class UserSerializer(serializers.ModelSerializer):
+    roles = RoleSerializer(many=True, read_only=True)
+    role_names = serializers.SerializerMethodField()
+    role_ids = serializers.PrimaryKeyRelatedField(
+        many=True, write_only=True, queryset=Role.objects.all(), source="roles"
+    )
+
     class Meta:
         model = User
         fields = (
@@ -17,13 +39,18 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "role",
+            "roles",
+            "role_names",
+            "role_ids",
             "organization",
             "mfa_enabled",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_role_names(self, obj):
+        return obj.role_names
 
 
 class SignupSerializer(serializers.ModelSerializer):
@@ -32,7 +59,7 @@ class SignupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("username", "email", "password", "first_name", "last_name", "role", "organization")
+        fields = ("username", "email", "password", "first_name", "last_name", "organization")
 
     def validate(self, attrs):
         email = attrs.get("email", "").strip().lower()
@@ -70,6 +97,8 @@ class SignupSerializer(serializers.ModelSerializer):
 class MeSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
     organization_name = serializers.CharField(source="organization.name", read_only=True)
+    roles = RoleSerializer(many=True, read_only=True)
+    role_names = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -79,9 +108,13 @@ class MeSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "role",
+            "roles",
+            "role_names",
             "organization",
             "organization_name",
             "mfa_enabled",
         )
+
+    def get_role_names(self, obj):
+        return obj.role_names
 

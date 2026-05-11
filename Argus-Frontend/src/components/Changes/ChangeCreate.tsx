@@ -1,9 +1,12 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCreateChange } from '../../hooks/useChanges';
+import { useAuth } from '../../hooks/useAuth';
+import { useTeamMembers, useAssignmentPreview } from '../../hooks/useAssignments';
 import api from '../../lib/api';
 import {
   SNCollapsibleSection,
@@ -26,6 +29,7 @@ interface ChangeFormData {
   riskLevel: RiskLevel;
   category: string;
   assignmentGroupId: string;
+  assignedToId: string;
   justification: string;
   implementationPlan: string;
   rollbackPlan: string;
@@ -40,6 +44,12 @@ const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', '
 
 function labelize(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function personLabel(user: any): string {
+  const firstName = user.firstName || user.first_name || '';
+  const lastName = user.lastName || user.last_name || '';
+  return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
 }
 
 function nowForHeader(): string {
@@ -64,21 +74,29 @@ function toIso(value: string): string | undefined {
 export default function ChangeCreate() {
   const navigate = useNavigate();
   const createChange = useCreateChange();
+  const { user: currentUser } = useAuth();
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
     queryFn: async () => { const { data } = await api.get('/teams'); return data; },
     staleTime: 60000,
   });
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
+    staleTime: 60000,
+  });
 
   const teams: { id: string; name: string }[] = teamsData?.data || [];
+  const users: any[] = usersData?.data || [];
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
-  } = useForm<ChangeFormData>({
+  } = useForm<ChangeFormData & { requestedById: string }>({
     defaultValues: {
       shortDescription: '',
       description: '',
@@ -86,25 +104,50 @@ export default function ChangeCreate() {
       riskLevel: 'LOW',
       category: '',
       assignmentGroupId: '',
+      assignedToId: '',
       justification: '',
       implementationPlan: '',
       rollbackPlan: '',
       testPlan: '',
       plannedStartDate: '',
       plannedEndDate: '',
+      requestedById: currentUser?.id || '',
     },
   });
 
   const changeType = watch('type');
   const riskLevel = watch('riskLevel');
+  const category = watch('category');
+  const assignmentGroupId = watch('assignmentGroupId');
+  const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
+  const teamMembers = teamMembersResponse?.data || [];
 
-  const onSubmit = async (data: ChangeFormData) => {
+  const { data: suggestion } = useAssignmentPreview({ category });
+
+  const applySuggestion = () => {
+    if (suggestion?.suggested_group) {
+      setValue('assignmentGroupId', suggestion.suggested_group.id);
+    }
+    if (suggestion?.suggested_user) {
+      setValue('assignedToId', suggestion.suggested_user.id);
+    }
+  };
+
+  useEffect(() => {
+    if (suggestion?.suggested_group) {
+      applySuggestion();
+    }
+  }, [suggestion]);
+
+  const onSubmit = async (data: any) => {
     const payload: Record<string, unknown> = {
       ...data,
+      requested_by: data.requestedById,
       state: 'NEW',
-      assignmentGroupId: data.assignmentGroupId || undefined,
-      plannedStartDate: toIso(data.plannedStartDate),
-      plannedEndDate: toIso(data.plannedEndDate),
+      assignment_group: data.assignmentGroupId || undefined,
+      assigned_to: data.assignedToId || undefined,
+      planned_start_date: toIso(data.plannedStartDate),
+      planned_end_date: toIso(data.plannedEndDate),
     };
 
     try {
@@ -115,6 +158,12 @@ export default function ChangeCreate() {
       toast.error(err?.response?.data?.error || err?.message || 'Failed to create change request');
     }
   };
+
+  function personLabel(user: any): string {
+    const firstName = user.firstName || user.first_name || '';
+    const lastName = user.lastName || user.last_name || '';
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
+  }
 
   return (
     <SNPage className="min-h-full" style={{ margin: '-24px', background: '#fff' }}>
@@ -144,7 +193,10 @@ export default function ChangeCreate() {
             </SNRecordField>
 
             <SNRecordField label="Requested By" required>
-              <SNReadOnly>Current User</SNReadOnly>
+              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
+                <option value="">-- None --</option>
+                {users.map((u: any) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
+              </select>
             </SNRecordField>
             <SNRecordField label="Change Type">
               <select className="sn-field" {...register('type')}>
@@ -170,6 +222,26 @@ export default function ChangeCreate() {
                 {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             </SNRecordField>
+            <SNRecordField label="Short Description" required>
+              <input
+                className="sn-field"
+                placeholder="Brief summary"
+                style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
+                {...register('shortDescription', { required: 'Short description is required' })}
+              />
+            </SNRecordField>
+
+            <SNRecordField label="Description" fullWidth tall stack>
+              <textarea className="sn-field" placeholder="Detailed description of the proposed change" {...register('description')} />
+            </SNRecordField>
+            <SNRecordField label="Assigned To">
+              <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
+                <option value="">-- None --</option>
+                {teamMembers.map((user: any) => (
+                  <option key={user.id} value={user.id}>{personLabel(user)}</option>
+                ))}
+              </select>
+            </SNRecordField>
 
             <SNRecordField label="Planned Start">
               <input type="datetime-local" className="sn-field" {...register('plannedStartDate')} />
@@ -178,17 +250,6 @@ export default function ChangeCreate() {
               <input type="datetime-local" className="sn-field" {...register('plannedEndDate')} />
             </SNRecordField>
 
-            <SNRecordField label="Short Description" required fullWidth>
-              <div className="w-full">
-                <input
-                  className="sn-field"
-                  placeholder="Brief summary of the change request"
-                  style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
-                  {...register('shortDescription', { required: 'Short description is required', minLength: { value: 3, message: 'Minimum 3 characters' } })}
-                />
-                {errors.shortDescription && <div className="mt-2 text-sm font-bold" style={{ color: sn.critical }}>{errors.shortDescription.message}</div>}
-              </div>
-            </SNRecordField>
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed description of the proposed change" {...register('description')} />

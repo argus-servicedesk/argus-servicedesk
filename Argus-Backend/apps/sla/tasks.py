@@ -3,23 +3,40 @@
 from celery import shared_task
 
 
-@shared_task(name="sla.sweep_open_incident_sla")
-def sweep_open_incident_sla() -> int:
+@shared_task(name="sla.sweep_all_task_slas")
+def sweep_all_task_slas() -> int:
     """
-    Recompute SLA breach flags and milestone notifications for non-terminal incidents.
-    Intended to run every 1–5 minutes behind Celery Beat.
+    Recompute SLA breach flags for all open tasks (Incidents, Problems, Changes).
     """
     from apps.incidents.models import Incident
-    from apps.sla.engine import process_incident_slas
+    from apps.problems.models import Problem
+    from apps.changes.models import Change
+    from apps.sla.engine import process_task_slas
 
-    qs = Incident.objects.filter(
-        organization_id__isnull=False,
-        state__in=["NEW", "IN_PROGRESS", "ESCALATED", "ON_HOLD"],
-    )
     updated = 0
-    for incident in qs.iterator(chunk_size=200):
-        # The new engine handles state transitions, TaskSLA creation, 
-        # and denormalizing breach status back to the incident.
-        process_incident_slas(incident)
+    
+    # 1. Sweep Incidents
+    incidents = Incident.objects.filter(
+        state__in=["NEW", "IN_PROGRESS", "ESCALATED", "ON_HOLD"]
+    )
+    for incident in incidents.iterator():
+        process_task_slas(incident)
         updated += 1
+        
+    # 2. Sweep Problems
+    problems = Problem.objects.filter(
+        state__in=["NEW", "INVESTIGATION", "RCA_IN_PROGRESS"]
+    )
+    for problem in problems.iterator():
+        process_task_slas(problem)
+        updated += 1
+        
+    # 3. Sweep Changes
+    changes = Change.objects.filter(
+        state__in=["NEW", "ASSESS", "AUTHORIZE", "SCHEDULED", "IMPLEMENT"]
+    )
+    for change in changes.iterator():
+        process_task_slas(change)
+        updated += 1
+        
     return updated

@@ -62,6 +62,12 @@ class Incident(models.Model):
         NO_ISSUE_FOUND = "NO_ISSUE_FOUND", "No Issue Found"
         VENDOR_FIX = "VENDOR_FIX", "Vendor Fix"
 
+    class MajorIncidentState(models.TextChoices):
+        PROPOSED = "PROPOSED", "Proposed"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        REJECTED = "REJECTED", "Rejected"
+        CANCELED = "CANCELED", "Canceled"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=50, unique=True, db_index=True)
     short_description = models.CharField(max_length=200)
@@ -73,6 +79,11 @@ class Incident(models.Model):
     category = models.CharField(max_length=100, blank=True, null=True)
     subcategory = models.CharField(max_length=100, blank=True, null=True)
     
+    parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_incidents')
+    is_major_incident = models.BooleanField(default=False, db_index=True)
+    major_incident_state = models.CharField(max_length=20, choices=MajorIncidentState.choices, blank=True, null=True)
+    major_incident_notes = models.TextField(blank=True, null=True)
+
     assigned_to = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
     assignment_group = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_incidents')
     config_item = models.ForeignKey(
@@ -81,6 +92,13 @@ class Incident(models.Model):
         null=True,
         blank=True,
         related_name='incidents',
+    )
+    requested_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incidents_requested_for'
     )
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='created_incidents')
         

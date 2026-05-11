@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useAuth } from '../../hooks/useAuth';
 import { useUpdateProfile, useChangePassword } from '../../hooks/useAuth';
 import { useOrganizations, useCreateOrganization, useUpdateOrganization } from '../../hooks/useOrganizations';
 
@@ -58,7 +59,8 @@ export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
   const initials = user ? `${(user.firstName?.[0] || '').toUpperCase()}${(user.lastName?.[0] || '').toUpperCase()}` : 'U';
   const grad = user ? avatarGrad(user.id) : avatarGradients[0];
-  const isAdmin = user?.role === 'ADMIN';
+  const { canManage } = useAuth();
+  const isAdmin = canManage('settings');
 
   // ── Profile state ──
   const [firstName, setFirstName] = useState(user?.firstName ?? '');

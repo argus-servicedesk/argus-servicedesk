@@ -22,6 +22,7 @@ import { useChanges } from '../../hooks/useChanges';
 import { useTeams } from '../../hooks/useTeams';
 import { useOnCallOverview } from '../../hooks/useOnCall';
 import { useAuthStore } from '../../stores/authStore';
+import { useAuth } from '../../hooks/useAuth';
 
 /* ===================================================================
    SAFE STRING — prevents React error #31 (objects as children)
@@ -305,6 +306,8 @@ export default function DashboardOverview() {
   const [now, setNow] = useState(new Date());
   const [trendDays, setTrendDays] = useState(7);
 
+  const { canManage } = useAuth();
+
   const organization = useAuthStore((s) => s.organization);
   const selectedOrgId = useAuthStore((s) => s.selectedOrgId);
   const user = useAuthStore((s) => s.user);
@@ -523,15 +526,19 @@ export default function DashboardOverview() {
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white/80 hover:bg-white/10 transition-all">
                   <RefreshCw size={14} />
                 </button>
-                <button onClick={() => navigate('/incidents/create')}
-                  className="flex items-center gap-1.5 px-3 py-2 text-white text-[11px] font-semibold rounded-lg transition-all hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' }}>
-                  <Plus size={12} /> New Incident
-                </button>
-                <button onClick={() => navigate('/changes/create')}
-                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-lg text-white/80 bg-white/10 border border-white/10 hover:bg-white/15 transition-all">
-                  <Plus size={12} /> New Change
-                </button>
+                {canManage('incidents') && (
+                  <button onClick={() => navigate('/incidents/create')}
+                    className="flex items-center gap-1.5 px-3 py-2 text-white text-[11px] font-semibold rounded-lg transition-all hover:opacity-90"
+                    style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' }}>
+                    <Plus size={12} /> New Incident
+                  </button>
+                )}
+                {canManage('changes') && (
+                  <button onClick={() => navigate('/changes/create')}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-lg text-white/80 bg-white/10 border border-white/10 hover:bg-white/15 transition-all">
+                    <Plus size={12} /> New Change
+                  </button>
+                )}
                 <button onClick={() => navigate('/alerts')} title="Alerts"
                   className="relative w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white/80 hover:bg-white/10 transition-all">
                   <Bell size={14} />
@@ -586,7 +593,7 @@ export default function DashboardOverview() {
             accent="#D97706" noPad
             actions={
               <>
-                <SmBtn onClick={() => navigate('/incidents/create')} primary><Plus size={10} /> New</SmBtn>
+                {canManage('incidents') && <SmBtn onClick={() => navigate('/incidents/create')} primary><Plus size={10} /> New</SmBtn>}
                 <SmBtn onClick={() => navigate('/incidents')}>View All <ChevronRight size={10} /></SmBtn>
               </>
             }>
@@ -996,6 +1003,51 @@ export default function DashboardOverview() {
             ) : (
               <Empty message="Connect Prometheus for live metrics" icon={<Cpu size={20} />} />
             )}
+          </Section>
+        </div>
+
+        {/* ROW 4: Security & Workflow Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <Section title="Security & Compliance" icon={<Shield size={14} />} accent="#0891B2"
+            actions={<SmBtn onClick={() => navigate('/audit')}>Audit Log</SmBtn>}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <Activity size={16} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-700">Audit Volume</p>
+                    <p className="text-[9px] text-slate-500">Last 24h</p>
+                  </div>
+                </div>
+                <span className="text-sm font-bold font-mono text-indigo-600">342</span>
+              </div>
+              
+              <div className="flex flex-col items-center justify-center p-3 text-center bg-emerald-50 border border-emerald-100 rounded-xl">
+                <div className="flex items-center gap-1.5 text-emerald-700 mb-0.5">
+                  <ShieldCheck size={14} />
+                  <span className="text-[11px] font-bold">Threat Monitor</span>
+                </div>
+                <p className="text-[9px] text-emerald-600/70">No anomalies detected</p>
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Workflow Automation" icon={<GitMerge size={14} />} accent="#7C3AED"
+            actions={<SmBtn onClick={() => navigate('/workflows')}>Designer</SmBtn>}>
+            <div className="space-y-3">
+              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
+                <div className="h-full bg-indigo-500" style={{ width: '45%' }} />
+                <div className="h-full bg-emerald-500" style={{ width: '30%' }} />
+                <div className="h-full bg-amber-500" style={{ width: '25%' }} />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500" /> In Progress</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Success</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Pending</span>
+              </div>
+            </div>
           </Section>
         </div>
       </SafePanel>

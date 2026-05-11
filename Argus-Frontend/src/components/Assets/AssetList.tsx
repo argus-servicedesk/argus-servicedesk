@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAssets } from '../../hooks/useAssets';
+import { useAuth } from '../../hooks/useAuth';
 import { useAuthStore } from '../../stores/authStore';
 
 // ── Types ──
@@ -132,6 +133,7 @@ function MonitoringDot({ enabled }: { enabled: boolean }) {
 
 export default function AssetList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const organization = useAuthStore((s) => s.organization);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -194,13 +196,15 @@ export default function AssetList() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/assets/create')}
-                className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
-                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
-              >
-                <Server size={15} /> New Asset
-              </button>
+              {canManage('assets') && (
+                <button
+                  onClick={() => navigate('/assets/create')}
+                  className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-[1.02]"
+                  style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
+                >
+                  <Server size={15} /> New Asset
+                </button>
+              )}
               <div className="flex items-center gap-0.5 p-0.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
                 <button
                   onClick={() => setViewMode('grid')}

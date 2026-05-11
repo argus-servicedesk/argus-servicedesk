@@ -1,9 +1,12 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCreateProblem } from '../../hooks/useProblems';
+import { useAuth } from '../../hooks/useAuth';
+import { useTeamMembers, useAssignmentPreview } from '../../hooks/useAssignments';
 import api from '../../lib/api';
 import {
   SNCollapsibleSection,
@@ -24,6 +27,7 @@ interface ProblemFormData {
   priority: Priority;
   category: string;
   assignmentGroupId: string;
+  assignedToId: string;
   rootCause: string;
   workaround: string;
 }
@@ -44,6 +48,12 @@ function priorityTone(priority: Priority) {
   return 'neutral';
 }
 
+function personLabel(user: any): string {
+  const firstName = user.firstName || user.first_name || '';
+  const lastName = user.lastName || user.last_name || '';
+  return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
+}
+
 function nowForHeader(): string {
   return new Date().toLocaleString('en-IN', {
     year: 'numeric',
@@ -59,40 +69,73 @@ function nowForHeader(): string {
 export default function ProblemCreate() {
   const navigate = useNavigate();
   const createProblem = useCreateProblem();
+  const { user: currentUser } = useAuth();
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
     queryFn: async () => { const { data } = await api.get('/teams'); return data; },
     staleTime: 60000,
   });
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
+    staleTime: 60000,
+  });
 
   const teams: { id: string; name: string }[] = teamsData?.data || [];
+  const users: any[] = usersData?.data || [];
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
-  } = useForm<ProblemFormData>({
+  } = useForm<ProblemFormData & { requestedById: string }>({
     defaultValues: {
       shortDescription: '',
       description: '',
       priority: 'P3',
       category: '',
       assignmentGroupId: '',
+      assignedToId: '',
       rootCause: '',
       workaround: '',
+      requestedById: currentUser?.id || '',
     },
   });
 
   const selectedPriority = watch('priority');
+  const category = watch('category');
+  const assignmentGroupId = watch('assignmentGroupId');
+  const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
+  const teamMembers = teamMembersResponse?.data || [];
 
-  const onSubmit = async (data: ProblemFormData) => {
+  const { data: suggestion } = useAssignmentPreview({ category });
+
+  const applySuggestion = () => {
+    if (suggestion?.suggested_group) {
+      setValue('assignmentGroupId', suggestion.suggested_group.id);
+    }
+    if (suggestion?.suggested_user) {
+      setValue('assignedToId', suggestion.suggested_user.id);
+    }
+  };
+
+  useEffect(() => {
+    if (suggestion?.suggested_group) {
+      applySuggestion();
+    }
+  }, [suggestion]);
+
+  const onSubmit = async (data: any) => {
     try {
       await createProblem.mutateAsync({
         ...data,
+        requested_by: data.requestedById,
         state: 'NEW',
-        assignmentGroupId: data.assignmentGroupId || undefined,
+        assignment_group: data.assignmentGroupId || undefined,
+        assigned_to: data.assignedToId || undefined,
         rootCause: data.rootCause || undefined,
         workaround: data.workaround || undefined,
       });
@@ -131,7 +174,10 @@ export default function ProblemCreate() {
             </SNRecordField>
 
             <SNRecordField label="Requested By" required>
-              <SNReadOnly>Current User</SNReadOnly>
+              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
+                <option value="">-- None --</option>
+                {users.map((u: any) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
+              </select>
             </SNRecordField>
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
@@ -152,21 +198,27 @@ export default function ProblemCreate() {
                 {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             </SNRecordField>
-            <SNRecordField label="Known Error">
-              <SNReadOnly>No</SNReadOnly>
+            <SNRecordField label="Short Description" required>
+              <input
+                className="sn-field"
+                placeholder="Brief summary"
+                style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
+                {...register('shortDescription', { required: 'Short description is required' })}
+              />
             </SNRecordField>
 
-            <SNRecordField label="Short Description" required fullWidth>
-              <div className="w-full">
-                <input
-                  className="sn-field"
-                  placeholder="Brief summary of the problem"
-                  style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
-                  {...register('shortDescription', { required: 'Short description is required', minLength: { value: 3, message: 'Minimum 3 characters' } })}
-                />
-                {errors.shortDescription && <div className="mt-2 text-sm font-bold" style={{ color: sn.critical }}>{errors.shortDescription.message}</div>}
-              </div>
+            <SNRecordField label="Description" fullWidth tall stack>
+              <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />
             </SNRecordField>
+            <SNRecordField label="Assigned To">
+              <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
+                <option value="">-- None --</option>
+                {teamMembers.map((user: any) => (
+                  <option key={user.id} value={user.id}>{personLabel(user)}</option>
+                ))}
+              </select>
+            </SNRecordField>
+
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />

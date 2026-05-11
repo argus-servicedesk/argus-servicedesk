@@ -632,3 +632,38 @@ export function SNEmptyRelatedList({ message = 'No records to display' }: { mess
     </div>
   );
 }
+
+export function SNModal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex min-h-[56px] items-center justify-between border-b px-6" style={{ background: '#f7f8fa' }}>
+          <h3 className="text-[18px] font-bold" style={{ color: sn.navy }}>{title}</h3>
+          <button onClick={onClose} className="text-2xl font-light hover:text-red-600">&times;</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          {children}
+        </div>
+        {footer && (
+          <div className="flex justify-end gap-3 border-t px-6 py-4" style={{ background: '#f7f8fa' }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

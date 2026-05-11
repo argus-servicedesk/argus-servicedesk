@@ -5,19 +5,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
-import {
-  SNPage,
-  SNRecordHeader,
-  SNCollapsibleSection,
-  SNFieldGrid,
-  SNFormRow,
-  SNPillBadge,
-  SNReadOnly,
-  SNProcessRibbon,
-  SNRelatedList,
-  SNEmptyRelatedList,
-  sn,
-} from './ServiceNowUI';
+import { SNPage, SNRecordHeader, SNCollapsibleSection, SNFieldGrid, SNFormRow, SNPillBadge, SNReadOnly, SNProcessRibbon, SNRelatedList, SNEmptyRelatedList, sn, SNModal, SNLabel } from './ServiceNowUI';
+import { Upload, AlertCircle, CheckCircle2, ArrowUpCircle, XCircle, TrendingUp } from 'lucide-react';
+import api from '../../lib/api';
+import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateIncident, usePromoteIncidentToProblem } from '../../hooks/useIncidents';
+import { useAuth } from '../../hooks/useAuth';
 import type { Incident, Priority } from '../../types';
 
 type IncidentState = Incident['state'];
@@ -170,6 +162,17 @@ export default function IncidentServiceNowPanel({
   onOpenLinkProblem: () => void;
 }) {
   const navigate = useNavigate();
+  const { isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
+  const canResolve = isEngineer || isAdmin || isManager;
+  const canClose = isManager || isAdmin;
+  const canEscalate = hasRole('Engineer', 'Manager', 'Org Admin', 'Super Admin', 'Operator');
+  const canPromote = isEngineer || isManager || isAdmin;
+
+  const resolveIncident = useResolveIncident();
+  const reopenIncident = useReopenIncident();
+  const closeIncident = useCloseIncident();
+  const escalateIncident = useEscalateIncident();
+  const promoteToProb = usePromoteIncidentToProblem();
   const [shortDescription, setShortDescription] = useState(incident.shortDescription || '');
   const [description, setDescription] = useState(incident.description || '');
   const [impact, setImpact] = useState(incident.impact);
@@ -180,6 +183,14 @@ export default function IncidentServiceNowPanel({
   const [holdReason, setHoldReason] = useState((incident as any).holdReason || '');
   const [resolutionCode, setResolutionCode] = useState(incident.resolutionCode || '');
   const [resolutionNotes, setResolutionNotes] = useState(incident.resolutionNotes || '');
+  const [escalationReason, setEscalationReason] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
+  const [promoteConfirm, setPromoteConfirm] = useState(false);
+  const [showResolutionModal, setShowResolutionModal] = useState(false);
+  const [showEscalationModal, setShowEscalationModal] = useState(false);
+  const [showReopenModal, setShowReopenModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     setShortDescription(incident.shortDescription || '');
@@ -262,6 +273,83 @@ export default function IncidentServiceNowPanel({
     });
   }
 
+  async function handleResolve() {
+    if (!resolutionCode || !resolutionNotes.trim()) {
+      toast.error('Resolution code and notes are required');
+      return;
+    }
+    try {
+      await resolveIncident.mutateAsync({ id: incidentId, resolutionCode, resolutionNotes });
+      toast.success('Incident Resolved ✓');
+      setShowResolutionModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Resolution failed');
+    }
+  }
+
+  async function handleEscalate() {
+    try {
+      await escalateIncident.mutateAsync({ id: incidentId, reason: escalationReason || 'Manual escalation' });
+      toast.success('Incident Escalated ↑');
+      setShowEscalationModal(false);
+      setEscalationReason('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Escalation failed');
+    }
+  }
+
+  async function handleReopen() {
+    try {
+      await reopenIncident.mutateAsync({ id: incidentId, reason: reopenReason || 'Reopened by user' });
+      toast.success('Incident Reopened');
+      setShowReopenModal(false);
+      setReopenReason('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Reopen failed');
+    }
+  }
+
+  async function handleClose() {
+    try {
+      await closeIncident.mutateAsync({ id: incidentId });
+      toast.success('Incident Closed ✓');
+      setShowCloseModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Close failed');
+    }
+  }
+
+  async function handlePromoteToProb() {
+    try {
+      const result = await promoteToProb.mutateAsync({ id: incidentId });
+      toast.success(`Promoted to Problem ${result?.data?.number || ''}`);
+      setPromoteConfirm(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Promotion failed');
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      await api.post(`/incidents/${incidentId}/attachments/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('File uploaded');
+      window.location.reload();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   const priorityBadge = priority === 'P1' ? (
     <SNPillBadge label={PRIORITY_SN.P1} tone="critical" dot />
   ) : priority === 'P2' ? (
@@ -295,23 +383,69 @@ export default function IncidentServiceNowPanel({
         titleNumber={incident.number}
         priorityPill={priorityBadge}
         statePill={stateBadge}
-        onClone={handleClone}
-        onLink={onOpenLinkProblem}
+        onClone={canManage('incidents') ? handleClone : undefined}
+        onLink={canManage('incidents') ? onOpenLinkProblem : undefined}
         onPrint={() => window.print()}
-        onUpdate={handleUpdate}
+        onUpdate={canManage('incidents') ? handleUpdate : undefined}
         updateLoading={saving}
-        secondaryActions={state === 'RESOLVED' || state === 'CLOSED' ? (
-          <button
-            type="button"
-            className="sn-soft-button"
-            onClick={() => {
-              setStateSel('IN_PROGRESS');
-              toast('State set to In Progress. Click Update to confirm.');
-            }}
-          >
-            Reopen
-          </button>
-        ) : undefined}
+      secondaryActions={
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Escalate — visible when incident is active */}
+            {canEscalate && !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(state) && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => setShowEscalationModal(true)}
+                style={{ borderColor: sn.progress, color: sn.progress }}
+              >
+                <ArrowUpCircle size={12} /> Escalate
+              </button>
+            )}
+            {/* Resolve — only when not already resolved/closed */}
+            {canResolve && !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(state) && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => setShowResolutionModal(true)}
+                style={{ borderColor: '#067647', color: '#067647' }}
+              >
+                <CheckCircle2 size={12} /> Resolve
+              </button>
+            )}
+            {/* Close — only when RESOLVED and manager+ */}
+            {canClose && state === 'RESOLVED' && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => setShowCloseModal(true)}
+                style={{ borderColor: '#344054', color: '#344054' }}
+              >
+                <XCircle size={12} /> Close
+              </button>
+            )}
+            {/* Reopen — visible when resolved or closed */}
+            {canResolve && ['RESOLVED', 'CLOSED'].includes(state) && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => setShowReopenModal(true)}
+              >
+                Reopen
+              </button>
+            )}
+            {/* Promote to Problem — Engineer+ */}
+            {canPromote && !['CANCELLED'].includes(state) && (
+              <button
+                type="button"
+                className="sn-soft-button flex items-center gap-1"
+                onClick={() => setPromoteConfirm(true)}
+                style={{ borderColor: '#7c3aed', color: '#7c3aed' }}
+              >
+                <TrendingUp size={12} /> Promote to Problem
+              </button>
+            )}
+          </div>
+        }
       />
 
       <SNProcessRibbon steps={['NEW', 'IN_PROGRESS', 'ESCALATED', 'RESOLVED', 'CLOSED']} current={state} />
@@ -448,6 +582,48 @@ export default function IncidentServiceNowPanel({
       </div>
 
       <div className="px-1 pb-6">
+        <SNRelatedList 
+          title="Attachments" 
+          count={incident.attachments?.length || 0}
+        >
+          <div className="flex items-center justify-between p-3 border-b bg-slate-50">
+             <span className="text-xs text-slate-500">Files attached to this incident</span>
+             <label className="sn-soft-button flex items-center gap-1 cursor-pointer">
+                <Upload size={12} />
+                <span>Upload</span>
+                <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+             </label>
+          </div>
+          {(!incident.attachments || incident.attachments.length === 0) ? (
+            <SNEmptyRelatedList message="No attachments found." />
+          ) : (
+            <table className="sn-list-table">
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>Size</th>
+                  <th>Uploaded By</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incident.attachments.map((at) => (
+                  <tr key={at.id}>
+                    <td>
+                      <a href={`${api.defaults.baseURL}/media/${at.path}`} target="_blank" rel="noreferrer" className="sn-list-link">
+                        {at.filename}
+                      </a>
+                    </td>
+                    <td>{(at.size / 1024).toFixed(1)} KB</td>
+                    <td>{formatPersonName(at.uploadedBy)}</td>
+                    <td>{formatOpened(at.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SNRelatedList>
+
         <SNRelatedList title="Task SLAs" count={2}>
           <table className="sn-list-table">
             <thead>
@@ -566,6 +742,177 @@ export default function IncidentServiceNowPanel({
           .print-only.hidden { display: block !important; }
         }
       `}</style>
+
+      {/* Resolution Modal */}
+      <SNModal
+        isOpen={showResolutionModal}
+        onClose={() => setShowResolutionModal(false)}
+        title="Resolve Incident"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowResolutionModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              onClick={handleResolve}
+              disabled={resolveIncident.isPending}
+            >
+              {resolveIncident.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Resolving...</> : 'Resolve Incident'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <SNLabel required>Resolution Code</SNLabel>
+            <select className="sn-field" value={resolutionCode} onChange={(e) => setResolutionCode(e.target.value)}>
+              <option value="">- Select -</option>
+              {RESOLUTION_CODES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <SNLabel required>Resolution Notes</SNLabel>
+            <textarea
+              className="sn-field"
+              rows={4}
+              value={resolutionNotes}
+              onChange={(e) => setResolutionNotes(e.target.value)}
+              placeholder="Explain how the incident was resolved..."
+            />
+          </div>
+        </div>
+      </SNModal>
+
+      {/* Escalation Modal */}
+      <SNModal
+        isOpen={showEscalationModal}
+        onClose={() => setShowEscalationModal(false)}
+        title="Escalate Incident"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowEscalationModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              style={{ background: sn.progress, borderColor: sn.progress }}
+              onClick={handleEscalate}
+              disabled={escalateIncident.isPending}
+            >
+              {escalateIncident.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Escalating...</> : 'Confirm Escalation'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-4 p-4 bg-orange-50 border border-orange-200 rounded-md">
+            <AlertCircle className="text-orange-600 shrink-0" size={24} />
+            <div>
+              <h4 className="font-bold text-orange-900">Escalation Warning</h4>
+              <p className="text-sm text-orange-800 mt-1">
+                Escalating will notify management, bump priority, and increment the escalation counter.
+              </p>
+            </div>
+          </div>
+          <div>
+            <SNLabel>Reason (optional)</SNLabel>
+            <textarea
+              className="sn-field"
+              rows={3}
+              value={escalationReason}
+              onChange={(e) => setEscalationReason(e.target.value)}
+              placeholder="Describe why this is being escalated..."
+            />
+          </div>
+        </div>
+      </SNModal>
+
+      {/* Reopen Modal */}
+      <SNModal
+        isOpen={showReopenModal}
+        onClose={() => setShowReopenModal(false)}
+        title="Reopen Incident"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowReopenModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              onClick={handleReopen}
+              disabled={reopenIncident.isPending}
+            >
+              {reopenIncident.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Reopening...</> : 'Reopen Incident'}
+            </button>
+          </>
+        }
+      >
+        <div>
+          <SNLabel>Reason for reopening</SNLabel>
+          <textarea
+            className="sn-field"
+            rows={3}
+            value={reopenReason}
+            onChange={(e) => setReopenReason(e.target.value)}
+            placeholder="Why is this being reopened? (e.g. issue recurred)"
+          />
+        </div>
+      </SNModal>
+
+      {/* Close Modal */}
+      <SNModal
+        isOpen={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        title="Close Incident"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowCloseModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              style={{ background: '#344054', borderColor: '#344054' }}
+              onClick={handleClose}
+              disabled={closeIncident.isPending}
+            >
+              {closeIncident.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Closing...</> : 'Close Incident'}
+            </button>
+          </>
+        }
+      >
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-md">
+          <p className="text-sm text-slate-700">
+            Closing this incident will permanently mark it as <strong>CLOSED</strong>.
+            It can be reopened later if necessary. The incident must be <strong>RESOLVED</strong> before it can be closed.
+          </p>
+        </div>
+      </SNModal>
+
+      {/* Promote to Problem Confirmation */}
+      <SNModal
+        isOpen={promoteConfirm}
+        onClose={() => setPromoteConfirm(false)}
+        title="Promote to Problem"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setPromoteConfirm(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+              onClick={handlePromoteToProb}
+              disabled={promoteToProb.isPending}
+            >
+              {promoteToProb.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Promoting...</> : 'Create Problem Record'}
+            </button>
+          </>
+        }
+      >
+        <div className="flex items-start gap-4 p-4 bg-purple-50 border border-purple-200 rounded-md">
+          <TrendingUp className="text-purple-600 shrink-0" size={24} />
+          <div>
+            <h4 className="font-bold text-purple-900">Promote to Problem</h4>
+            <p className="text-sm text-purple-800 mt-1">
+              A new Problem record will be created with the same description and priority,
+              and this incident will be linked to it as <strong>CAUSED_BY</strong>.
+              Use this when the root cause needs deeper investigation.
+            </p>
+          </div>
+        </div>
+      </SNModal>
     </SNPage>
   );
 }
+

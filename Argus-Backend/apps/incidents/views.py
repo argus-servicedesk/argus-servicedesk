@@ -7,6 +7,7 @@ from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
 from apps.common.permissions import DenyViewerMutations, IncidentTransitionRBAC
 from apps.common.responses import success, failure
+from apps.common.pagination import DefaultPagination
 from apps.changes.models import Change
 from apps.problems.models import Problem
 from apps.sla.services import refresh_incident_sla_state
@@ -44,21 +45,17 @@ def _activity_value(value):
     return str(value)
 
 
+from .filters import IncidentFilter
+
 class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['state', 'priority', 'category', 'assigned_to']
+    filterset_class = IncidentFilter
     queryset = Incident.objects.all()
-    
+    pagination_class = DefaultPagination
+
     def get_queryset(self):
         queryset = super().get_queryset()
-        search = self.request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(number__icontains=search) | 
-                Q(short_description__icontains=search) |
-                Q(description__icontains=search)
-            )
         return queryset.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'linked_problems__problem', 'linked_changes__change')
     
     def get_serializer_class(self):
@@ -441,3 +438,379 @@ class IncidentLiveContextView(APIView):
         }
         return success(payload)
 
+
+class IncidentEscalateView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+
+        if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
+            return failure("Cannot escalate a resolved, closed, or cancelled incident.", status_code=400)
+
+        reason = request.data.get("reason", "Manual escalation")
+        previous_priority = incident.priority
+        incident.state = Incident.State.ESCALATED
+        incident.escalation_level = getattr(incident, 'escalation_level', 0) + 1
+        # Bump priority if not already P1
+        priority_ladder = [Incident.Priority.P4, Incident.Priority.P3, Incident.Priority.P2, Incident.Priority.P1]
+        current_idx = priority_ladder.index(incident.priority) if incident.priority in priority_ladder else 2
+        incident.priority = priority_ladder[min(current_idx + 1, 3)]
+        incident.save()
+
+        create_activity(
+            request=request,
+            action="ESCALATED",
+            description=f"Escalated (Level {incident.escalation_level}): {reason}",
+            old_value=previous_priority,
+            new_value=incident.priority,
+            user=request.user,
+            incident=incident
+        )
+
+        broadcast_notification(
+            organization=incident.organization,
+            message=f"Incident {incident.number} has been ESCALATED to Level {incident.escalation_level}.",
+            resource_type="INCIDENT",
+            resource_id=incident.id
+        )
+
+        return success(IncidentSerializer(incident).data, "incident escalated")
+
+
+class IncidentReassignView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+            
+        assigned_to_id = request.data.get("assigned_to")
+        assignment_group_id = request.data.get("assignment_group")
+        
+        if assigned_to_id:
+            from apps.accounts.models import User
+            user = User.objects.filter(pk=assigned_to_id).first()
+            if user:
+                incident.assigned_to = user
+                
+        if assignment_group_id:
+            from apps.teams.models import Team
+            team = Team.objects.filter(pk=assignment_group_id).first()
+            if team:
+                incident.assignment_group = team
+                
+        incident.save()
+        
+        create_activity(
+            request=request,
+            action="REASSIGNED",
+            description=f"Reassigned to {incident.assigned_to.email if incident.assigned_to else 'None'}",
+            user=request.user,
+            incident=incident
+        )
+        
+        if incident.assigned_to:
+            broadcast_notification(
+                organization=incident.organization,
+                message=f"Incident {incident.number} has been assigned to you.",
+                resource_type="INCIDENT",
+                resource_id=incident.id,
+                user=incident.assigned_to
+            )
+            
+        return success(IncidentSerializer(incident).data, "incident reassigned")
+
+
+class IncidentResolveView(APIView):
+    """Marks incident as RESOLVED (Engineer action). Sets resolved_at."""
+    permission_classes = [IsAuthenticated, DenyViewerMutations, IncidentTransitionRBAC]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+
+        if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
+            return failure(f"Incident is already {incident.state}.", status_code=400)
+
+        resolution_code = request.data.get("resolution_code")
+        resolution_notes = request.data.get("resolution_notes")
+
+        if not resolution_code:
+            return failure("resolution_code is required to resolve an incident.", status_code=400)
+        if not resolution_notes:
+            return failure("resolution_notes are required to resolve an incident.", status_code=400)
+        if resolution_code not in Incident.ResolutionCode.values:
+            return failure(f"Invalid resolution_code. Valid: {Incident.ResolutionCode.values}", status_code=400)
+
+        incident.state = Incident.State.RESOLVED
+        incident.resolution_code = resolution_code
+        incident.resolution_notes = resolution_notes
+        incident.resolved_at = timezone.now()
+        incident.save()
+
+        create_activity(
+            request=request,
+            action="RESOLVED",
+            description=f"Incident resolved with code: {resolution_code}",
+            old_value=Incident.State.IN_PROGRESS,
+            new_value=Incident.State.RESOLVED,
+            user=request.user,
+            incident=incident
+        )
+
+        broadcast_notification(
+            organization=incident.organization,
+            message=f"Incident {incident.number} has been RESOLVED.",
+            resource_type="INCIDENT",
+            resource_id=incident.id
+        )
+        if incident.created_by:
+            broadcast_notification(
+                organization=incident.organization,
+                message=f"Your incident {incident.number} has been resolved.",
+                resource_type="INCIDENT",
+                resource_id=incident.id
+            )
+
+        incident = Incident.objects.select_related(
+            'assigned_to', 'created_by', 'assignment_group'
+        ).prefetch_related('work_notes', 'activities', 'attachments').get(pk=incident.pk)
+        return success(IncidentSerializer(incident).data, "incident resolved")
+
+
+class IncidentCloseView(APIView):
+    """Permanently closes a RESOLVED incident. Requires manager/admin."""
+    permission_classes = [IsAuthenticated, DenyViewerMutations, IncidentTransitionRBAC]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+
+        if incident.state != Incident.State.RESOLVED:
+            return failure("Only RESOLVED incidents can be closed. Resolve it first.", status_code=400)
+
+        incident.state = Incident.State.CLOSED
+        incident.closed_at = timezone.now()
+        incident.save()
+
+        create_activity(
+            request=request,
+            action="CLOSED",
+            description="Incident permanently closed.",
+            user=request.user,
+            incident=incident
+        )
+
+        return success(IncidentSerializer(incident).data, "incident closed")
+
+
+class IncidentReopenView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations, IncidentTransitionRBAC]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+
+        if incident.state not in [Incident.State.RESOLVED, Incident.State.CLOSED]:
+            return failure("Only RESOLVED or CLOSED incidents can be reopened.", status_code=400)
+
+        reason = request.data.get("reason", "Reopened by user")
+        previous_state = incident.state
+        incident.state = Incident.State.IN_PROGRESS
+        incident.resolved_at = None
+        incident.closed_at = None
+        incident.save()
+
+        create_activity(
+            request=request,
+            action="REOPENED",
+            description=f"Reopened from {previous_state}: {reason}",
+            old_value=previous_state,
+            new_value=Incident.State.IN_PROGRESS,
+            user=request.user,
+            incident=incident
+        )
+
+        return success(IncidentSerializer(incident).data, "incident reopened")
+
+
+class IncidentBulkUpdateView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request):
+        ids = request.data.get("ids", [])
+        updates = request.data.get("updates", {})
+        
+        if not ids:
+            return failure("no incident ids provided", status_code=400)
+            
+        incidents = Incident.objects.filter(organization=request.organization, pk__in=ids)
+        count = incidents.count()
+        
+        # Simple implementation - iterate and save to trigger signals/logic
+        for incident in incidents:
+            if "state" in updates:
+                incident.state = updates["state"]
+            if "priority" in updates:
+                incident.priority = updates["priority"]
+            if "assigned_to" in updates:
+                from apps.accounts.models import User
+                user = User.objects.filter(pk=updates["assigned_to"]).first()
+                if user:
+                    incident.assigned_to = user
+            incident.save()
+            
+            create_activity(
+                request=request,
+                action="BULK_UPDATE",
+                description=f"Bulk updated: {list(updates.keys())}",
+                user=request.user,
+                incident=incident
+            )
+            
+        return success({"updated_count": count}, f"successfully updated {count} incidents")
+
+
+class IncidentExportCSVView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import csv
+        from django.http import HttpResponse
+        from .filters import IncidentFilter
+        
+        queryset = Incident.objects.filter(organization=request.organization)
+        filtered_qs = IncidentFilter(request.GET, queryset=queryset).qs
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="incidents_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['Number', 'Short Description', 'Priority', 'State', 'Assigned To', 'Created At'])
+        
+        for incident in filtered_qs:
+            writer.writerow([
+                incident.number,
+                incident.short_description,
+                incident.priority,
+                incident.state,
+                incident.assigned_to.email if incident.assigned_to else 'Unassigned',
+                incident.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            ])
+            
+        return response
+
+
+class IncidentAttachmentUploadView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+            
+        file_obj = request.FILES.get("file")
+        if not file_obj:
+            return failure("no file provided", status_code=400)
+            
+        # Basic validation
+        if file_obj.size > 10 * 1024 * 1024: # 10MB limit
+            return failure("file size exceeds 10MB limit", status_code=400)
+            
+        # Save file (simple local storage)
+        import os
+        from django.conf import settings
+        from django.core.files.storage import default_storage
+        
+        path = default_storage.save(
+            f"attachments/incidents/{incident.id}/{file_obj.name}",
+            file_obj
+        )
+        
+        attachment = Attachment.objects.create(
+            incident=incident,
+            filename=file_obj.name,
+            original_name=file_obj.name,
+            mime_type=file_obj.content_type,
+            size=file_obj.size,
+            path=path,
+            uploaded_by=request.user
+        )
+        
+        create_activity(
+            request=request,
+            action="ATTACHMENT_ADDED",
+            description=f"Attachment added: {file_obj.name}",
+            user=request.user,
+            incident=incident
+        )
+        
+        from .serializers import AttachmentSerializer
+        return success(AttachmentSerializer(attachment).data, "attachment uploaded", 201)
+
+
+class IncidentPromoteToProblemView(APIView):
+    """
+    POST /api/v1/incidents/<id>/promote-to-problem/
+    Creates a Problem from this incident's context and auto-links them.
+    RBAC: Engineer and above only.
+    """
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        from apps.problems.models import Problem
+        from apps.problems.serializers import ProblemSerializer
+        from apps.common.utils import generate_record_number
+
+        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+
+        # Operators and Viewers cannot promote
+        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin")
+                or request.user.has_role("Manager") or request.user.has_role("Engineer")):
+            return failure("Only Engineers and above can promote incidents to problems.", status_code=403)
+
+        # Generate unique PRB number
+        number = generate_record_number("PRB", incident.organization, "last_problem_number")
+
+        problem = Problem.objects.create(
+            number=number,
+            short_description=incident.short_description,
+            description=incident.description or "",
+            priority=incident.priority,
+            category=incident.category or "",
+            organization=incident.organization,
+            created_by=request.user,
+            assigned_to=incident.assigned_to,
+            assignment_group=incident.assignment_group,
+        )
+
+        # Link incident → problem
+        IncidentProblem.objects.create(
+            incident=incident,
+            problem=problem,
+            link_type=IncidentProblem.LinkType.CAUSED_BY,
+            notes=f"Promoted from incident {incident.number}",
+        )
+
+        create_activity(
+            request=request,
+            action="PROMOTED_TO_PROBLEM",
+            description=f"Promoted to Problem {problem.number}",
+            user=request.user,
+            incident=incident,
+            problem=problem,
+        )
+
+        return success(ProblemSerializer(problem).data, f"Incident promoted to Problem {problem.number}", 201)

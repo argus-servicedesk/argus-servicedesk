@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notification
+from .models import Notification, NotificationTemplate
 from apps.accounts.serializers import UserSerializer
 from apps.organizations.serializers import OrganizationSerializer
 
@@ -18,3 +18,9 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ['is_read', 'read_at']
+
+class NotificationTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationTemplate
+        fields = ['id', 'name', 'subject_template', 'body_template', 'type', 'channel', 'is_active']
+        read_only_fields = ['id']

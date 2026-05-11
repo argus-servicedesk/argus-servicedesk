@@ -19,6 +19,7 @@ import {
   useKBCategories,
   useCreateKBCategory,
 } from '../../hooks/useKnowledgeBase';
+import { useAuth } from '../../hooks/useAuth';
 import type { KBArticle, KBCategory, KBArticleState } from '../../types/index';
 
 const COLORS = {
@@ -46,6 +47,7 @@ const STATE_BADGE: Record<KBArticleState, { bg: string; text: string }> = {
 
 function KBArticleList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [activeTab, setActiveTab] = useState<KBArticleState | 'ALL'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -104,14 +106,16 @@ function KBArticleList() {
               Manage articles, categories, and knowledge content
             </p>
           </div>
-          <button
-            onClick={() => navigate('/kb/create')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors"
-            style={{ backgroundColor: '#ffffff', color: COLORS.primary }}
-          >
-            <Plus size={18} />
-            Create Article
-          </button>
+          {canManage('kb') && (
+            <button
+              onClick={() => navigate('/kb/create')}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors"
+              style={{ backgroundColor: '#ffffff', color: COLORS.primary }}
+            >
+              <Plus size={18} />
+              Create Article
+            </button>
+          )}
         </div>
       </div>
 
@@ -260,74 +264,75 @@ function KBArticleList() {
           })}
         </div>
 
-        {/* Category Management */}
-        <div
-          className="rounded-xl p-6"
-          style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }}
-        >
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: COLORS.text }}>
-            <FolderPlus size={20} style={{ color: COLORS.primary }} />
-            Manage Categories
-          </h2>
+        {canManage('kb') && (
+          <div
+            className="rounded-xl p-6"
+            style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }}
+          >
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: COLORS.text }}>
+              <FolderPlus size={20} style={{ color: COLORS.primary }} />
+              Manage Categories
+            </h2>
 
-          <form onSubmit={onCreateCategory} className="flex flex-wrap items-end gap-3 mb-5">
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>
-                Name
-              </label>
-              <input
-                {...regCat('name', { required: true })}
-                placeholder="Category name"
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                style={{ border: `1px solid ${COLORS.border}`, color: COLORS.text }}
-              />
-            </div>
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>
-                Description
-              </label>
-              <input
-                {...regCat('description')}
-                placeholder="Short description"
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                style={{ border: `1px solid ${COLORS.border}`, color: COLORS.text }}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={createCategory.isPending}
-              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: COLORS.primary }}
-            >
-              {createCategory.isPending ? 'Adding...' : 'Add Category'}
-            </button>
-          </form>
-
-          <div className="flex flex-wrap gap-2">
-            {categories.map((cat) => (
-              <span
-                key={cat.id}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-                style={{ backgroundColor: '#eef2ff', color: COLORS.primary }}
+            <form onSubmit={onCreateCategory} className="flex flex-wrap items-end gap-3 mb-5">
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>
+                  Name
+                </label>
+                <input
+                  {...regCat('name', { required: true })}
+                  placeholder="Category name"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ border: `1px solid ${COLORS.border}`, color: COLORS.text }}
+                />
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-xs font-medium mb-1" style={{ color: '#64748b' }}>
+                  Description
+                </label>
+                <input
+                  {...regCat('description')}
+                  placeholder="Short description"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ border: `1px solid ${COLORS.border}`, color: COLORS.text }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={createCategory.isPending}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+                style={{ backgroundColor: COLORS.primary }}
               >
-                {cat.name}
-                {cat._count?.articles != null && (
-                  <span
-                    className="rounded-full px-1.5 py-0.5 text-[10px]"
-                    style={{ backgroundColor: COLORS.primary, color: '#ffffff' }}
-                  >
-                    {cat._count.articles}
-                  </span>
-                )}
-              </span>
-            ))}
-            {categories.length === 0 && (
-              <p className="text-xs" style={{ color: '#94a3b8' }}>
-                No categories yet. Create one above.
-              </p>
-            )}
+                {createCategory.isPending ? 'Adding...' : 'Add Category'}
+              </button>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              {categories.map((cat) => (
+                <span
+                  key={cat.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                  style={{ backgroundColor: '#eef2ff', color: COLORS.primary }}
+                >
+                  {cat.name}
+                  {cat._count?.articles != null && (
+                    <span
+                      className="rounded-full px-1.5 py-0.5 text-[10px]"
+                      style={{ backgroundColor: COLORS.primary, color: '#ffffff' }}
+                    >
+                      {cat._count.articles}
+                    </span>
+                  )}
+                </span>
+              ))}
+              {categories.length === 0 && (
+                <p className="text-xs" style={{ color: '#94a3b8' }}>
+                  No categories yet. Create one above.
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCreateIncident } from '../../hooks/useIncidents';
+import { useTeamMembers, useAssignmentPreview } from '../../hooks/useAssignments';
+import { useAuth } from '../../hooks/useAuth';
 import api from '../../lib/api';
 import {
   SNCollapsibleSection,
@@ -80,6 +82,7 @@ export default function IncidentCreate() {
   const navigate = useNavigate();
   const location = useLocation();
   const createIncident = useCreateIncident();
+  const { user: currentUser } = useAuth();
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
@@ -107,7 +110,7 @@ export default function IncidentCreate() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<IncidentFormData>({
+  } = useForm<IncidentFormData & { requestedById: string }>({
     defaultValues: {
       shortDescription: '',
       description: '',
@@ -119,8 +122,15 @@ export default function IncidentCreate() {
       assignmentGroupId: '',
       assignedToId: '',
       configItemId: '',
+      requestedById: currentUser?.id || '',
     },
   });
+
+  useEffect(() => {
+    if (currentUser?.id && !watch('requestedById')) {
+      setValue('requestedById', currentUser.id);
+    }
+  }, [currentUser, setValue, watch]);
 
   useEffect(() => {
     const clone = (location.state as { clone?: Partial<IncidentFormData> } | null)?.clone;
@@ -134,15 +144,30 @@ export default function IncidentCreate() {
   const urgency = watch('urgency');
   const priority = useMemo<Priority>(() => PRIORITY_MATRIX[impact][urgency], [impact, urgency]);
 
-  const onSubmit = async (data: IncidentFormData) => {
+  const category = watch('category');
+  const subcategory = watch('subcategory');
+  const assignmentGroupId = watch('assignmentGroupId');
+  const configItemId = watch('configItemId');
+
+  const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
+  const teamMembers = teamMembersResponse?.data || [];
+
+  const { data: suggestion } = useAssignmentPreview({
+    category,
+    subcategory,
+    config_item_id: configItemId
+  });
+
+  const onSubmit = async (data: any) => {
     try {
       await createIncident.mutateAsync({
         ...data,
+        requested_by: data.requestedById,
         priority,
         state: 'NEW',
-        assignmentGroupId: data.assignmentGroupId || undefined,
-        assignedToId: data.assignedToId || undefined,
-        configItemId: data.configItemId || undefined,
+        assignment_group: data.assignmentGroupId || undefined,
+        assigned_to: data.assignedToId || undefined,
+        config_item: data.configItemId || undefined,
         subcategory: data.subcategory || undefined,
       });
       toast.success('Incident created successfully');
@@ -152,6 +177,22 @@ export default function IncidentCreate() {
     }
   };
 
+  const applySuggestion = () => {
+    if (suggestion?.suggested_group) {
+      setValue('assignmentGroupId', suggestion.suggested_group.id);
+    }
+    if (suggestion?.suggested_user) {
+      setValue('assignedToId', suggestion.suggested_user.id);
+    }
+  };
+
+  // Auto-apply suggestion when category changes
+  useEffect(() => {
+    if (suggestion?.suggested_group) {
+      applySuggestion();
+    }
+  }, [suggestion]);
+
   return (
     <SNPage className="min-h-full" style={{ margin: '-24px', background: '#fff' }}>
       <SNRecordHeader
@@ -159,10 +200,21 @@ export default function IncidentCreate() {
         priorityPill={<SNPillBadge label={PRIORITY_LABEL[priority]} tone={priority === 'P1' ? 'critical' : priority === 'P2' ? 'warn' : 'neutral'} dot />}
         statePill={<SNPillBadge label="NEW" tone="info" />}
         secondaryActions={(
-          <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={() => navigate('/incidents')}>
-            <ArrowLeft size={15} />
-            Back
-          </button>
+          <div className="flex gap-2">
+            {suggestion?.suggested_group && (
+              <button 
+                type="button" 
+                className="sn-soft-button inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border-indigo-200"
+                onClick={applySuggestion}
+              >
+                💡 Suggest Assignment
+              </button>
+            )}
+            <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={() => navigate('/incidents')}>
+              <ArrowLeft size={15} />
+              Back
+            </button>
+          </div>
         )}
         onUpdate={handleSubmit(onSubmit)}
         updateLoading={createIncident.isPending}
@@ -170,6 +222,17 @@ export default function IncidentCreate() {
       />
 
       <form onSubmit={handleSubmit(onSubmit)}>
+        {suggestion?.suggested_group && (
+          <div className="px-6 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+            <span className="text-xs font-medium text-indigo-700">
+              💡 Assignment Engine suggests: <b>{suggestion.suggested_group.name}</b> 
+              {suggestion.suggested_user ? ` → ${suggestion.suggested_user.name}` : ''}
+            </span>
+            <button type="button" className="text-xs font-bold text-indigo-800 hover:underline" onClick={applySuggestion}>
+              Apply Suggestion
+            </button>
+          </div>
+        )}
         <SNCollapsibleSection title="Incident Details">
           <SNRecordGrid>
             <SNRecordField label="Number" required>
@@ -180,7 +243,10 @@ export default function IncidentCreate() {
             </SNRecordField>
 
             <SNRecordField label="Requested By" required>
-              <SNReadOnly>Monitoring System</SNReadOnly>
+              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
+                <option value="">-- None --</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
+              </select>
             </SNRecordField>
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
@@ -217,10 +283,13 @@ export default function IncidentCreate() {
               </select>
             </SNRecordField>
             <SNRecordField label="Assigned To">
-              <select className="sn-field" {...register('assignedToId')}>
+              <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                 <option value="">-- None --</option>
-                {users.map((user) => <option key={user.id} value={user.id}>{personLabel(user)}</option>)}
+                {teamMembers.map((user: any) => (
+                  <option key={user.id} value={user.id}>{personLabel(user)}</option>
+                ))}
               </select>
+              {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
             </SNRecordField>
 
             <SNRecordField label="Configuration Item">
@@ -229,22 +298,20 @@ export default function IncidentCreate() {
                 {configItems.map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
               </select>
             </SNRecordField>
-            
-            <SNRecordField label="Short Description" required fullWidth>
-              <div className="w-full">
-                <input
-                  className="sn-field"
-                  placeholder="Brief summary of the incident"
-                  style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
-                  {...register('shortDescription', { required: 'Short description is required', minLength: { value: 3, message: 'Minimum 3 characters' } })}
-                />
-                {errors.shortDescription && <div className="mt-2 text-sm font-bold" style={{ color: sn.critical }}>{errors.shortDescription.message}</div>}
-              </div>
+            <SNRecordField label="Short Description" required>
+              <input
+                className="sn-field"
+                placeholder="Brief summary"
+                style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
+                {...register('shortDescription', { required: 'Short description is required' })}
+              />
             </SNRecordField>
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed incident description" {...register('description')} />
             </SNRecordField>
+
+            
           </SNRecordGrid>
         </SNCollapsibleSection>
 

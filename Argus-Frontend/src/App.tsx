@@ -67,6 +67,10 @@ const ServiceRequestDetail = lazy(() => import('./components/ServiceRequests/Ser
 const KBArticleList = lazy(() => import('./components/KnowledgeBase/KBArticleList'));
 const KBArticleCreate = lazy(() => import('./components/KnowledgeBase/KBArticleCreate'));
 const KBArticleDetail = lazy(() => import('./components/KnowledgeBase/KBArticleDetail'));
+const RoleManagement = lazy(() => import('./components/Admin/RoleManagement'));
+const WorkflowDesigner = lazy(() => import('./components/Workflows/WorkflowDesigner'));
+const AutomationRulesPage = lazy(() => import('./components/Automation/AutomationRulesPage'));
+const ApprovalCenter = lazy(() => import('./components/Auth/ApprovalCenter'));
 const PortalLayout = lazy(() => import('./components/Portal/PortalLayout'));
 const PortalHome = lazy(() => import('./components/Portal/PortalHome'));
 const PortalCatalog = lazy(() => import('./components/Portal/PortalCatalog'));
@@ -75,6 +79,7 @@ const PortalKnowledgeBase = lazy(() => import('./components/Portal/PortalKnowled
 const PortalArticleView = lazy(() => import('./components/Portal/PortalArticleView'));
 const PortalMyRequests = lazy(() => import('./components/Portal/PortalMyRequests'));
 const VendorList = lazy(() => import('./components/Vendors/VendorList'));
+const AssignmentRulesPage = lazy(() => import('./components/Assignments/AssignmentRulesPage'));
 
 function LoadingFallback() {
   return (
@@ -145,6 +150,29 @@ export default function App() {
           <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
             <Suspense fallback={<LoadingFallback />}><UserList /></Suspense>
           </ProtectedRoute>
+        } />
+        <Route path="/roles" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Suspense fallback={<LoadingFallback />}><RoleManagement /></Suspense>
+          </ProtectedRoute>
+        } />
+        <Route path="/workflows" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Suspense fallback={<LoadingFallback />}><WorkflowDesigner /></Suspense>
+          </ProtectedRoute>
+        } />
+        <Route path="/automations" element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <Suspense fallback={<LoadingFallback />}><AutomationRulesPage /></Suspense>
+          </ProtectedRoute>
+        } />
+        <Route path="/assignment-rules" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+            <Suspense fallback={<LoadingFallback />}><AssignmentRulesPage /></Suspense>
+          </ProtectedRoute>
+        } />
+        <Route path="/approvals" element={
+          <Suspense fallback={<LoadingFallback />}><ApprovalCenter /></Suspense>
         } />
         <Route path="/integrations" element={
           <ProtectedRoute allowedRoles={['ADMIN']}>

@@ -13,6 +13,7 @@ import {
   useCatalogItems,
   useCreateCategory,
 } from '../../hooks/useCatalog';
+import { useAuth } from '../../hooks/useAuth';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const PRIMARY = '#6366f1';
@@ -40,6 +41,7 @@ interface CategoryFormData {
 
 function CatalogList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<CatalogItemType | ''>('');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -102,33 +104,37 @@ function CatalogList() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => setShowCategoryModal(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '10px 18px', borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  background: 'rgba(255,255,255,0.08)',
-                  color: '#ffffff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
-                }}
-              >
-                <Folder size={16} />
-                Create Category
-              </button>
-              <button
-                onClick={() => navigate('/catalog/create')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '10px 20px', borderRadius: 10,
-                  border: 'none',
-                  background: PRIMARY, color: '#ffffff',
-                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
-                }}
-              >
-                <Plus size={16} />
-                Create Item
-              </button>
+              {canManage('catalog') && (
+                <>
+                  <button
+                    onClick={() => setShowCategoryModal(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '10px 18px', borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: '#ffffff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    <Folder size={16} />
+                    Create Category
+                  </button>
+                  <button
+                    onClick={() => navigate('/catalog/create')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '10px 20px', borderRadius: 10,
+                      border: 'none',
+                      background: PRIMARY, color: '#ffffff',
+                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                    }}
+                  >
+                    <Plus size={16} />
+                    Create Item
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

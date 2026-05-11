@@ -7,6 +7,7 @@ import {
   HardDrive, Search, Loader2, Plus, Activity, Shield, Layers, Eye,
 } from 'lucide-react';
 import { useAssets, useAssetStats } from '../../hooks/useAssets';
+import { useAuth } from '../../hooks/useAuth';
 
 /* ===================================================================
    DESIGN SYSTEM — matches DashboardOverview T constants
@@ -172,6 +173,7 @@ function KPICard({ label, value, accentColor }: { label: string; value: string |
    =================================================================== */
 export default function AssetDashboard() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -296,12 +298,14 @@ export default function AssetDashboard() {
                 <option value="DECOMMISSIONED" style={{ background: '#1E293B' }}>Decommissioned</option>
                 <option value="PLANNED" style={{ background: '#1E293B' }}>Planned</option>
               </select>
-              <button
-                onClick={() => navigate('/assets/create')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all hover:opacity-90"
-                style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.25)' }}>
-                <Plus size={13} /> New Asset
-              </button>
+              {canManage('assets') && (
+                <button
+                  onClick={() => navigate('/assets/create')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all hover:opacity-90"
+                  style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.25)' }}>
+                  <Plus size={13} /> New Asset
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -394,8 +398,12 @@ export default function AssetDashboard() {
           <Server size={36} style={{ color: T.textMuted, opacity: 0.3 }} />
           <p className="mt-3 text-[13px]" style={{ color: T.textSecondary }}>No {TYPE_LABELS[typeFilter] || typeFilter} found</p>
           <p className="text-[11px] mt-1" style={{ color: T.textMuted }}>
-            <button onClick={() => navigate('/assets/create')} style={{ color: T.indigo, textDecoration: 'underline' }}>Add new</button>
-            {' or '}
+            {canManage('assets') && (
+              <>
+                <button onClick={() => navigate('/assets/create')} style={{ color: T.indigo, textDecoration: 'underline' }}>Add new</button>
+                {' or '}
+              </>
+            )}
             <button onClick={() => setTypeFilter('ALL')} style={{ color: T.indigo, textDecoration: 'underline' }}>browse all</button>
           </p>
         </div>

@@ -43,8 +43,11 @@ export interface User {
   lastName: string;
   phone: string | null;
   avatar: string | null;
-  role: Role;
+  roles: string[];
+  roleNames?: string[];
   status: UserStatus;
+  organizationId: string | null;
+  organization?: { id: string; name: string; slug: string } | null;
   department: string | null;
   jobTitle: string | null;
   timezone: string;

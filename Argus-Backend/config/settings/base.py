@@ -67,6 +67,11 @@ INSTALLED_APPS = [
     "apps.webhooks",
     "apps.status",
     "apps.domain",
+    "apps.workflows",
+    "apps.automations",
+    "apps.approvals",
+    "apps.assignments",
+    "apps.service_catalog",
 ]
 
 MIDDLEWARE = [
@@ -79,6 +84,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.common.middleware.OrganizationContextMiddleware",
+    "apps.common.audit_middleware.AuditLogMiddleware",
+    "apps.common.rate_limit_middleware.RateLimitMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

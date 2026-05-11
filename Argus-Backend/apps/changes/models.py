@@ -115,3 +115,49 @@ class ChangeCI(models.Model):
 
     class Meta:
         db_table = "change_cis"
+
+
+class MaintenanceWindow(models.Model):
+    class Type(models.TextChoices):
+        MAINTENANCE = "MAINTENANCE", "Maintenance Window"
+        BLACKOUT = "BLACKOUT", "Blackout Period"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    type = models.CharField(max_length=20, choices=Type.choices, default=Type.MAINTENANCE)
+    
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='maintenance_windows')
+    
+    # Optional scope
+    affected_cis = models.ManyToManyField('assets.ConfigurationItem', blank=True, related_name='maintenance_windows')
+    affected_groups = models.ManyToManyField('teams.Team', blank=True, related_name='maintenance_windows')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "maintenance_windows"
+        ordering = ["-start_date"]
+
+    def __str__(self):
+        return f"{self.name} ({self.type})"
+
+
+class RiskAssessment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    change = models.OneToOneField(Change, on_delete=models.CASCADE, related_name='risk_assessment')
+    
+    # JSON structure for questions and answers
+    # e.g., [{"question": "Is there redundancy?", "answer": "No", "weight": 10}]
+    assessment_data = models.JSONField(default=dict)
+    calculated_score = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "change_risk_assessments"

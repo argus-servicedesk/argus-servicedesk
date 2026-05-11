@@ -3,6 +3,7 @@ import { Building2, Plus, Search, Mail, Phone, Globe, Loader2, X, Pencil, Trash2
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { useVendors, useCreateVendor, useUpdateVendor, useDeleteVendor } from '../../hooks/useVendors';
+import { useAuth } from '../../hooks/useAuth';
 
 interface Vendor {
   id: string;
@@ -31,6 +32,8 @@ export default function VendorList() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Vendor | null>(null);
+  const { canManage } = useAuth();
+  const canModify = canManage('vendors');
 
   const { data, isLoading } = useVendors({ search: search || undefined });
   const createVendor = useCreateVendor();
@@ -105,9 +108,11 @@ export default function VendorList() {
                 <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Manage IT vendors, contracts, and supplier information</p>
               </div>
             </div>
-            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: 'rgba(99,102,241,0.25)', border: '1px solid rgba(99,102,241,0.4)' }}>
-              <Plus size={16} /> New Vendor
-            </button>
+            {canModify && (
+              <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: 'rgba(99,102,241,0.25)', border: '1px solid rgba(99,102,241,0.4)' }}>
+                <Plus size={16} /> New Vendor
+              </button>
+            )}
           </div>
           {/* KPIs */}
           <div className="grid grid-cols-3 gap-4 mt-5">
@@ -153,9 +158,11 @@ export default function VendorList() {
             </div>
             <h3 className="text-lg font-bold mb-2" style={{ color: '#0f172a' }}>No Vendors Yet</h3>
             <p className="text-sm mb-4 max-w-md" style={{ color: '#64748b' }}>Add your first vendor to start tracking IT suppliers, contracts, and service providers.</p>
-            <button onClick={openCreate} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#6366f1' }}>
-              <Plus size={16} /> Add First Vendor
-            </button>
+            {canModify && (
+              <button onClick={openCreate} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#6366f1' }}>
+                <Plus size={16} /> Add First Vendor
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -181,14 +188,16 @@ export default function VendorList() {
                   {v.website && <div className="flex items-center gap-2"><Globe size={12} /> {v.website}</div>}
                   {v.contractNumber && <div className="text-[10px] mt-1 font-mono" style={{ color: '#94a3b8' }}>Contract: {v.contractNumber}</div>}
                 </div>
-                <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
-                  <button onClick={() => openEdit(v)} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-[11px] font-semibold" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
-                    <Pencil size={11} /> Edit
-                  </button>
-                  <button onClick={() => onDelete(v.id)} className="flex items-center justify-center gap-1 px-3 py-1.5 rounded text-[11px] font-semibold" style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626' }}>
-                    <Trash2 size={11} />
-                  </button>
-                </div>
+                {canModify && (
+                  <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => openEdit(v)} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-[11px] font-semibold" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
+                      <Pencil size={11} /> Edit
+                    </button>
+                    <button onClick={() => onDelete(v.id)} className="flex items-center justify-center gap-1 px-3 py-1.5 rounded text-[11px] font-semibold" style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626' }}>
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

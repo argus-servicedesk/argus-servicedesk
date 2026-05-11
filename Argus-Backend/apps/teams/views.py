@@ -89,7 +89,7 @@ def _member_payload(member):
             "firstName": first_name,
             "lastName": last_name,
             "email": user.email,
-            "role": user.role,
+            "role": user.role_names[0] if user.role_names else "",
         },
         "team": {"id": str(member.team_id), "name": member.team.name},
         "isPrimary": member.role == "LEAD",

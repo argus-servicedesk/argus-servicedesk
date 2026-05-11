@@ -205,3 +205,15 @@ export function useApproveChange() {
     },
   });
 }
+
+export function useAddChangeWorkNote(changeId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (note: { content: string; isInternal?: boolean }) => {
+      const { data } = await api.post(`/changes/${changeId}/work-notes/`, denormalizePayload(note));
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.detail(changeId) }); },
+  });
+}
+

@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAsset, useUpdateAsset, useAssetLiveMetrics, useAssetMetricsHistory } from '../../hooks/useAssets';
+import { useAuth } from '../../hooks/useAuth';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import AssetFinancialPanel from '../CMDB/AssetFinancialPanel';
 import AssetRelationshipsPanel from '../CMDB/AssetRelationshipsPanel';
@@ -780,6 +781,7 @@ function AIAnalysisCard({ analysis, issues, recommendations }: { analysis: strin
 export default function AssetDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [activeTab, setActiveTab] = useState<'live' | 'network' | 'storage' | 'alerts' | 'incidents' | 'history' | 'financials' | 'relationships' | 'allocations' | 'movements' | 'disposal' | 'diagram'>('live');
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -909,9 +911,11 @@ export default function AssetDetail() {
                   <RefreshCw size={10} /> {new Date(dataUpdatedAt).toLocaleTimeString()}
                 </span>
               )}
-              <button onClick={() => setShowEditModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: '#ffffff' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')} onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}>
-                <Pencil size={14} /> Edit
-              </button>
+              {canManage('assets') && (
+                <button onClick={() => setShowEditModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all" style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)', color: '#ffffff' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')} onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}>
+                  <Pencil size={14} /> Edit
+                </button>
+              )}
             </div>
           </div>
         </div>

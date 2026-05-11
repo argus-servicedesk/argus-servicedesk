@@ -184,17 +184,39 @@ class ChangeApprovalDecisionView(APIView):
         )
 
         previous_state = change.state
-        if decision == Approval.State.APPROVED and change.state == Change.State.APPROVAL:
-            change.state = Change.State.SCHEDULED
-            change.save(update_fields=["state", "updated_at"])
-        elif decision == Approval.State.REJECTED and change.state not in {Change.State.CLOSED, Change.State.CANCELLED}:
-            change.state = Change.State.CANCELLED
-            change.save(update_fields=["state", "updated_at"])
+        state_changed = False
+
+        if decision == Approval.State.REJECTED:
+            # Any rejection cancels the change immediately
+            if change.state not in {Change.State.CLOSED, Change.State.CANCELLED}:
+                change.state = Change.State.CANCELLED
+                change.save(update_fields=["state", "updated_at"])
+                state_changed = True
+        elif decision == Approval.State.APPROVED and change.state == Change.State.APPROVAL:
+            # Check quorum: all required approvers must have approved
+            required_approvers = change.required_approvers.all() if hasattr(change, 'required_approvers') else []
+            if required_approvers:
+                # Multi-approver mode: check all have approved
+                approved_ids = set(
+                    change.approvals.filter(state=Approval.State.APPROVED).values_list("approver_id", flat=True)
+                )
+                required_ids = set(required_approvers.values_list("id", flat=True))
+                all_approved = required_ids.issubset(approved_ids)
+            else:
+                # No required approvers defined: any manager/admin approval is sufficient
+                all_approved = True
+
+            if all_approved:
+                change.state = Change.State.SCHEDULED
+                change.save(update_fields=["state", "updated_at"])
+                state_changed = True
 
         create_activity(
             request=request,
             action=f"APPROVAL_{decision}",
-            description=f"Change approval {decision.lower()} by {request.user.email}",
+            description=f"Change approval {decision.lower()} by {request.user.email}"
+                        + (" — Change SCHEDULED" if state_changed and decision == Approval.State.APPROVED else "")
+                        + (" — Change CANCELLED" if state_changed and decision == Approval.State.REJECTED else ""),
             old_value=previous_state,
             new_value=change.state,
             user=request.user,
@@ -208,3 +230,4 @@ class ChangeApprovalDecisionView(APIView):
             .first()
         )
         return success(ChangeSerializer(change).data, "approval decision recorded")
+

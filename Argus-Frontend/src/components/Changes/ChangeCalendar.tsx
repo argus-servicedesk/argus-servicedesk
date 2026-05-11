@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { useChanges } from '../../hooks/useChanges';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ChangeItem {
   id: string;
@@ -76,6 +77,7 @@ function buildMonthDays(month: Date): Date[] {
 
 export default function ChangeCalendar() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -129,10 +131,12 @@ export default function ChangeCalendar() {
               {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               Refresh
             </button>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
-              <Plus size={16} />
-              New
-            </button>
+            {canManage('changes') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/changes/create')}>
+                <Plus size={16} />
+                New
+              </button>
+            )}
           </div>
         </div>
 

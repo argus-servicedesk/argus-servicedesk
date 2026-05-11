@@ -7,6 +7,9 @@ class Organization(models.Model):
     name = models.CharField(max_length=200, unique=True)
     slug = models.SlugField(max_length=120, unique=True)
     is_active = models.BooleanField(default=True)
+    last_incident_number = models.PositiveIntegerField(default=0)
+    last_change_number = models.PositiveIntegerField(default=0)
+    last_problem_number = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

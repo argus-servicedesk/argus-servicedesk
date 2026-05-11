@@ -81,6 +81,24 @@ class ActivityReadSerializer(serializers.ModelSerializer):
         fields = ["id", "action", "description", "old_value", "new_value", "user", "created_at"]
 
 
+class ProblemTaskSerializer(serializers.ModelSerializer):
+    assigned_to = UserSerializer(read_only=True)
+    assignment_group = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Problem
+        fields = [
+            'id', 'number', 'short_description', 'description', 'state',
+            'priority', 'assigned_to', 'assignment_group', 'due_date',
+            'completed_at', 'created_at', 'updated_at'
+        ]
+
+    def get_assignment_group(self, obj):
+        if obj.assignment_group:
+            return {'id': str(obj.assignment_group.id), 'name': obj.assignment_group.name}
+        return None
+
+
 # ─── Main serializers ─────────────────────────────────────────────────────────
 
 class ProblemSerializer(serializers.ModelSerializer):
@@ -96,6 +114,7 @@ class ProblemSerializer(serializers.ModelSerializer):
     linked_incidents = LinkedIncidentSerializer(many=True, read_only=True)
     work_notes = WorkNoteReadSerializer(many=True, read_only=True)
     activities = ActivityReadSerializer(many=True, read_only=True)
+    tasks = ProblemTaskSerializer(many=True, read_only=True)
     available_transitions = serializers.SerializerMethodField()
 
     class Meta:
@@ -129,12 +148,13 @@ class ProblemSerializer(serializers.ModelSerializer):
             "linked_incidents",
             "work_notes",
             "activities",
+            "tasks",
             # meta
             "organization",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "number", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "number", "created_by", "created_at", "updated_at", "tasks"]
 
     def get_assignment_group(self, obj: Problem) -> dict | None:
         if obj.assignment_group_id:

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useProblems } from '../../hooks/useProblems';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
+import { useAuth } from '../../hooks/useAuth';
 
 type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 type SortField = 'number' | 'priority' | 'state' | 'shortDescription' | 'relatedIncidents' | 'createdAt';
@@ -157,6 +158,7 @@ function StatusChip({ value, tones, fallback }: {
 
 export default function ProblemList() {
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('');
   const [state, setState] = useState('');
@@ -232,10 +234,12 @@ export default function ProblemList() {
               {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
               Refresh
             </button>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/problems/create')}>
-              <Plus size={16} />
-              New
-            </button>
+            {canManage('problems') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/problems/create')}>
+                <Plus size={16} />
+                New
+              </button>
+            )}
           </div>
         </div>
 
@@ -293,10 +297,12 @@ export default function ProblemList() {
           <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
             <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
             <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new problem record.</div>
-            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/problems/create')}>
-              <Plus size={16} />
-              New Problem
-            </button>
+            {canManage('problems') && (
+              <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/problems/create')}>
+                <Plus size={16} />
+                New Problem
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

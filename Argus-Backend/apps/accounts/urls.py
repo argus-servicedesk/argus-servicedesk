@@ -1,13 +1,19 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import SimpleRouter
 from .views import (
     AuthIndexView, LoginView, LogoutView, MeView, RefreshView, 
     SignupView, UserListView, ForgotPasswordView, ResetPasswordView,
     InviteUserView, AcceptInviteView, UserDetailView,
-    MFASetupView, MFADisableView
+    MFASetupView, MFADisableView, RoleViewSet, PermissionViewSet
 )
+
+router = SimpleRouter(trailing_slash=False)
+router.register(r"roles", RoleViewSet, basename="role")
+router.register(r"permissions", PermissionViewSet, basename="permission")
 
 urlpatterns = [
     path("", AuthIndexView.as_view()),
+    path("", include(router.urls)),
     path("signup", SignupView.as_view()),
     path("register", SignupView.as_view()),
     path("login", LoginView.as_view()),

@@ -1,18 +1,40 @@
 import uuid
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, Permission as DjangoPermission
 from django.db import models
 
 
+class Permission(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(max_length=100, unique=True, db_index=True)  # e.g., 'incident.create'
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "permissions"
+        ordering = ["code"]
+
+    def __str__(self):
+        return self.code
+
+class Role(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    is_system = models.BooleanField(default=False)  # For core roles like Super Admin
+    permissions = models.ManyToManyField(Permission, related_name="roles", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "roles"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
 class User(AbstractUser):
-    class Role(models.TextChoices):
-        ADMIN = "ADMIN", "Admin"
-        MANAGER = "MANAGER", "Manager"
-        ENGINEER = "ENGINEER", "Engineer"
-        OPERATOR = "OPERATOR", "Operator"
-        VIEWER = "VIEWER", "Viewer"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.ENGINEER)
+    roles = models.ManyToManyField(Role, related_name="users", blank=True)
     organization = models.ForeignKey(
         "organizations.Organization",
         on_delete=models.SET_NULL,
@@ -35,6 +57,13 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def has_role(self, role_name):
+        return self.roles.filter(name=role_name).exists()
+
+    @property
+    def role_names(self):
+        return list(self.roles.values_list('name', flat=True))
+
     class Meta:
         db_table = "users"
 
@@ -55,7 +84,7 @@ class PasswordResetToken(models.Model):
 class UserInvitation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField()
-    role = models.CharField(max_length=20, choices=User.Role.choices, default=User.Role.ENGINEER)
+    roles = models.ManyToManyField(Role, related_name="invitations", blank=True)
     organization = models.ForeignKey("organizations.Organization", on_delete=models.CASCADE, related_name="invitations")
     invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="sent_invitations")
     token = models.CharField(max_length=64, unique=True)

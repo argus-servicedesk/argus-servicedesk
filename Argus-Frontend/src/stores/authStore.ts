@@ -28,6 +28,8 @@ export interface User {
   phone?: string | null;
   department?: string | null;
   timezone?: string | null;
+  role_names: string[];
+  roleNames?: string[];
   role: string;
   organization: any;
   organizationId?: string | null;
@@ -107,6 +109,7 @@ function normalizeUser(rawUser: any): User {
     phone: rawUser.phone ?? null,
     department: rawUser.department ?? null,
     timezone: rawUser.timezone ?? 'Asia/Kolkata',
+    roleNames: rawUser.roleNames ?? rawUser.role_names ?? [],
     mfaEnabled: rawUser.mfaEnabled ?? rawUser.mfa_enabled ?? false,
     createdAt: rawUser.createdAt ?? rawUser.created_at,
     updatedAt: rawUser.updatedAt ?? rawUser.updated_at,

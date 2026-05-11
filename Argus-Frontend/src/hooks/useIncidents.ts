@@ -227,3 +227,79 @@ export function useEscalationLogs(id: string, enabled: boolean = true) {
     retry: 1,
   });
 }
+
+// ── Lifecycle Action Mutations ──────────────────────────────────────────────
+
+export function useEscalateIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const { data } = await api.post(`/incidents/${id}/escalate/`, { reason: reason || 'Manual escalation' });
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
+  });
+}
+
+export function useResolveIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, resolutionCode, resolutionNotes }: { id: string; resolutionCode: string; resolutionNotes: string }) => {
+      const { data } = await api.post(`/incidents/${id}/resolve/`, {
+        resolution_code: resolutionCode,
+        resolution_notes: resolutionNotes,
+      });
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
+  });
+}
+
+export function useCloseIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data } = await api.post(`/incidents/${id}/close/`, {});
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
+  });
+}
+
+export function useReopenIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const { data } = await api.post(`/incidents/${id}/reopen/`, { reason: reason || 'Reopened by user' });
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
+  });
+}
+
+export function usePromoteIncidentToProblem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data } = await api.post(`/incidents/${id}/promote-to-problem/`, {});
+      return data;
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.id) });
+      qc.invalidateQueries({ queryKey: ['problems'] });
+    },
+  });
+}
+

@@ -85,6 +85,12 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
 
 
+class ParentIncidentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Incident
+        fields = ['id', 'number', 'short_description', 'state', 'priority']
+
+
 class IncidentSerializer(serializers.ModelSerializer):
     assigned_to = UserSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
@@ -98,13 +104,19 @@ class IncidentSerializer(serializers.ModelSerializer):
     linked_changes = IncidentChangeSerializer(many=True, read_only=True)
     task_slas = TaskSLASerializer(many=True, read_only=True)
     available_transitions = serializers.SerializerMethodField()
+    parent = ParentIncidentSerializer(read_only=True)
+    child_incidents = ParentIncidentSerializer(many=True, read_only=True)
+
+    requested_by = UserSerializer(read_only=True)
 
     class Meta:
         model = Incident
         fields = [
             'id', 'number', 'short_description', 'description', 'state', 
             'impact', 'urgency', 'priority', 'category', 'subcategory',
-            'assigned_to', 'assignment_group', 'created_by', 'config_item',
+            'assigned_to', 'assignment_group', 'created_by', 'requested_by', 'config_item',
+            'parent', 'child_incidents', 'is_major_incident', 
+            'major_incident_state', 'major_incident_notes',
             'sla_breached', 'response_time', 'resolution_time',
             'sla_target_response', 'sla_target_resolution', 'source',
             'source_alert_id', 'source_alert_name', 'resolved_at', 'closed_at',
@@ -112,7 +124,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes',
             'task_slas', 'available_transitions', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at', 'child_incidents']
 
     def get_assignment_group(self, obj):
         if obj.assignment_group:
@@ -134,22 +146,19 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         fields = [
             'short_description', 'description', 'impact', 'urgency',
             'category', 'subcategory', 'assigned_to', 'assignment_group',
-            'config_item', 'source'
+            'config_item', 'source', 'requested_by'
         ]
 
     def create(self, validated_data):
-        from django.utils import timezone
-        import random
-        import string
-
-        # Generate incident number
-        year = timezone.now().year
-        random_str = ''.join(random.choices(string.digits, k=6))
-        number = f"INC{year}{random_str}"
+        from apps.common.utils import generate_record_number
         
-        validated_data['number'] = number
-        validated_data['created_by'] = self.context['request'].user
-        validated_data['organization'] = getattr(self.context['request'], "organization", None) or self.context['request'].user.organization
+        request = self.context['request']
+        organization = getattr(request, "organization", None) or request.user.organization
+        
+        validated_data['number'] = generate_record_number("INC", organization, "last_incident_number")
+        validated_data['created_by'] = request.user
+        validated_data.setdefault('requested_by', request.user)
+        validated_data['organization'] = organization
         impact = validated_data.get("impact", Incident.Impact.TEAM)
         urgency = validated_data.get("urgency", Incident.Urgency.MEDIUM)
         validated_data["priority"] = derive_incident_priority(impact, urgency)
@@ -160,26 +169,41 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         validated_data["sla_target_response"] = response_target
         validated_data["sla_target_resolution"] = resolution_target
         
+        from apps.assignments.services import resolve_assignment
+        
+        # Only auto-assign if group or user is not manually specified
+        if not validated_data.get('assignment_group') or not validated_data.get('assigned_to'):
+            # Build temp instance for engine to evaluate
+            temp_incident = Incident(**validated_data)
+            group, individual = resolve_assignment(temp_incident)
+            
+            if not validated_data.get('assignment_group') and group:
+                validated_data['assignment_group'] = group
+            if not validated_data.get('assigned_to') and individual:
+                validated_data['assigned_to'] = individual
+
         return super().create(validated_data)
 
 
 class IncidentUpdateSerializer(serializers.ModelSerializer):
     TRANSITIONS = {
-        Incident.State.NEW: [Incident.State.IN_PROGRESS, Incident.State.ON_HOLD, Incident.State.RESOLVED, Incident.State.CANCELLED],
+        Incident.State.NEW: [Incident.State.IN_PROGRESS, Incident.State.ON_HOLD, Incident.State.CANCELLED],
         Incident.State.IN_PROGRESS: [Incident.State.ON_HOLD, Incident.State.ESCALATED, Incident.State.RESOLVED, Incident.State.CANCELLED],
         Incident.State.ON_HOLD: [Incident.State.IN_PROGRESS, Incident.State.ESCALATED, Incident.State.RESOLVED, Incident.State.CANCELLED],
         Incident.State.ESCALATED: [Incident.State.IN_PROGRESS, Incident.State.ON_HOLD, Incident.State.RESOLVED, Incident.State.CANCELLED],
         Incident.State.RESOLVED: [Incident.State.CLOSED, Incident.State.IN_PROGRESS],
-        Incident.State.CLOSED: [Incident.State.IN_PROGRESS],
-        Incident.State.CANCELLED: [],
+        Incident.State.CLOSED: [],  # Terminal — use reopen endpoint
+        Incident.State.CANCELLED: [],  # Terminal
     }
 
     class Meta:
         model = Incident
         fields = [
             'short_description', 'description', 'state', 'impact', 'urgency',
-            'priority', 'category', 'subcategory', 'assigned_to', 
-            'assignment_group', 'hold_reason', 'resolution_code', 'resolution_notes'
+            'priority', 'category', 'subcategory', 'assigned_to',
+            'assignment_group', 'hold_reason', 'resolution_code', 'resolution_notes',
+            'config_item', 'parent', 'is_major_incident', 
+            'major_incident_state', 'major_incident_notes'
         ]
 
     def validate_state(self, value):
@@ -212,11 +236,23 @@ class IncidentUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
+        from django.utils import timezone
         priority_was = instance.priority
         impact = validated_data.get("impact", instance.impact)
         urgency = validated_data.get("urgency", instance.urgency)
         if "priority" not in validated_data and ("impact" in validated_data or "urgency" in validated_data):
             validated_data["priority"] = derive_incident_priority(impact, urgency)
+
+        # Auto-stamp lifecycle timestamps
+        new_state = validated_data.get("state", instance.state)
+        if new_state == Incident.State.RESOLVED and instance.state != Incident.State.RESOLVED:
+            validated_data.setdefault("resolved_at", timezone.now())
+        if new_state == Incident.State.CLOSED and instance.state != Incident.State.CLOSED:
+            validated_data.setdefault("closed_at", timezone.now())
+        # Reopening clears resolved/closed timestamps
+        if new_state == Incident.State.IN_PROGRESS and instance.state in {Incident.State.RESOLVED, Incident.State.CLOSED}:
+            validated_data["resolved_at"] = None
+            validated_data["closed_at"] = None
 
         incident = super().update(instance, validated_data)
         if incident.priority != priority_was or incident.sla_target_response is None or incident.sla_target_resolution is None:

@@ -207,3 +207,15 @@ export function useKnowledgeBase() {
     staleTime: 60000,
   });
 }
+
+export function useAddProblemWorkNote(problemId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (note: { content: string; isInternal?: boolean }) => {
+      const { data } = await api.post(`/problems/${problemId}/work-notes/`, denormalizePayload(note));
+      return { ...data, data: normalizePayload(data?.data) };
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.detail(problemId) }); },
+  });
+}
+

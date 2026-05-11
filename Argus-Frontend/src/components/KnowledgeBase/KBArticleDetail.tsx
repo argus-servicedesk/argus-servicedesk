@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Clock,
 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   useKBArticle,
   useUpdateKBArticle,
@@ -55,6 +56,7 @@ const TRANSITIONS: Record<KBArticleState, { label: string; to: KBArticleState; c
 function KBArticleDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { canManage } = useAuth();
   const { data: articleData, isLoading } = useKBArticle(id ?? '');
   const updateArticle = useUpdateKBArticle();
   const submitFeedback = useSubmitKBFeedback();
@@ -222,7 +224,7 @@ function KBArticleDetail() {
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {/* State Transitions */}
-        {transitions.length > 0 && (
+        {canManage('kb') && transitions.length > 0 && (
           <div
             className="rounded-xl p-4 flex flex-wrap items-center gap-3"
             style={{ backgroundColor: COLORS.surface, border: `1px solid ${COLORS.border}` }}

@@ -217,3 +217,28 @@ class TeamPerformanceView(APIView):
                 }
             )
         return success({"teams": team_rows})
+
+class IncidentHeatmapView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        days = _parse_period(request.query_params.get("period"))
+        since = timezone.now() - timedelta(days=days)
+        incidents = Incident.objects.filter(organization=request.organization, created_at__gte=since)
+        
+        # Heatmap data (Day of Week vs Hour of Day)
+        heatmap = []
+        for d in range(7): # Mon-Sun
+            for h in range(24): # 0-23
+                heatmap.append({"day": d, "hour": h, "count": 0})
+                
+        for incident in incidents:
+            d = incident.created_at.weekday()
+            h = incident.created_at.hour
+            # Simple list find - inefficient but okay for POC
+            for item in heatmap:
+                if item["day"] == d and item["hour"] == h:
+                    item["count"] += 1
+                    break
+                    
+        return success({"heatmap": heatmap})

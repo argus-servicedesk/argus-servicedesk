@@ -58,3 +58,43 @@ class Problem(models.Model):
 
     def __str__(self):
         return f"{self.number} - {self.short_description}"
+
+
+class ProblemTask(models.Model):
+    class State(models.TextChoices):
+        NEW = "NEW", "New"
+        IN_PROGRESS = "IN_PROGRESS", "In Progress"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    class Priority(models.TextChoices):
+        P1 = "P1", "P1 - Critical"
+        P2 = "P2", "P2 - High"
+        P3 = "P3", "P3 - Medium"
+        P4 = "P4", "P4 - Low"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    number = models.CharField(max_length=50, unique=True, db_index=True)
+    problem = models.ForeignKey(Problem, on_delete=models.CASCADE, related_name='tasks')
+    
+    short_description = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    state = models.CharField(max_length=20, choices=State.choices, default=State.NEW)
+    priority = models.CharField(max_length=2, choices=Priority.choices, default=Priority.P3)
+    
+    assigned_to = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_problem_tasks')
+    assignment_group = models.ForeignKey('teams.Team', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_problem_tasks')
+    
+    due_date = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='problem_tasks')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "problem_tasks"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.number} - {self.short_description}"

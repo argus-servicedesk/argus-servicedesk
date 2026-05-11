@@ -13,31 +13,36 @@ import api from '../lib/api';
 
 export function useAuth() {
   const store = useAuthStore();
-  const role = store.user?.role ?? '';
+  const roles = store.user?.roleNames ?? [];
 
-  const isAdmin    = role === 'ADMIN';
-  const isManager  = role === 'MANAGER' || isAdmin;
-  const isEngineer = role === 'ENGINEER' || isManager;
+  const isAdmin    = roles.includes('Super Admin') || roles.includes('Org Admin');
+  const isManager  = roles.includes('Manager') || isAdmin;
+  const isEngineer = roles.includes('Engineer') || isManager;
 
-  function hasRole(...roles: string[]): boolean {
-    return roles.includes(role);
+  function hasRole(...targetRoles: string[]): boolean {
+    return targetRoles.some(r => roles.includes(r));
   }
 
   /**
    * Returns true if the current user may create/edit the given resource.
    * Viewers and operators are read-only.
    */
-  function canManage(resource: 'incidents' | 'changes' | 'problems' | 'assets' | 'teams'): boolean {
+  function canManage(resource: 'incidents' | 'changes' | 'problems' | 'assets' | 'teams' | 'kb' | 'catalog' | 'vendors' | 'users' | 'settings'): boolean {
     if (isAdmin) return true;
-    if (isManager) return true;
-    if (role === 'ENGINEER' && (resource === 'incidents' || resource === 'problems')) return true;
-    if (role === 'OPERATOR' && resource === 'incidents') return true;
+    if (isManager) {
+      if (resource === 'settings') return isAdmin; // Only Super/Org Admin for settings
+      return true;
+    }
+    if (roles.includes('Engineer')) {
+      if (['incidents', 'problems', 'kb', 'catalog', 'assets', 'vendors'].includes(resource)) return true;
+    }
+    if (roles.includes('Operator') && (resource === 'incidents' || resource === 'kb')) return true;
     return false;
   }
 
   return {
     ...store,
-    role,
+    roles,
     isAdmin,
     isManager,
     isEngineer,

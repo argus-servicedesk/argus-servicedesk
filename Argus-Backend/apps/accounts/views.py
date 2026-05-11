@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, get_user_model
+from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -6,9 +7,28 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.common.responses import failure, success
 from apps.common.audit import create_audit_log
-from .serializers import MeSerializer, SignupSerializer, UserSerializer
+from .models import Role, Permission
+from .serializers import (
+    MeSerializer, SignupSerializer, UserSerializer,
+    RoleSerializer, PermissionSerializer
+)
 
 User = get_user_model()
+
+class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Permission.objects.all().order_by('code')
+    serializer_class = PermissionSerializer
+    permission_classes = [IsAuthenticated]
+
+class RoleViewSet(viewsets.ModelViewSet):
+    serializer_class = RoleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Role.objects.filter(organization=self.request.organization).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(organization=self.request.organization)
 
 
 def _token_payload(user):
@@ -229,7 +249,7 @@ class InviteUserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if request.user.role not in {User.Role.ADMIN, User.Role.MANAGER}:
+        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin") or request.user.has_role("Manager")):
             return failure("Only admins and managers can invite users.", status_code=403)
 
         organization = getattr(request, "organization", None)
@@ -237,7 +257,8 @@ class InviteUserView(APIView):
             return failure("Organization context required.", status_code=400)
 
         email = request.data.get("email")
-        role = request.data.get("role", User.Role.ENGINEER)
+        role_name = request.data.get("role", "Engineer")
+        role = Role.objects.filter(name=role_name).first()
         
         if not email:
             return failure("Email is required.", status_code=400)
@@ -248,18 +269,19 @@ class InviteUserView(APIView):
 
         # Create invitation
         token = secrets.token_urlsafe(32)
-        UserInvitation.objects.create(
+        invitation = UserInvitation.objects.create(
             email=email,
-            role=role,
             organization=organization,
             invited_by=request.user,
             token=token,
             expires_at=timezone.now() + timedelta(days=2)
         )
+        if role:
+            invitation.roles.add(role)
         
         create_audit_log(
             request, "USER_INVITED", "USER_INVITATION", 
-            description=f"Invited {email} with role {role}"
+            description=f"Invited {email} with role {role_name}"
         )
         
         # Send email
@@ -271,7 +293,7 @@ class InviteUserView(APIView):
             context={
                 'inviter_name': request.user.get_full_name() or request.user.username,
                 'organization_name': organization.name,
-                'role': role,
+                'role': role_name,
                 'invite_link': f"{base_url}/accept-invite?token={token}",
             }
         )
@@ -308,9 +330,10 @@ class AcceptInviteView(APIView):
             password=password,
             first_name=first_name or "",
             last_name=last_name or "",
-            role=invitation.role,
             organization=invitation.organization
         )
+        for r in invitation.roles.all():
+            user.roles.add(r)
 
         invitation.accepted = True
         invitation.save()
@@ -410,7 +433,7 @@ class UserListView(APIView):
         if organization is None:
             return failure("organization access denied", status_code=403)
 
-        users = User.objects.filter(organization=organization).order_by(
+        users = User.objects.filter(organization=organization, is_active=True).order_by(
             "first_name", "last_name"
         )
         return success(UserSerializer(users, many=True).data)
@@ -420,7 +443,7 @@ class UserDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if request.user.role not in {User.Role.ADMIN, User.Role.MANAGER} and str(request.user.id) != str(pk):
+        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin") or request.user.has_role("Manager")) and str(request.user.id) != str(pk):
             return failure("Access denied.", status_code=403)
         
         user = User.objects.filter(pk=pk, organization=request.organization).first()
@@ -430,7 +453,7 @@ class UserDetailView(APIView):
         return success(UserSerializer(user).data)
 
     def patch(self, request, pk):
-        if request.user.role not in {User.Role.ADMIN, User.Role.MANAGER}:
+        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin") or request.user.has_role("Manager")):
             return failure("Only admins and managers can update users.", status_code=403)
         
         user = User.objects.filter(pk=pk, organization=request.organization).first()
@@ -443,7 +466,7 @@ class UserDetailView(APIView):
         return success(serializer.data, "User updated successfully.")
 
     def delete(self, request, pk):
-        if request.user.role != User.Role.ADMIN:
+        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin")):
             return failure("Only admins can deactivate users.", status_code=403)
         
         user = User.objects.filter(pk=pk, organization=request.organization).first()

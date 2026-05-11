@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle, Loader2, XCircle, FileText, Send, Clock, Users, UserCheck, ShieldAlert } from 'lucide-react';
 import {
   SNFieldGrid,
   SNFormRow,
@@ -13,8 +13,12 @@ import {
   SNProcessRibbon,
   SNRelatedList,
   SNEmptyRelatedList,
+  SNModal,
+  SNLabel,
   sn,
 } from './ServiceNowUI';
+import { useAuth } from '../../hooks/useAuth';
+import { useAddChangeWorkNote } from '../../hooks/useChanges';
 
 const CHANGE_TYPES = ['NORMAL', 'STANDARD', 'EMERGENCY'];
 const RISK_LEVELS = ['HIGH', 'MEDIUM', 'LOW'];
@@ -82,10 +86,13 @@ export default function ChangeServiceNowPanel({
     isPending?: boolean;
   };
   approveLoading?: boolean;
-  onApprove?: () => void;
-  onReject?: () => void;
+  onApprove?: (comments: string) => void;
+  onReject?: (comments: string) => void;
 }) {
   const navigate = useNavigate();
+  const { user, isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
+  const canModify = canManage('changes');
+
   const [shortDescription, setShortDescription] = useState(change.shortDescription || '');
   const [description, setDescription] = useState(change.description || '');
   const [type, setType] = useState(change.type || 'NORMAL');
@@ -98,6 +105,14 @@ export default function ChangeServiceNowPanel({
   const [testPlan, setTestPlan] = useState(change.testPlan || '');
   const [reviewNotes, setReviewNotes] = useState(change.reviewNotes || '');
   const [closureCode, setClosureCode] = useState(change.closureCode || '');
+
+  const [newWorkNote, setNewWorkNote] = useState('');
+  const addWorkNote = useAddChangeWorkNote(change?.id || '');
+
+  // Approval Modals
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [approvalComments, setApprovalComments] = useState('');
 
   useEffect(() => {
     setShortDescription(change.shortDescription || '');
@@ -120,6 +135,11 @@ export default function ChangeServiceNowPanel({
   const linkedIncidents = Array.isArray(change.linkedIncidents) ? change.linkedIncidents : [];
   const workNotes = Array.isArray(change.workNotes) ? change.workNotes : [];
   const activities = Array.isArray(change.activities) ? change.activities : [];
+
+  // Check if current user is an approver with PENDING state
+  const isPendingApprover = approvals.some((a: any) => 
+    (a.approver?.id === user?.id || a.user?.id === user?.id) && a.state === 'PENDING'
+  );
 
   async function handleUpdate() {
     const data: Record<string, unknown> = {};
@@ -184,6 +204,29 @@ export default function ChangeServiceNowPanel({
     });
   }
 
+  async function handleAddWorkNote() {
+    if (!newWorkNote.trim()) return;
+    try {
+      await addWorkNote.mutateAsync({ content: newWorkNote, isInternal: true });
+      toast.success('Work note added');
+      setNewWorkNote('');
+    } catch (err: any) {
+      toast.error('Failed to add work note');
+    }
+  }
+
+  const confirmApprove = () => {
+    if (onApprove) onApprove(approvalComments);
+    setShowApprovalModal(false);
+    setApprovalComments('');
+  };
+
+  const confirmReject = () => {
+    if (onReject) onReject(approvalComments);
+    setShowRejectModal(false);
+    setApprovalComments('');
+  };
+
   const stateTone = state === 'CLOSED' ? 'success' : state === 'CANCELLED' ? 'neutral' : state === 'APPROVAL' ? 'warn' : 'progress';
   const riskTone = risk === 'HIGH' ? 'critical' : risk === 'MEDIUM' ? 'warn' : 'success';
 
@@ -194,39 +237,43 @@ export default function ChangeServiceNowPanel({
         titleNumber={change.number}
         priorityPill={<SNPillBadge label={riskLabel(risk)} tone={riskTone} dot={risk === 'HIGH'} />}
         statePill={<SNPillBadge label={(CHANGE_STATE_LABELS[state] || state).toUpperCase()} tone={stateTone} icon={stateTone === 'progress' ? Loader2 : undefined} />}
-        extraBadges={<SNPillBadge label={type} tone="info" />}
-        onClone={handleClone}
+        extraBadges={<SNPillBadge label={type} tone={type === 'EMERGENCY' ? 'critical' : 'info'} />}
+        onClone={canModify ? handleClone : undefined}
         onLink={() => {
           navigator.clipboard.writeText(window.location.href);
           toast.success('Change link copied');
         }}
         onPrint={() => window.print()}
-        onUpdate={handleUpdate}
+        onUpdate={canModify ? handleUpdate : undefined}
         updateLoading={Boolean(updateChange.isPending)}
-        secondaryActions={change.state === 'APPROVAL' && onApprove && onReject ? (
-          <>
-            <button
-              type="button"
-              onClick={onReject}
-              disabled={approveLoading}
-              className="inline-flex min-h-[47px] items-center justify-center gap-2 rounded border px-5 py-3 text-[18px] font-medium"
-              style={{ borderColor: '#f1b2b5', color: sn.critical, background: '#fff6f6' }}
-            >
-              <XCircle size={19} />
-              Reject
-            </button>
-            <button
-              type="button"
-              onClick={onApprove}
-              disabled={approveLoading}
-              className="inline-flex min-h-[47px] items-center justify-center gap-2 rounded border px-5 py-3 text-[18px] font-medium"
-              style={{ borderColor: '#9be7bd', color: '#067647', background: '#ecfdf3' }}
-            >
-              <CheckCircle size={19} />
-              Approve
-            </button>
-          </>
-        ) : null}
+        secondaryActions={
+          <div className="flex items-center gap-2">
+            {change.state === 'APPROVAL' && isPendingApprover && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={approveLoading}
+                  className="sn-soft-button flex items-center gap-1"
+                  style={{ borderColor: sn.critical, color: sn.critical }}
+                >
+                  <XCircle size={14} />
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowApprovalModal(true)}
+                  disabled={approveLoading}
+                  className="sn-soft-button flex items-center gap-1"
+                  style={{ borderColor: '#067647', color: '#067647' }}
+                >
+                  <CheckCircle size={14} />
+                  Approve
+                </button>
+              </>
+            )}
+          </div>
+        }
       />
 
       <SNProcessRibbon steps={['NEW', 'ASSESSMENT', 'APPROVAL', 'SCHEDULED', 'IMPLEMENTING', 'REVIEW', 'CLOSED']} current={state} />
@@ -288,10 +335,10 @@ export default function ChangeServiceNowPanel({
             <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Description" fullWidth>
-            <textarea className="sn-field" value={description} onChange={(event) => setDescription(event.target.value)} />
+            <textarea className="sn-field" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Justification" fullWidth>
-            <textarea className="sn-field" value={justification} onChange={(event) => setJustification(event.target.value)} />
+            <textarea className="sn-field" rows={2} value={justification} onChange={(event) => setJustification(event.target.value)} />
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
@@ -299,16 +346,16 @@ export default function ChangeServiceNowPanel({
       <SNCollapsibleSection title="Planning">
         <SNFieldGrid>
           <SNFormRow label="Implementation plan" fullWidth>
-            <textarea className="sn-field" value={implementationPlan} onChange={(event) => setImplementationPlan(event.target.value)} />
+            <textarea className="sn-field" rows={4} value={implementationPlan} onChange={(event) => setImplementationPlan(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Backout plan" fullWidth>
-            <textarea className="sn-field" value={rollbackPlan} onChange={(event) => setRollbackPlan(event.target.value)} />
+            <textarea className="sn-field" rows={4} value={rollbackPlan} onChange={(event) => setRollbackPlan(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Test plan" fullWidth>
-            <textarea className="sn-field" value={testPlan} onChange={(event) => setTestPlan(event.target.value)} />
+            <textarea className="sn-field" rows={4} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Review notes" fullWidth>
-            <textarea className="sn-field" value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} />
+            <textarea className="sn-field" rows={2} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} />
           </SNFormRow>
           <SNFormRow label="Closure code">
             <select className="sn-field" value={closureCode} onChange={(event) => setClosureCode(event.target.value)}>
@@ -321,31 +368,65 @@ export default function ChangeServiceNowPanel({
         </SNFieldGrid>
       </SNCollapsibleSection>
 
-      <div className="px-1 pb-6">
-        <SNRelatedList title="Approvers" count={approvals.length}>
+      {/* Change Approvers Quorum Panel */}
+      <div className="px-1 pb-6 mt-4">
+        <SNRelatedList title={`Approvers Quorum (${approvals.length})`} count={approvals.length}>
+          <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Users size={18} className="text-slate-600" />
+              <span className="font-semibold text-slate-800">Approval Policy:</span>
+              <span className="text-sm text-slate-600">All assigned approvers must approve before transition to SCHEDULED. Any rejection cancels the Change.</span>
+            </div>
+            {change.type === 'EMERGENCY' && (
+              <div className="mt-2 text-sm text-red-600 font-medium flex items-center gap-1 bg-red-50 p-2 rounded border border-red-100">
+                <ShieldAlert size={16} /> Emergency Change — Standard approval policy is bypassed.
+              </div>
+            )}
+          </div>
           {approvals.length === 0 ? (
-            <SNEmptyRelatedList message="No approval records." />
+            <SNEmptyRelatedList message="No approval records generated for this Change." />
           ) : (
-            <table className="sn-list-table">
-              <thead>
-                <tr>
-                  <th>Approver</th>
-                  <th>State</th>
-                  <th>Approved</th>
-                  <th>Comments</th>
-                </tr>
-              </thead>
-              <tbody>
-                {approvals.map((approval: any, index: number) => (
-                  <tr key={approval.id || index}>
-                    <td>{formatPersonName(approval.approver || approval.user)}</td>
-                    <td>{approval.state || '-'}</td>
-                    <td>{formatDateTime(approval.approvedAt)}</td>
-                    <td>{approval.comments || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-white">
+              {approvals.map((approval: any, index: number) => {
+                const isPending = approval.state === 'PENDING';
+                const isApproved = approval.state === 'APPROVED';
+                const isRejected = approval.state === 'REJECTED';
+                
+                return (
+                  <div key={approval.id || index} className={`p-4 rounded-lg border flex flex-col gap-3 ${
+                    isApproved ? 'bg-green-50 border-green-200' : 
+                    isRejected ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-full ${
+                        isApproved ? 'bg-green-100 text-green-700' : 
+                        isRejected ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {isApproved ? <CheckCircle size={20} /> : isRejected ? <XCircle size={20} /> : <Clock size={20} />}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900">{formatPersonName(approval.approver || approval.user)}</div>
+                        <div className={`text-xs font-bold uppercase tracking-wide ${
+                          isApproved ? 'text-green-700' : isRejected ? 'text-red-700' : 'text-slate-500'
+                        }`}>
+                          {approval.state || 'PENDING'}
+                        </div>
+                      </div>
+                    </div>
+                    {approval.comments && (
+                      <div className="text-sm text-slate-700 italic border-t pt-2 border-slate-200/50">
+                        "{approval.comments}"
+                      </div>
+                    )}
+                    {approval.approvedAt && (
+                      <div className="text-xs text-slate-500 text-right mt-auto">
+                        {formatDateTime(approval.approvedAt)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </SNRelatedList>
 
@@ -406,7 +487,29 @@ export default function ChangeServiceNowPanel({
           )}
         </SNRelatedList>
 
-        <SNRelatedList title="Activity" count={workNotes.length + activities.length}>
+        <SNRelatedList title="Activity and Work Notes" count={workNotes.length + activities.length}>
+          {canModify && (
+            <div className="p-4 border-b bg-slate-50 flex gap-2 items-start">
+              <FileText className="text-slate-400 mt-2 shrink-0" size={18} />
+              <div className="flex-1">
+                <textarea
+                  className="sn-field bg-yellow-50 focus:bg-yellow-50"
+                  rows={2}
+                  placeholder="Type a work note (Internal)..."
+                  value={newWorkNote}
+                  onChange={(e) => setNewWorkNote(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                className="sn-primary-button self-end"
+                onClick={handleAddWorkNote}
+                disabled={!newWorkNote.trim() || addWorkNote.isPending}
+              >
+                {addWorkNote.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </div>
+          )}
           {workNotes.length + activities.length === 0 ? (
             <SNEmptyRelatedList message="No activity has been recorded yet." />
           ) : (
@@ -421,11 +524,11 @@ export default function ChangeServiceNowPanel({
               </thead>
               <tbody>
                 {workNotes.map((note: any, index: number) => (
-                  <tr key={`note-${note.id || index}`}>
+                  <tr key={`note-${note.id || index}`} className="bg-yellow-50/50">
                     <td>Work note</td>
                     <td>{formatDateTime(note.createdAt || note.created_at)}</td>
                     <td>{formatPersonName(note.createdBy || note.user || note.author)}</td>
-                    <td>{note.content || note.note || '-'}</td>
+                    <td className="font-medium">{note.content || note.note || '-'}</td>
                   </tr>
                 ))}
                 {activities.map((activity: any, index: number) => (
@@ -441,6 +544,75 @@ export default function ChangeServiceNowPanel({
           )}
         </SNRelatedList>
       </div>
+
+      {/* Approve Modal */}
+      <SNModal
+        isOpen={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        title="Approve Change Request"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowApprovalModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              style={{ background: '#067647', borderColor: '#067647' }}
+              onClick={confirmApprove}
+            >
+              Confirm Approval
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-700">You are approving this Change. It will progress to SCHEDULED if all required approvers grant approval.</p>
+          <div>
+            <SNLabel>Approval Comments (Optional)</SNLabel>
+            <textarea
+              className="sn-field"
+              rows={3}
+              value={approvalComments}
+              onChange={(e) => setApprovalComments(e.target.value)}
+              placeholder="Add your approval notes..."
+            />
+          </div>
+        </div>
+      </SNModal>
+
+      {/* Reject Modal */}
+      <SNModal
+        isOpen={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        title="Reject Change Request"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowRejectModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              style={{ background: sn.critical, borderColor: sn.critical }}
+              onClick={confirmReject}
+            >
+              Reject Change
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-sm rounded-md flex gap-2">
+            <ShieldAlert className="shrink-0 text-red-600" size={18} />
+            <p>Rejecting will immediately transition this Change to <strong>CANCELLED</strong> state.</p>
+          </div>
+          <div>
+            <SNLabel required>Rejection Reason</SNLabel>
+            <textarea
+              className="sn-field"
+              rows={3}
+              value={approvalComments}
+              onChange={(e) => setApprovalComments(e.target.value)}
+              placeholder="Why is this change being rejected? (Required)"
+            />
+          </div>
+        </div>
+      </SNModal>
     </SNPage>
   );
 }
