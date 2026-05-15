@@ -124,6 +124,36 @@ class WorkflowE2ETests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["data"]["state"], "IN_PROGRESS")
 
+    def test_incident_list_serializes_hierarchy_fields(self):
+        parent_id = self._create_incident()
+        response = self.client.post(
+            "/api/v1/incidents/",
+            {
+                "short_description": "Child database alert",
+                "description": "Replica cpu > 95%",
+                "impact": "TEAM",
+                "urgency": "MEDIUM",
+                "category": "Database",
+                "source": "PROMETHEUS",
+                "parent": parent_id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        child_id = response.data["data"]["id"]
+
+        response = self.client.get("/api/v1/incidents/?page=1&limit=25")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        incidents = {item["id"]: item for item in response.data["data"]}
+        self.assertIn(parent_id, incidents)
+        self.assertIn(child_id, incidents)
+        self.assertEqual(incidents[parent_id]["hierarchy_level"], 0)
+        self.assertEqual(incidents[parent_id]["child_status_summary"]["total"], 1)
+        self.assertEqual(incidents[child_id]["hierarchy_level"], 1)
+        self.assertEqual(incidents[child_id]["parent"]["id"], parent_id)
+        self.assertEqual(incidents[child_id]["root_parent"]["id"], parent_id)
+
     def test_problem_end_to_end_lifecycle_with_reopen(self):
         problem_id = self._create_problem()
 

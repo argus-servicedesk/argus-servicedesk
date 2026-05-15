@@ -101,7 +101,7 @@ export default function ProblemCreate() {
       assignedToId: '',
       rootCause: '',
       workaround: '',
-      requestedById: currentUser?.id || '',
+      openedById: currentUser?.id || '',
     },
   });
 
@@ -132,7 +132,7 @@ export default function ProblemCreate() {
     try {
       await createProblem.mutateAsync({
         ...data,
-        requested_by: data.requestedById,
+        requested_by: data.openedById,
         state: 'NEW',
         assignment_group: data.assignmentGroupId || undefined,
         assigned_to: data.assignedToId || undefined,
@@ -173,22 +173,31 @@ export default function ProblemCreate() {
               <SNReadOnly>{nowForHeader()}</SNReadOnly>
             </SNRecordField>
 
-            <SNRecordField label="Requested By" required>
-              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
+            <SNRecordField label="Opened By">
+              <SNReadOnly>{personLabel(currentUser)}</SNReadOnly>
+              <input type="hidden" {...register('openedById')} />
+            </SNRecordField>
+            <SNRecordField label="Subcategory">
+              <select className="sn-field" {...register('subcategory')}>
                 <option value="">-- None --</option>
-                {users.map((u: any) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
+                <option value="server">Server</option>
+                <option value="firewall">Firewall</option>
+                <option value="switch">Switch</option>
+                <option value="software">Software</option>
+                <option value="database">Database</option>
+                <option value="other">Other</option>
               </select>
             </SNRecordField>
+              <SNRecordField label="Priority Level">
+              <select className="sn-field" {...register('priority')}>
+                {PRIORITIES.map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}
+              </select>
+            </SNRecordField>
+
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
                 <option value="">-- None --</option>
                 {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
-            </SNRecordField>
-
-            <SNRecordField label="Priority Level">
-              <select className="sn-field" {...register('priority')}>
-                {PRIORITIES.map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}
               </select>
             </SNRecordField>
 
@@ -210,6 +219,25 @@ export default function ProblemCreate() {
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />
             </SNRecordField>
+            <SNRecordField label="Configuration Item">
+              <select className="sn-field" {...register('configItemId')}>
+                <option value="">-- None --</option>
+                {configItems
+                  .filter((ci: any) => {
+                    if (!subcategory || subcategory === 'other') return true;
+                    const typeMap: Record<string, string> = {
+                      'server': 'SERVER',
+                      'firewall': 'FIREWALL',
+                      'switch': 'SWITCH',
+                      'software': 'SOFTWARE',
+                      'database': 'DATABASE'
+                    };
+                    return ci.type === typeMap[subcategory];
+                  })
+                  .map((ci: any) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
+              </select>
+            </SNRecordField>
+    
             <SNRecordField label="Assigned To">
               <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                 <option value="">-- None --</option>
@@ -218,7 +246,6 @@ export default function ProblemCreate() {
                 ))}
               </select>
             </SNRecordField>
-
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />

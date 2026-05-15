@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
+# pyrefly: ignore [missing-import]
 from apps.organizations.models import Organization
 from apps.accounts.models import User as CustomUser
 
@@ -78,8 +79,60 @@ class Incident(models.Model):
     priority = models.CharField(max_length=2, choices=Priority.choices, default=Priority.P3, db_index=True)
     category = models.CharField(max_length=100, blank=True, null=True)
     subcategory = models.CharField(max_length=100, blank=True, null=True)
+    site = models.ForeignKey(
+        'assets.AssetSite',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incidents'
+    )
+    location = models.CharField(max_length=255, blank=True, null=True)
     
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_incidents')
+
+    @property
+    def child_status_summary(self):
+        """Get aggregated status of all child incidents"""
+        if not self.child_incidents.exists():
+            return None
+            
+        children = self.child_incidents.all()
+        total = children.count()
+        
+        status_counts = {
+            'total': total,
+            'new': children.filter(state=self.State.NEW).count(),
+            'in_progress': children.filter(state=self.State.IN_PROGRESS).count(),
+            'on_hold': children.filter(state=self.State.ON_HOLD).count(),
+            'escalated': children.filter(state=self.State.ESCALATED).count(),
+            'resolved': children.filter(state=self.State.RESOLVED).count(),
+            'closed': children.filter(state=self.State.CLOSED).count(),
+            'cancelled': children.filter(state=self.State.CANCELLED).count(),
+        }
+        
+        # Calculate completion percentage
+        completed = status_counts['resolved'] + status_counts['closed'] + status_counts['cancelled']
+        status_counts['completion_percentage'] = round((completed / total) * 100) if total > 0 else 0
+        
+        return status_counts
+
+    @property
+    def hierarchy_level(self):
+        """Get the depth level in the incident hierarchy"""
+        level = 0
+        current = self.parent
+        while current and level < 10:  # Prevent infinite loops
+            level += 1
+            current = current.parent
+        return level
+
+    @property
+    def root_parent(self):
+        """Get the root parent incident"""
+        current = self
+        while current.parent and current != current.parent:
+            current = current.parent
+        return current if current != self else None
     is_major_incident = models.BooleanField(default=False, db_index=True)
     major_incident_state = models.CharField(max_length=20, choices=MajorIncidentState.choices, blank=True, null=True)
     major_incident_notes = models.TextField(blank=True, null=True)

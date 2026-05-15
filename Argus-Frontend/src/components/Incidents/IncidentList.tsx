@@ -12,6 +12,8 @@ import {
   Search,
   Download,
   X,
+  GitBranch,
+  Users,
 } from 'lucide-react';
 import { useIncidents } from '../../hooks/useIncidents';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
@@ -44,6 +46,9 @@ interface Incident {
   createdAt?: string;
   updatedAt?: string;
   slaBreached?: boolean;
+  parent?: { id: string; number: string } | null;
+  childIncidents?: { id: string; number: string }[];
+  hierarchyLevel?: number;
 }
 
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
@@ -153,6 +158,32 @@ function StatusChip({ value, tones, fallback }: {
   );
 }
 
+function HierarchyIndicator({ incident }: { incident: Incident }) {
+  const level = incident.hierarchyLevel || 0;
+  const hasChildren = (incident.childIncidents?.length || 0) > 0;
+  const hasParent = !!incident.parent;
+  const indentWidth = `${Math.max(level, hasParent ? 1 : 0) * 12}px`;
+
+  if (!hasParent && level === 0 && !hasChildren) return null;
+
+  return (
+    <div className="flex items-center gap-1 text-xs" style={{ color: '#667085' }}>
+      {(hasParent || level > 0) && (
+        <div className="flex items-center">
+          <div className="border-l border-dashed" style={{ width: indentWidth, borderColor: '#d0d5dd' }} />
+          <GitBranch size={12} className="ml-1" />
+        </div>
+      )}
+      {hasChildren && (
+        <div className="flex items-center gap-1 ml-1">
+          <Users size={12} />
+          <span>{incident.childIncidents?.length}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function IncidentList() {
   const navigate = useNavigate();
   const { canManage } = useAuth();
@@ -175,7 +206,7 @@ export default function IncidentList() {
     assigned_to_me: assignedToMe || undefined,
   });
 
-  const incidents: Incident[] = data?.data ?? [];
+  const incidents = useMemo<Incident[]>(() => data?.data ?? [], [data?.data]);
   const pagination = data?.pagination;
   const totalItems = pagination?.total ?? incidents.length;
   const totalPages = pagination?.totalPages ?? pagination?.pages ?? Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
@@ -228,7 +259,7 @@ export default function IncidentList() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err) {
+    } catch {
       toast.error('Export failed');
     }
   };
@@ -344,9 +375,10 @@ export default function IncidentList() {
               <colgroup>
                 <col style={{ width: 42 }} />
                 <col style={{ width: 132 }} />
+                <col style={{ width: 80 }} />
                 <col style={{ width: 128 }} />
                 <col style={{ width: 132 }} />
-                <col style={{ width: 420 }} />
+                <col style={{ width: 380 }} />
                 <col style={{ width: 160 }} />
                 <col style={{ width: 170 }} />
                 <col style={{ width: 150 }} />
@@ -357,6 +389,7 @@ export default function IncidentList() {
                 <tr>
                   <th><input type="checkbox" aria-label="Select all incidents" /></th>
                   <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
+                  <th>Hierarchy</th>
                   <th><SortButton field="priority" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Priority</SortButton></th>
                   <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
                   <th><SortButton field="shortDescription" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Short description</SortButton></th>
@@ -375,6 +408,9 @@ export default function IncidentList() {
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/incidents/${incident.id}`)}>
                         {incident.number}
                       </button>
+                    </td>
+                    <td>
+                      <HierarchyIndicator incident={incident} />
                     </td>
                     <td>
                       <StatusChip

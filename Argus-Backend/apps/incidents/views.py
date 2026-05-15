@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Count
+from django.utils import timezone
 from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
 from apps.common.permissions import DenyViewerMutations, IncidentTransitionRBAC
@@ -677,6 +678,79 @@ class IncidentBulkUpdateView(APIView):
                 user=request.user,
                 incident=incident
             )
+
+
+class IncidentChildBulkOperationsView(APIView):
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        """Perform bulk operations on child incidents"""
+        try:
+            parent_incident = Incident.objects.get(pk=pk, organization=request.organization)
+        except Incident.DoesNotExist:
+            return failure("Parent incident not found", status_code=404)
+
+        action = request.data.get("action")
+        child_ids = request.data.get("child_ids", [])
+        updates = request.data.get("updates", {})
+
+        # If no specific child IDs provided, operate on all children
+        if not child_ids:
+            children = parent_incident.child_incidents.all()
+        else:
+            children = parent_incident.child_incidents.filter(pk__in=child_ids)
+
+        if not children.exists():
+            return failure("No child incidents found", status_code=400)
+
+        results = []
+        
+        for child in children:
+            try:
+                if action == "resolve":
+                    if child.state not in [Incident.State.RESOLVED, Incident.State.CLOSED]:
+                        child.state = Incident.State.RESOLVED
+                        child.resolution_code = updates.get("resolution_code", "BULK_RESOLVED")
+                        child.resolution_notes = updates.get("resolution_notes", f"Bulk resolved with parent {parent_incident.number}")
+                        child.resolved_at = timezone.now()
+                        child.save()
+                        
+                elif action == "close":
+                    if child.state == Incident.State.RESOLVED:
+                        child.state = Incident.State.CLOSED
+                        child.closed_at = timezone.now()
+                        child.save()
+                        
+                elif action == "update":
+                    if "state" in updates:
+                        child.state = updates["state"]
+                    if "priority" in updates:
+                        child.priority = updates["priority"]
+                    if "assigned_to" in updates:
+                        from apps.accounts.models import User
+                        user = User.objects.filter(pk=updates["assigned_to"]).first()
+                        if user:
+                            child.assigned_to = user
+                    child.save()
+
+                create_activity(
+                    request=request,
+                    action=f"BULK_{action.upper()}",
+                    description=f"Bulk {action} from parent {parent_incident.number}",
+                    user=request.user,
+                    incident=child
+                )
+                
+                results.append({"id": child.id, "number": child.number, "status": "success"})
+                
+            except Exception as e:
+                results.append({"id": child.id, "number": child.number, "status": "error", "error": str(e)})
+
+        return success({
+            "message": f"Bulk operation completed on {len(results)} child incidents",
+            "results": results,
+            "parent_id": parent_incident.id
+        })
             
         return success({"updated_count": count}, f"successfully updated {count} incidents")
 

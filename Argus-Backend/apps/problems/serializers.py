@@ -24,7 +24,7 @@ from apps.incidents.models import Activity
 from apps.organizations.serializers import OrganizationSerializer
 from apps.teams.models import Team
 
-from .models import Problem
+from .models import Problem, ProblemTask
 
 User = get_user_model()
 
@@ -86,7 +86,7 @@ class ProblemTaskSerializer(serializers.ModelSerializer):
     assignment_group = serializers.SerializerMethodField()
 
     class Meta:
-        model = Problem
+        model = ProblemTask
         fields = [
             'id', 'number', 'short_description', 'description', 'state',
             'priority', 'assigned_to', 'assignment_group', 'due_date',

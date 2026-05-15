@@ -28,19 +28,37 @@ interface ChangeFormData {
   type: ChangeType;
   riskLevel: RiskLevel;
   category: string;
+  subcategory: string;
   assignmentGroupId: string;
   assignedToId: string;
+  configItemId: string;
   justification: string;
   implementationPlan: string;
   rollbackPlan: string;
   testPlan: string;
   plannedStartDate: string;
   plannedEndDate: string;
+  openedById: string;
 }
 
 const CHANGE_TYPES: ChangeType[] = ['NORMAL', 'STANDARD', 'EMERGENCY'];
 const RISK_LEVELS: RiskLevel[] = ['HIGH', 'MEDIUM', 'LOW'];
 const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', 'Cloud Infrastructure', 'Application', 'Monitoring', 'Other'];
+const SUBCATEGORIES = [
+  { value: 'server', label: 'Server' },
+  { value: 'firewall', label: 'Firewall' },
+  { value: 'switch', label: 'Switch' },
+  { value: 'software', label: 'Software' },
+  { value: 'database', label: 'Database' },
+  { value: 'other', label: 'Other' },
+];
+const CI_TYPE_MAP: Record<string, string> = {
+  server: 'SERVER',
+  firewall: 'FIREWALL',
+  switch: 'SWITCH',
+  software: 'SOFTWARE',
+  database: 'DATABASE',
+};
 
 function labelize(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -81,14 +99,14 @@ export default function ChangeCreate() {
     queryFn: async () => { const { data } = await api.get('/teams'); return data; },
     staleTime: 60000,
   });
-  const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
+  const { data: assetsData } = useQuery({
+    queryKey: ['assets'],
+    queryFn: async () => { const { data } = await api.get('/assets'); return data; },
     staleTime: 60000,
   });
 
   const teams: { id: string; name: string }[] = teamsData?.data || [];
-  const users: any[] = usersData?.data || [];
+  const configItems: { id: string; name: string; hostname?: string; type: string }[] = assetsData?.data || [];
 
   const {
     register,
@@ -96,28 +114,38 @@ export default function ChangeCreate() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<ChangeFormData & { requestedById: string }>({
+  } = useForm<ChangeFormData>({
     defaultValues: {
       shortDescription: '',
       description: '',
       type: 'NORMAL',
       riskLevel: 'LOW',
       category: '',
+      subcategory: '',
       assignmentGroupId: '',
       assignedToId: '',
+      configItemId: '',
       justification: '',
       implementationPlan: '',
       rollbackPlan: '',
       testPlan: '',
       plannedStartDate: '',
       plannedEndDate: '',
-      requestedById: currentUser?.id || '',
+      openedById: currentUser?.id || '',
     },
   });
+
+  // Ensure openedById is set when currentUser loads
+  useEffect(() => {
+    if (currentUser?.id) {
+      setValue('openedById', currentUser.id);
+    }
+  }, [currentUser, setValue]);
 
   const changeType = watch('type');
   const riskLevel = watch('riskLevel');
   const category = watch('category');
+  const subcategory = watch('subcategory');
   const assignmentGroupId = watch('assignmentGroupId');
   const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
   const teamMembers = teamMembersResponse?.data || [];
@@ -139,13 +167,21 @@ export default function ChangeCreate() {
     }
   }, [suggestion]);
 
+  // Filter configuration items based on selected subcategory
+  const filteredConfigItems = configItems.filter((ci: any) => {
+    if (!subcategory || subcategory === 'other') return true;
+    return ci.type === CI_TYPE_MAP[subcategory];
+  });
+
   const onSubmit = async (data: any) => {
     const payload: Record<string, unknown> = {
       ...data,
-      requested_by: data.requestedById,
+      requested_by: data.openedById,
       state: 'NEW',
       assignment_group: data.assignmentGroupId || undefined,
       assigned_to: data.assignedToId || undefined,
+      config_item: data.configItemId || undefined,
+      subcategory: data.subcategory || undefined,
       planned_start_date: toIso(data.plannedStartDate),
       planned_end_date: toIso(data.plannedEndDate),
     };
@@ -158,12 +194,6 @@ export default function ChangeCreate() {
       toast.error(err?.response?.data?.error || err?.message || 'Failed to create change request');
     }
   };
-
-  function personLabel(user: any): string {
-    const firstName = user.firstName || user.first_name || '';
-    const lastName = user.lastName || user.last_name || '';
-    return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
-  }
 
   return (
     <SNPage className="min-h-full" style={{ margin: '-24px', background: '#fff' }}>
@@ -192,11 +222,9 @@ export default function ChangeCreate() {
               <SNReadOnly>{nowForHeader()}</SNReadOnly>
             </SNRecordField>
 
-            <SNRecordField label="Requested By" required>
-              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
-                <option value="">-- None --</option>
-                {users.map((u: any) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
-              </select>
+            <SNRecordField label="Opened By">
+              <SNReadOnly>{personLabel(currentUser)}</SNReadOnly>
+              <input type="hidden" {...register('openedById')} />
             </SNRecordField>
             <SNRecordField label="Change Type">
               <select className="sn-field" {...register('type')}>
@@ -213,27 +241,38 @@ export default function ChangeCreate() {
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
                 <option value="">-- None --</option>
-                {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
               </select>
             </SNRecordField>
+
+            <SNRecordField label="Subcategory">
+              <select className="sn-field" {...register('subcategory')}>
+                <option value="">-- None --</option>
+                {SUBCATEGORIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </SNRecordField>
+
+            <SNRecordField label="Configuration Item">
+              <select className="sn-field" {...register('configItemId')}>
+                <option value="">-- None --</option>
+                {filteredConfigItems.map((ci) => (
+                  <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>
+                ))}
+              </select>
+              {subcategory && subcategory !== 'other' && (
+                <div className="text-[10px] text-gray-400 mt-1">
+                  Showing {labelize(subcategory)} items only
+                </div>
+              )}
+            </SNRecordField>
+
             <SNRecordField label="Assignment Group">
               <select className="sn-field" {...register('assignmentGroupId')}>
                 <option value="">-- None --</option>
                 {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             </SNRecordField>
-            <SNRecordField label="Short Description" required>
-              <input
-                className="sn-field"
-                placeholder="Brief summary"
-                style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
-                {...register('shortDescription', { required: 'Short description is required' })}
-              />
-            </SNRecordField>
 
-            <SNRecordField label="Description" fullWidth tall stack>
-              <textarea className="sn-field" placeholder="Detailed description of the proposed change" {...register('description')} />
-            </SNRecordField>
             <SNRecordField label="Assigned To">
               <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                 <option value="">-- None --</option>
@@ -241,6 +280,7 @@ export default function ChangeCreate() {
                   <option key={user.id} value={user.id}>{personLabel(user)}</option>
                 ))}
               </select>
+              {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
             </SNRecordField>
 
             <SNRecordField label="Planned Start">
@@ -250,6 +290,14 @@ export default function ChangeCreate() {
               <input type="datetime-local" className="sn-field" {...register('plannedEndDate')} />
             </SNRecordField>
 
+            <SNRecordField label="Short Description" required>
+              <input
+                className="sn-field"
+                placeholder="Brief summary"
+                style={errors.shortDescription ? { borderColor: sn.critical } : undefined}
+                {...register('shortDescription', { required: 'Short description is required' })}
+              />
+            </SNRecordField>
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed description of the proposed change" {...register('description')} />

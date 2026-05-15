@@ -20,5 +20,6 @@ urlpatterns = [
     path("<uuid:pk>/reopen/", views.IncidentReopenView.as_view(), name="incident-reopen"),
     path("<uuid:pk>/promote-to-problem/", views.IncidentPromoteToProblemView.as_view(), name="incident-promote-problem"),
     path("bulk-update/", views.IncidentBulkUpdateView.as_view(), name="incident-bulk-update"),
+    path("<uuid:pk>/child-bulk-operations/", views.IncidentChildBulkOperationsView.as_view(), name="incident-child-bulk-operations"),
     path("export/csv/", views.IncidentExportCSVView.as_view(), name="incident-export-csv"),
 ]

@@ -32,6 +32,14 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   first_name: 'firstName',
   last_name: 'lastName',
   is_internal: 'isInternal',
+  child_incidents: 'childIncidents',
+  child_status_summary: 'childStatusSummary',
+  hierarchy_level: 'hierarchyLevel',
+  root_parent: 'rootParent',
+  requested_by: 'requestedBy',
+  in_progress: 'inProgress',
+  on_hold: 'onHold',
+  completion_percentage: 'completionPercentage',
 };
 
 const FIELD_TO_SNAKE: Record<string, string> = {
@@ -44,10 +52,18 @@ const FIELD_TO_SNAKE: Record<string, string> = {
   resolutionNotes: 'resolution_notes',
   holdReason: 'hold_reason',
   isInternal: 'is_internal',
+  parentId: 'parent',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasResponseStatus(error: unknown, status: number) {
+  if (!isPlainObject(error) || !isPlainObject(error.response)) {
+    return false;
+  }
+  return error.response.status === status;
 }
 
 function normalizePayload<T>(value: T): T {
@@ -86,22 +102,25 @@ function denormalizePayload(input: Record<string, unknown>): Record<string, unkn
   );
 }
 
-function normalizeListResponse(response: any, filters: FilterParams) {
+function normalizeListResponse(response: unknown, filters: FilterParams) {
+  const payload = isPlainObject(response) ? response : {};
+  const data = Array.isArray(payload.data) ? payload.data : [];
+  const pagination = isPlainObject(payload.pagination) ? payload.pagination : {};
   const page = Number(filters.page ?? 1);
   const limit = Number(filters.limit ?? 25);
-  const total = Number(response?.pagination?.count ?? response?.pagination?.total ?? response?.data?.length ?? 0);
+  const total = Number(pagination.count ?? pagination.total ?? data.length ?? 0);
   const totalPages = Math.max(1, Math.ceil(total / Math.max(limit, 1)));
   return {
-    ...response,
-    data: normalizePayload(response?.data ?? []),
+    ...payload,
+    data: normalizePayload(data),
     pagination: {
       total,
       page,
       limit,
       totalPages,
       pages: totalPages,
-      next: response?.pagination?.next ?? null,
-      previous: response?.pagination?.previous ?? null,
+      next: pagination.next ?? null,
+      previous: pagination.previous ?? null,
     },
   };
 }
@@ -180,8 +199,8 @@ export function useIncidentTimeline(id: string) {
       try {
         const { data } = await api.get(`/incidents/${id}/timeline/`);
         return { ...data, data: normalizePayload(data?.data ?? []) };
-      } catch (error: any) {
-        if (error?.response?.status === 404) return { success: true, data: [] };
+      } catch (error: unknown) {
+        if (hasResponseStatus(error, 404)) return { success: true, data: [] };
         throw error;
       }
     },
@@ -197,8 +216,8 @@ export function useIncidentLiveContext(id: string, enabled: boolean = true) {
       try {
         const { data } = await api.get(`/incidents/${id}/live-context`);
         return data.data;
-      } catch (error: any) {
-        if (error?.response?.status === 404) return null;
+      } catch (error: unknown) {
+        if (hasResponseStatus(error, 404)) return null;
         throw error;
       }
     },
@@ -216,8 +235,8 @@ export function useEscalationLogs(id: string, enabled: boolean = true) {
       try {
         const { data } = await api.get(`/incidents/${id}/escalation-logs`);
         return data.data;
-      } catch (error: any) {
-        if (error?.response?.status === 404) return { logs: [] };
+      } catch (error: unknown) {
+        if (hasResponseStatus(error, 404)) return { logs: [] };
         throw error;
       }
     },
@@ -299,6 +318,34 @@ export function usePromoteIncidentToProblem() {
     onSuccess: (_, v) => {
       qc.invalidateQueries({ queryKey: keys.detail(v.id) });
       qc.invalidateQueries({ queryKey: ['problems'] });
+    },
+  });
+}
+
+export function useChildBulkOperations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ 
+      parentId, 
+      action, 
+      childIds, 
+      updates 
+    }: { 
+      parentId: string; 
+      action: 'resolve' | 'close' | 'update'; 
+      childIds?: string[]; 
+      updates?: Record<string, unknown> 
+    }) => {
+      const { data } = await api.post(`/incidents/${parentId}/child-bulk-operations/`, {
+        action,
+        child_ids: childIds,
+        updates: updates ? denormalizePayload(updates) : undefined,
+      });
+      return data;
+    },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: keys.detail(v.parentId) });
+      qc.invalidateQueries({ queryKey: keys.all });
     },
   });
 }

@@ -35,6 +35,7 @@ interface IncidentFormData {
   assignmentGroupId: string;
   assignedToId: string;
   configItemId: string;
+  parentId: string;
 }
 
 const PRIORITY_MATRIX: Record<Impact, Record<Urgency, Priority>> = {
@@ -104,13 +105,13 @@ export default function IncidentCreate() {
   const configItems: { id: string; name: string; hostname?: string }[] = assetsData?.data || [];
   const users: any[] = usersData?.data || [];
 
-  const {
+    const {
     register,
     handleSubmit,
     watch,
     setValue,
     formState: { errors },
-  } = useForm<IncidentFormData & { requestedById: string }>({
+  } = useForm<IncidentFormData & { openedById: string; siteId: string; location: string }>({
     defaultValues: {
       shortDescription: '',
       description: '',
@@ -122,13 +123,23 @@ export default function IncidentCreate() {
       assignmentGroupId: '',
       assignedToId: '',
       configItemId: '',
-      requestedById: currentUser?.id || '',
+      openedById: currentUser?.id || '',
+      siteId: '',
+      location: '',
+      parentId: '',
     },
   });
 
+  const { data: sitesData } = useQuery({
+    queryKey: ['sites'],
+    queryFn: async () => { const { data } = await api.get('/assets/sites'); return data; },
+    staleTime: 60000,
+  });
+  const sites: { id: string; name: string }[] = sitesData?.data || [];
+
   useEffect(() => {
-    if (currentUser?.id && !watch('requestedById')) {
-      setValue('requestedById', currentUser.id);
+    if (currentUser?.id && !watch('openedById')) {
+      setValue('openedById', currentUser.id);
     }
   }, [currentUser, setValue, watch]);
 
@@ -158,17 +169,22 @@ export default function IncidentCreate() {
     config_item_id: configItemId
   });
 
+  const parentId = watch('parentId');
+
   const onSubmit = async (data: any) => {
     try {
       await createIncident.mutateAsync({
         ...data,
-        requested_by: data.requestedById,
+        requested_by: data.openedById,
         priority,
         state: 'NEW',
         assignment_group: data.assignmentGroupId || undefined,
         assigned_to: data.assignedToId || undefined,
         config_item: data.configItemId || undefined,
         subcategory: data.subcategory || undefined,
+        site: data.siteId || undefined,
+        location: data.location || undefined,
+        parent: data.parentId || undefined,
       });
       toast.success('Incident created successfully');
       navigate('/incidents');
@@ -222,6 +238,14 @@ export default function IncidentCreate() {
       />
 
       <form onSubmit={handleSubmit(onSubmit)}>
+        {parentId && (
+          <div className="px-6 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+            <span className="text-xs font-semibold text-blue-700">
+              ↳ Creating child incident under parent: <strong>{parentId}</strong>
+            </span>
+            <input type="hidden" {...register('parentId')} />
+          </div>
+        )}
         {suggestion?.suggested_group && (
           <div className="px-6 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
             <span className="text-xs font-medium text-indigo-700">
@@ -242,11 +266,9 @@ export default function IncidentCreate() {
               <SNReadOnly>{nowForHeader()}</SNReadOnly>
             </SNRecordField>
 
-            <SNRecordField label="Requested By" required>
-              <select className="sn-field" {...register('requestedById', { required: 'Requested by is required' })}>
-                <option value="">-- None --</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{personLabel(u)}</option>)}
-              </select>
+            <SNRecordField label="Opened By">
+              <SNReadOnly>{personLabel(currentUser)}</SNReadOnly>
+              <input type="hidden" {...register('openedById')} />
             </SNRecordField>
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
@@ -256,7 +278,15 @@ export default function IncidentCreate() {
             </SNRecordField>
 
             <SNRecordField label="Subcategory">
-              <input className="sn-field" placeholder="Optional subcategory" {...register('subcategory')} />
+              <select className="sn-field" {...register('subcategory')}>
+                <option value="">-- None --</option>
+                <option value="server">Server</option>
+                <option value="firewall">Firewall</option>
+                <option value="switch">Switch</option>
+                <option value="software">Software</option>
+                <option value="database">Database</option>
+                <option value="other">Other</option>
+              </select>
             </SNRecordField>
             <SNRecordField label="Source">
               <select className="sn-field" {...register('source')}>
@@ -292,10 +322,33 @@ export default function IncidentCreate() {
               {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
             </SNRecordField>
 
+            <SNRecordField label="Site">
+              <select className="sn-field" {...register('siteId')}>
+                <option value="">-- None --</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </SNRecordField>
+            <SNRecordField label="Location">
+              <input className="sn-field" placeholder="Physical location details" {...register('location')} />
+            </SNRecordField>
+
             <SNRecordField label="Configuration Item">
               <select className="sn-field" {...register('configItemId')}>
                 <option value="">-- None --</option>
-                {configItems.map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
+                {configItems
+                  .filter((ci: any) => {
+                    if (!subcategory || subcategory === 'other') return true;
+                    // Map subcategory to CI type
+                    const typeMap: Record<string, string> = {
+                      'server': 'SERVER',
+                      'firewall': 'FIREWALL',
+                      'switch': 'SWITCH',
+                      'software': 'SOFTWARE',
+                      'database': 'DATABASE'
+                    };
+                    return ci.type === typeMap[subcategory];
+                  })
+                  .map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
               </select>
             </SNRecordField>
             <SNRecordField label="Short Description" required>
@@ -310,8 +363,7 @@ export default function IncidentCreate() {
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed incident description" {...register('description')} />
             </SNRecordField>
-
-            
+                    
           </SNRecordGrid>
         </SNCollapsibleSection>
 

@@ -97,6 +97,7 @@ export interface Incident {
   assignmentGroupId: string | null;
   createdById: string;
   configItemId: string | null;
+  parentId?: string | null;
   slaBreached: boolean;
   responseTime: string | null;
   resolutionTime: string | null;
@@ -116,6 +117,21 @@ export interface Incident {
   assignmentGroup?: Team | null;
   createdBy?: User;
   configItem?: ConfigurationItem | null;
+  parent?: Incident | null;
+  childIncidents?: Incident[];
+  childStatusSummary?: {
+    total: number;
+    new: number;
+    inProgress: number;
+    onHold: number;
+    escalated: number;
+    resolved: number;
+    closed: number;
+    cancelled: number;
+    completionPercentage: number;
+  } | null;
+  hierarchyLevel?: number;
+  rootParent?: Incident | null;
   workNotes?: WorkNote[];
   relatedAlerts?: Alert[];
   attachments?: Attachment[];

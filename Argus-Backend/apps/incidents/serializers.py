@@ -86,9 +86,12 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
 
 class ParentIncidentSerializer(serializers.ModelSerializer):
+    child_status_summary = serializers.ReadOnlyField()
+    hierarchy_level = serializers.ReadOnlyField()
+    
     class Meta:
         model = Incident
-        fields = ['id', 'number', 'short_description', 'state', 'priority']
+        fields = ['id', 'number', 'short_description', 'state', 'priority', 'child_status_summary', 'hierarchy_level']
 
 
 class IncidentSerializer(serializers.ModelSerializer):
@@ -106,6 +109,9 @@ class IncidentSerializer(serializers.ModelSerializer):
     available_transitions = serializers.SerializerMethodField()
     parent = ParentIncidentSerializer(read_only=True)
     child_incidents = ParentIncidentSerializer(many=True, read_only=True)
+    child_status_summary = serializers.ReadOnlyField()
+    hierarchy_level = serializers.ReadOnlyField()
+    root_parent = ParentIncidentSerializer(read_only=True)
 
     requested_by = UserSerializer(read_only=True)
 
@@ -113,9 +119,10 @@ class IncidentSerializer(serializers.ModelSerializer):
         model = Incident
         fields = [
             'id', 'number', 'short_description', 'description', 'state', 
-            'impact', 'urgency', 'priority', 'category', 'subcategory',
+            'impact', 'urgency', 'priority', 'category', 'subcategory', 'site', 'location',
             'assigned_to', 'assignment_group', 'created_by', 'requested_by', 'config_item',
-            'parent', 'child_incidents', 'is_major_incident', 
+            'parent', 'child_incidents', 'child_status_summary', 'hierarchy_level',
+            'root_parent', 'is_major_incident',
             'major_incident_state', 'major_incident_notes',
             'sla_breached', 'response_time', 'resolution_time',
             'sla_target_response', 'sla_target_resolution', 'source',
@@ -124,7 +131,10 @@ class IncidentSerializer(serializers.ModelSerializer):
             'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes',
             'task_slas', 'available_transitions', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at', 'child_incidents']
+        read_only_fields = [
+            'id', 'number', 'created_by', 'created_at', 'updated_at',
+            'child_incidents', 'child_status_summary', 'hierarchy_level', 'root_parent'
+        ]
 
     def get_assignment_group(self, obj):
         if obj.assignment_group:
@@ -146,7 +156,8 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         fields = [
             'short_description', 'description', 'impact', 'urgency',
             'category', 'subcategory', 'assigned_to', 'assignment_group',
-            'config_item', 'source', 'requested_by'
+            'config_item', 'source', 'requested_by', 'site', 'location',
+            'parent'
         ]
 
     def create(self, validated_data):
@@ -202,7 +213,7 @@ class IncidentUpdateSerializer(serializers.ModelSerializer):
             'short_description', 'description', 'state', 'impact', 'urgency',
             'priority', 'category', 'subcategory', 'assigned_to',
             'assignment_group', 'hold_reason', 'resolution_code', 'resolution_notes',
-            'config_item', 'parent', 'is_major_incident', 
+            'config_item', 'parent', 'is_major_incident', 'site', 'location',
             'major_incident_state', 'major_incident_notes'
         ]
 

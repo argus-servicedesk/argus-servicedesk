@@ -74,9 +74,12 @@ class MarkAllReadView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
+        org = getattr(request, 'organization', None)
+        if org is None:
+            return success(message="no notifications to mark")
         Notification.objects.filter(
             user=request.user, 
-            organization=request.organization,
+            organization=org,
             is_read=False
         ).update(is_read=True, read_at=timezone.now())
         
@@ -87,9 +90,12 @@ class UnreadCountView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        org = getattr(request, 'organization', None)
+        if org is None:
+            return success({"count": 0})
         count = Notification.objects.filter(
             user=request.user,
-            organization=request.organization,
+            organization=org,
             is_read=False,
         ).count()
         return success({"count": count})
@@ -99,10 +105,13 @@ class MarkNotificationReadView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
+        org = getattr(request, 'organization', None)
+        if org is None:
+            return success(message="notification marked as read")
         notification = Notification.objects.filter(
             pk=pk,
             user=request.user,
-            organization=request.organization,
+            organization=org,
         ).first()
         if notification:
             notification.is_read = True

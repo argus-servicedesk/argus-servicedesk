@@ -6,11 +6,12 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
 import { SNPage, SNRecordHeader, SNCollapsibleSection, SNFieldGrid, SNFormRow, SNPillBadge, SNReadOnly, SNProcessRibbon, SNRelatedList, SNEmptyRelatedList, sn, SNModal, SNLabel } from './ServiceNowUI';
-import { Upload, AlertCircle, CheckCircle2, ArrowUpCircle, XCircle, TrendingUp } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, ArrowUpCircle, XCircle, TrendingUp, Link2, Users, BarChart3, CheckSquare, Square } from 'lucide-react';
 import api from '../../lib/api';
-import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateIncident, usePromoteIncidentToProblem } from '../../hooks/useIncidents';
+import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateIncident, usePromoteIncidentToProblem, useChildBulkOperations } from '../../hooks/useIncidents';
 import { useAuth } from '../../hooks/useAuth';
 import type { Incident, Priority } from '../../types';
+import IncidentBreadcrumb from '../Incidents/IncidentBreadcrumb';
 
 type IncidentState = Incident['state'];
 
@@ -173,6 +174,7 @@ export default function IncidentServiceNowPanel({
   const closeIncident = useCloseIncident();
   const escalateIncident = useEscalateIncident();
   const promoteToProb = usePromoteIncidentToProblem();
+  const childBulkOps = useChildBulkOperations();
   const [shortDescription, setShortDescription] = useState(incident.shortDescription || '');
   const [description, setDescription] = useState(incident.description || '');
   const [impact, setImpact] = useState(incident.impact);
@@ -190,6 +192,11 @@ export default function IncidentServiceNowPanel({
   const [showEscalationModal, setShowEscalationModal] = useState(false);
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState<'resolve' | 'close' | 'update'>('resolve');
+  const [bulkResolutionCode, setBulkResolutionCode] = useState('');
+  const [bulkResolutionNotes, setBulkResolutionNotes] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
@@ -350,6 +357,94 @@ export default function IncidentServiceNowPanel({
     }
   }
 
+  async function handleBulkOperation() {
+    if (selectedChildren.length === 0) {
+      toast.error('Please select at least one child incident');
+      return;
+    }
+
+    if (bulkAction === 'resolve' && (!bulkResolutionCode || !bulkResolutionNotes.trim())) {
+      toast.error('Resolution code and notes are required');
+      return;
+    }
+
+    try {
+      const updates = bulkAction === 'resolve' ? {
+        resolution_code: bulkResolutionCode,
+        resolution_notes: bulkResolutionNotes,
+      } : {};
+
+      await childBulkOps.mutateAsync({
+        parentId: incidentId,
+        action: bulkAction,
+        childIds: selectedChildren,
+        updates,
+      });
+
+      toast.success(`Bulk ${bulkAction} completed for ${selectedChildren.length} child incidents`);
+      setShowBulkModal(false);
+      setSelectedChildren([]);
+      setBulkResolutionCode('');
+      setBulkResolutionNotes('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || `Bulk ${bulkAction} failed`);
+    }
+  }
+
+  function toggleChildSelection(childId: string) {
+    setSelectedChildren(prev => 
+      prev.includes(childId) 
+        ? prev.filter(id => id !== childId)
+        : [...prev, childId]
+    );
+  }
+
+  function selectAllChildren() {
+    const allChildIds = incident.childIncidents?.map(child => child.id) || [];
+    setSelectedChildren(allChildIds);
+  }
+
+  function clearChildSelection() {
+    setSelectedChildren([]);
+  }
+
+  function ChildStatusSummary({ summary }: { summary: any }) {
+    if (!summary || summary.total === 0) return null;
+
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+        <div className="flex items-center gap-2 mb-2">
+          <BarChart3 size={16} className="text-blue-600" />
+          <span className="font-medium text-blue-900">Child Incidents Summary</span>
+        </div>
+        <div className="grid grid-cols-4 gap-3 text-sm">
+          <div className="text-center">
+            <div className="font-bold text-lg text-blue-600">{summary.total}</div>
+            <div className="text-gray-600">Total</div>
+          </div>
+          <div className="text-center">
+            <div className="font-bold text-lg text-green-600">{summary.resolved + summary.closed}</div>
+            <div className="text-gray-600">Completed</div>
+          </div>
+          <div className="text-center">
+            <div className="font-bold text-lg text-orange-600">{summary.new + summary.inProgress + summary.escalated}</div>
+            <div className="text-gray-600">Active</div>
+          </div>
+          <div className="text-center">
+            <div className="font-bold text-lg text-blue-600">{summary.completionPercentage}%</div>
+            <div className="text-gray-600">Complete</div>
+          </div>
+        </div>
+        <div className="mt-2 bg-gray-200 rounded-full h-2">
+          <div 
+            className="bg-green-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${summary.completionPercentage}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   const priorityBadge = priority === 'P1' ? (
     <SNPillBadge label={PRIORITY_SN.P1} tone="critical" dot />
   ) : priority === 'P2' ? (
@@ -378,6 +473,8 @@ export default function IncidentServiceNowPanel({
 
   return (
     <SNPage className="overflow-hidden rounded-md border shadow-sm" style={{ borderColor: sn.border }}>
+      <IncidentBreadcrumb incident={incident} />
+      
       <SNRecordHeader
         number={incident.number}
         titleNumber={incident.number}
@@ -461,6 +558,20 @@ export default function IncidentServiceNowPanel({
               <SNReadOnly>{formatOpened(incident.createdAt)}</SNReadOnly>
             </SNFormRow>
 
+
+            <SNFormRow label="Parent Incident">
+              {(incident as any).parent ? (
+                <button
+                  type="button"
+                  className="sn-list-link text-left"
+                  onClick={() => navigate(`/incidents/${(incident as any).parent?.id}`)}
+                >
+                  {(incident as any).parent.number}
+                </button>
+              ) : (
+                <SNReadOnly muted>None</SNReadOnly>
+              )}
+            </SNFormRow>
             <SNFormRow label="Caller" required>
               <SNReadOnly>{callerLabel(incident)}</SNReadOnly>
             </SNFormRow>
@@ -697,6 +808,103 @@ export default function IncidentServiceNowPanel({
           )}
         </SNRelatedList>
 
+        <SNRelatedList title="Child Incidents" count={incident.childIncidents?.length || 0}>
+          <ChildStatusSummary summary={incident.childStatusSummary} />
+          
+          <div className="flex items-center justify-between p-3 border-b bg-slate-50">
+             <span className="text-xs text-slate-500">Sub-incidents linked to this parent</span>
+             <div className="flex items-center gap-2">
+               {incident.childIncidents && incident.childIncidents.length > 0 && (
+                 <button 
+                   type="button"
+                   className="sn-soft-button flex items-center gap-1"
+                   onClick={() => setShowBulkModal(true)}
+                   disabled={selectedChildren.length === 0}
+                 >
+                   <Users size={12} />
+                   <span>Bulk Actions ({selectedChildren.length})</span>
+                 </button>
+               )}
+               <button 
+                 type="button"
+                 className="sn-soft-button flex items-center gap-1"
+                 onClick={() => navigate('/incidents/create', { 
+                   state: { 
+                     clone: { 
+                       shortDescription: `Child of ${incident.number}: ${incident.shortDescription}`,
+                       category: incident.category,
+                       impact: incident.impact,
+                       urgency: incident.urgency,
+                       parentId: incident.id
+                     } 
+                   } 
+                 })}
+               >
+                  <Link2 size={12} />
+                  <span>Create Child Incident</span>
+               </button>
+             </div>
+          </div>
+          {(!incident.childIncidents || incident.childIncidents.length === 0) ? (
+            <SNEmptyRelatedList message="No child incidents found." />
+          ) : (
+            <table className="sn-list-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '40px' }}>
+                    <button
+                      type="button"
+                      onClick={selectedChildren.length === incident.childIncidents.length ? clearChildSelection : selectAllChildren}
+                      className="p-1"
+                    >
+                      {selectedChildren.length === incident.childIncidents.length ? (
+                        <CheckSquare size={16} className="text-blue-600" />
+                      ) : (
+                        <Square size={16} className="text-gray-400" />
+                      )}
+                    </button>
+                  </th>
+                  <th>Number</th>
+                  <th>Priority</th>
+                  <th>State</th>
+                  <th>Short Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incident.childIncidents.map((child) => (
+                  <tr key={child.id}>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => toggleChildSelection(child.id)}
+                        className="p-1"
+                      >
+                        {selectedChildren.includes(child.id) ? (
+                          <CheckSquare size={16} className="text-blue-600" />
+                        ) : (
+                          <Square size={16} className="text-gray-400" />
+                        )}
+                      </button>
+                    </td>
+                    <td>
+                      <button 
+                        type="button"
+                        className="sn-list-link" 
+                        onClick={() => navigate(`/incidents/${child.id}`)}
+                      >
+                        {child.number}
+                      </button>
+                    </td>
+                    <td>{child.priority}</td>
+                    <td>{child.state}</td>
+                    <td className="truncate max-w-xs">{child.shortDescription}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SNRelatedList>
+
         <SNRelatedList title="Activity and Work Notes" count={workNotes.length + activities.length}>
           {workNotes.length + activities.length === 0 ? (
             <SNEmptyRelatedList message="No activity has been recorded yet." />
@@ -910,6 +1118,78 @@ export default function IncidentServiceNowPanel({
               Use this when the root cause needs deeper investigation.
             </p>
           </div>
+        </div>
+      </SNModal>
+
+      {/* Bulk Operations Modal */}
+      <SNModal
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        title="Bulk Operations on Child Incidents"
+        footer={
+          <>
+            <button className="sn-soft-button" onClick={() => setShowBulkModal(false)}>Cancel</button>
+            <button
+              className="sn-primary-button"
+              onClick={handleBulkOperation}
+              disabled={childBulkOps.isPending}
+            >
+              {childBulkOps.isPending ? (
+                <><Loader2 size={14} className="animate-spin inline mr-1" />Processing...</>
+              ) : (
+                `${bulkAction.charAt(0).toUpperCase() + bulkAction.slice(1)} ${selectedChildren.length} Incidents`
+              )}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Selected {selectedChildren.length} of {incident.childIncidents?.length} child incidents
+          </p>
+          
+          <div>
+            <SNLabel>Action</SNLabel>
+            <select 
+              className="sn-field" 
+              value={bulkAction} 
+              onChange={(e) => setBulkAction(e.target.value as 'resolve' | 'close' | 'update')}
+            >
+              <option value="resolve">Resolve All</option>
+              <option value="close">Close All</option>
+              <option value="update">Update All</option>
+            </select>
+          </div>
+
+          {bulkAction === 'resolve' && (
+            <>
+              <div>
+                <SNLabel>Resolution Code</SNLabel>
+                <select 
+                  className="sn-field" 
+                  value={bulkResolutionCode} 
+                  onChange={(e) => setBulkResolutionCode(e.target.value)}
+                >
+                  <option value="">Select resolution code</option>
+                  {RESOLUTION_CODES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <SNLabel>Resolution Notes</SNLabel>
+                <textarea
+                  className="sn-field"
+                  rows={3}
+                  value={bulkResolutionNotes}
+                  onChange={(e) => setBulkResolutionNotes(e.target.value)}
+                  placeholder="Enter resolution notes for all selected incidents"
+                />
+              </div>
+            </>
+          )}
         </div>
       </SNModal>
     </SNPage>
