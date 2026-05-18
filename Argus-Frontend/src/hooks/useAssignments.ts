@@ -34,7 +34,7 @@ export const useCategoryGroupMappings = () => {
   });
 };
 
-export const useAssignmentPreview = (fields: any) => {
+export const useAssignmentPreview = (fields: any, enabled = true) => {
   return useQuery({
     queryKey: ['assignment-preview', fields],
     queryFn: async () => {
@@ -42,7 +42,7 @@ export const useAssignmentPreview = (fields: any) => {
       const { data } = await api.post('/assignments/preview/', fields);
       return data;
     },
-    enabled: !!fields.category,
+    enabled: enabled && !!fields.category,
   });
 };
 

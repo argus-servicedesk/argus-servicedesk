@@ -16,7 +16,8 @@ export function useServiceRequests(filters: F = {}) {
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') params.append(k, String(v)); });
-      const { data } = await api.get(`/service-requests?${params}`);
+      const query = params.toString();
+      const { data } = await api.get(`/service-requests/${query ? `?${query}` : ''}`);
       return data;
     },
     staleTime: 30000,
@@ -29,7 +30,8 @@ export function useMyServiceRequests(filters: F = {}) {
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') params.append(k, String(v)); });
-      const { data } = await api.get(`/service-requests/my?${params}`);
+      const query = params.toString();
+      const { data } = await api.get(`/service-requests/my/${query ? `?${query}` : ''}`);
       return data;
     },
     staleTime: 30000,
@@ -39,7 +41,7 @@ export function useMyServiceRequests(filters: F = {}) {
 export function useServiceRequest(id: string) {
   return useQuery({
     queryKey: keys.detail(id),
-    queryFn: async () => { const { data } = await api.get(`/service-requests/${id}`); return data; },
+    queryFn: async () => { const { data } = await api.get(`/service-requests/${id}/`); return data; },
     staleTime: 60000,
     enabled: !!id,
   });
@@ -48,7 +50,7 @@ export function useServiceRequest(id: string) {
 export function useCreateServiceRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/service-requests', input); return data; },
+    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/service-requests/', input); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
@@ -56,7 +58,7 @@ export function useCreateServiceRequest() {
 export function useUpdateServiceRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/service-requests/${id}`, d); return data; },
+    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/service-requests/${id}/`, d); return data; },
     onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: keys.detail(v.id) }); qc.invalidateQueries({ queryKey: keys.all }); },
   });
 }
@@ -64,7 +66,7 @@ export function useUpdateServiceRequest() {
 export function useApproveServiceRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => { const { data } = await api.post(`/service-requests/${id}/approve`); return data; },
+    mutationFn: async (id: string) => { const { data } = await api.post(`/service-requests/${id}/approve/`); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
@@ -72,7 +74,7 @@ export function useApproveServiceRequest() {
 export function useRejectServiceRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => { const { data } = await api.post(`/service-requests/${id}/reject`, { reason }); return data; },
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => { const { data } = await api.post(`/service-requests/${id}/reject/`, { reason }); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }

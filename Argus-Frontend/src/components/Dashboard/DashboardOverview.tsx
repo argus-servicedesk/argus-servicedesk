@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, Component, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, Component, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Cell, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, PieChart, Pie } from 'recharts';
 import {
   AlertTriangle, Zap, CheckCircle2, Clock, Eye, Brain,
   Server, Database, Shield, Globe, HardDrive, Container, Cpu, Network,
@@ -41,6 +41,37 @@ function safeStr(val: unknown): string {
     try { return JSON.stringify(val); } catch { return '[Object]'; }
   }
   return String(val);
+}
+
+function useChartSize(height: number) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height });
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const measure = () => {
+      const nextWidth = Math.floor(node.getBoundingClientRect().width);
+      setSize((current) => {
+        const width = nextWidth > 0 ? nextWidth : 0;
+        if (current.width === width && current.height === height) return current;
+        return { width, height };
+      });
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [height]);
+
+  return [ref, size] as const;
 }
 
 /* ===================================================================
@@ -407,6 +438,7 @@ export default function DashboardOverview() {
     if (Array.isArray(raw) && raw.length > 0) return raw;
     return null;
   }, [trendData]);
+  const [trendChartRef, trendChartSize] = useChartSize(150);
 
   /* ── Changes / Problems / Teams / OnCall ── */
   const upcomingChanges: any[] = changesData?.data ?? [];
@@ -751,9 +783,9 @@ export default function DashboardOverview() {
               </div>
             }>
             {trendChart && trendChart.length > 0 ? (
-              <div className="h-[150px] -mx-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendChart} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
+              <div ref={trendChartRef} className="h-[150px] w-full min-w-0 overflow-hidden">
+                {trendChartSize.width > 0 ? (
+                  <BarChart width={trendChartSize.width} height={trendChartSize.height} data={trendChart} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                     <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94A3B8' }} tickLine={false} axisLine={false}
                       tickFormatter={(v) => { try { return new Date(String(v)).toLocaleDateString('en-IN', { weekday: 'short' }); } catch { return String(v); } }} />
@@ -766,7 +798,9 @@ export default function DashboardOverview() {
                       ))}
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                ) : (
+                  <div className="h-full w-full" />
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2 py-4">

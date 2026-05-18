@@ -22,20 +22,23 @@ def sync_enterprise_data():
 
     # Data structure for teams and members
     teams_data = {
-        "Networking Team": ["ealukondulo siva", "devendara reddy"],
-        "Software Team": ["Rajkumar Ashokan", "Vediyappan M"],
-        "DevOps Team": ["rajkumar madhu", "Hoysala Bise"]
+        "Infra Team": ["Devendra Reddy", "Edukondalu", "Siva", "Udhayakumar"],
+        "DevOps Team": ["Rajkumar-Madhu", "Hoysala Bisa"],
+        "Software Team": ["Vediyappan M", "Rajkumar-Ashokan"],
     }
 
     category_mappings = {
-        "Network": "Networking Team",
+        "Network": "Infra Team",
+        "Security": "Infra Team",
+        "Infrastructure": "Infra Team",
+        "Hardware": "Infra Team",
+        "Cloud": "DevOps Team",
+        "Cloud Infrastructure": "DevOps Team",
+        "DevOps": "DevOps Team",
         "Software": "Software Team",
-        "Hardware": "Software Team",
         "Application": "Software Team",
         "Database": "Software Team",
-        "DevOps": "DevOps Team",
-        "Cloud Infrastructure": "DevOps Team",
-        "Security": "Networking Team"
+        "Configuration": "Software Team",
     }
 
     for org in orgs:

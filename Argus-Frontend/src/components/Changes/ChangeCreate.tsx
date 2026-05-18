@@ -6,8 +6,14 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCreateChange } from '../../hooks/useChanges';
 import { useAuth } from '../../hooks/useAuth';
-import { useTeamMembers, useAssignmentPreview } from '../../hooks/useAssignments';
+import { useAssignmentPreview } from '../../hooks/useAssignments';
 import api from '../../lib/api';
+import {
+  assignableUsersForTeam,
+  assignmentPersonLabel,
+  orderedAssignmentTeams,
+  type AssignmentRosterTeam,
+} from '../../utils/assignmentRoster';
 import {
   SNCollapsibleSection,
   SNPage,
@@ -65,9 +71,8 @@ function labelize(value: string): string {
 }
 
 function personLabel(user: any): string {
-  const firstName = user.firstName || user.first_name || '';
-  const lastName = user.lastName || user.last_name || '';
-  return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
+  const label = assignmentPersonLabel(user);
+  return label === 'Unassigned' ? 'Unknown user' : label;
 }
 
 function nowForHeader(): string {
@@ -92,20 +97,22 @@ function toIso(value: string): string | undefined {
 export default function ChangeCreate() {
   const navigate = useNavigate();
   const createChange = useCreateChange();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isClient } = useAuth();
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
     queryFn: async () => { const { data } = await api.get('/teams'); return data; },
     staleTime: 60000,
+    enabled: !isClient,
   });
   const { data: assetsData } = useQuery({
     queryKey: ['assets'],
     queryFn: async () => { const { data } = await api.get('/assets'); return data; },
     staleTime: 60000,
+    enabled: !isClient,
   });
 
-  const teams: { id: string; name: string }[] = teamsData?.data || [];
+  const teams = orderedAssignmentTeams((teamsData?.data || []) as AssignmentRosterTeam[]);
   const configItems: { id: string; name: string; hostname?: string; type: string }[] = assetsData?.data || [];
 
   const {
@@ -147,10 +154,9 @@ export default function ChangeCreate() {
   const category = watch('category');
   const subcategory = watch('subcategory');
   const assignmentGroupId = watch('assignmentGroupId');
-  const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
-  const teamMembers = teamMembersResponse?.data || [];
+  const teamMembers = assignableUsersForTeam(teams, assignmentGroupId);
 
-  const { data: suggestion } = useAssignmentPreview({ category });
+  const { data: suggestion } = useAssignmentPreview({ category }, !isClient);
 
   const applySuggestion = () => {
     if (suggestion?.suggested_group) {
@@ -178,10 +184,10 @@ export default function ChangeCreate() {
       ...data,
       requested_by: data.openedById,
       state: 'NEW',
-      assignment_group: data.assignmentGroupId || undefined,
-      assigned_to: data.assignedToId || undefined,
-      config_item: data.configItemId || undefined,
-      subcategory: data.subcategory || undefined,
+      assignment_group: isClient ? undefined : data.assignmentGroupId || undefined,
+      assigned_to: isClient ? undefined : data.assignedToId || undefined,
+      config_item: isClient ? undefined : data.configItemId || undefined,
+      subcategory: isClient ? undefined : data.subcategory || undefined,
       planned_start_date: toIso(data.plannedStartDate),
       planned_end_date: toIso(data.plannedEndDate),
     };
@@ -245,43 +251,56 @@ export default function ChangeCreate() {
               </select>
             </SNRecordField>
 
-            <SNRecordField label="Subcategory">
-              <select className="sn-field" {...register('subcategory')}>
-                <option value="">-- None --</option>
-                {SUBCATEGORIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Subcategory">
+                <select className="sn-field" {...register('subcategory')}>
+                  <option value="">-- None --</option>
+                  {SUBCATEGORIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </SNRecordField>
+            )}
 
-            <SNRecordField label="Configuration Item">
-              <select className="sn-field" {...register('configItemId')}>
-                <option value="">-- None --</option>
-                {filteredConfigItems.map((ci) => (
-                  <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>
-                ))}
-              </select>
-              {subcategory && subcategory !== 'other' && (
-                <div className="text-[10px] text-gray-400 mt-1">
-                  Showing {labelize(subcategory)} items only
-                </div>
-              )}
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Configuration Item">
+                <select className="sn-field" {...register('configItemId')}>
+                  <option value="">-- None --</option>
+                  {filteredConfigItems.map((ci) => (
+                    <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>
+                  ))}
+                </select>
+                {subcategory && subcategory !== 'other' && (
+                  <div className="text-[10px] text-gray-400 mt-1">
+                    Showing {labelize(subcategory)} items only
+                  </div>
+                )}
+              </SNRecordField>
+            )}
 
-            <SNRecordField label="Assignment Group">
-              <select className="sn-field" {...register('assignmentGroupId')}>
-                <option value="">-- None --</option>
-                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Assignment Group">
+                <select
+                  className="sn-field"
+                  {...register('assignmentGroupId', {
+                    onChange: () => setValue('assignedToId', ''),
+                  })}
+                >
+                  <option value="">-- None --</option>
+                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </SNRecordField>
+            )}
 
-            <SNRecordField label="Assigned To">
-              <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
-                <option value="">-- None --</option>
-                {teamMembers.map((user: any) => (
-                  <option key={user.id} value={user.id}>{personLabel(user)}</option>
-                ))}
-              </select>
-              {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Assigned To">
+                <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
+                  <option value="">-- None --</option>
+                  {teamMembers.map((user: any) => (
+                    <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{personLabel(user)}</option>
+                  ))}
+                </select>
+                {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
+              </SNRecordField>
+            )}
 
             <SNRecordField label="Planned Start">
               <input type="datetime-local" className="sn-field" {...register('plannedStartDate')} />

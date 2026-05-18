@@ -21,7 +21,14 @@ class Team(models.Model):
     manager = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_teams')
     is_active = models.BooleanField(default=True, db_index=True)
     
-    organization = models.ForeignKey('organizations.Organization', on_delete=models.CASCADE, related_name='teams')
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='teams',
+        null=True,
+        blank=True,
+        help_text="Blank for global FinSpot resolver teams such as NOC.",
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

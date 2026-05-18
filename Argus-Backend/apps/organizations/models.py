@@ -10,6 +10,9 @@ class Organization(models.Model):
     last_incident_number = models.PositiveIntegerField(default=0)
     last_change_number = models.PositiveIntegerField(default=0)
     last_problem_number = models.PositiveIntegerField(default=0)
+    last_service_request_number = models.PositiveIntegerField(default=0)
+    last_requested_item_number = models.PositiveIntegerField(default=0)
+    last_catalog_task_number = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

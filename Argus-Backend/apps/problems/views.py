@@ -26,7 +26,13 @@ from rest_framework.views import APIView
 from apps.changes.models import Change
 from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.permissions import DenyViewerMutations, ProblemTransitionRBAC
+from apps.common.permissions import (
+    DenyViewerMutations,
+    ProblemTransitionRBAC,
+    can_edit_service_record,
+    can_manage_service_desk,
+    is_service_desk_staff,
+)
 from apps.common.pagination import DefaultPagination
 from apps.common.responses import failure, success
 from apps.incidents.models import Activity, Incident, IncidentProblem, WorkNote
@@ -59,6 +65,8 @@ PROBLEM_ACTIVITY_FIELDS = {
     "known_error_id": "Known error ID",
 }
 
+ASSIGNMENT_FIELDS = {"assigned_to", "assignment_group"}
+
 
 def _activity_value(value):
     if value is None:
@@ -68,6 +76,20 @@ def _activity_value(value):
     if hasattr(value, "email"):
         return value.email
     return str(value)
+
+
+def _problem_queryset_for_request(request):
+    queryset = Problem.objects.all()
+    if is_service_desk_staff(request.user):
+        org_id = (
+            request.query_params.get("organization")
+            or request.query_params.get("organization_id")
+            or getattr(request, "organization_id", None)
+        )
+        if org_id:
+            return queryset.filter(organization_id=org_id)
+        return queryset
+    return queryset.filter(organization=request.organization)
 
 
 # ─── Mixins ───────────────────────────────────────────────────────────────────
@@ -95,12 +117,8 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
     queryset = Problem.objects.all()
 
     def get_queryset(self):
-        organization = self._organization()
-        if organization is None:
-            return Problem.objects.none()
-
         qs = (
-            super().get_queryset()
+            _problem_queryset_for_request(self.request)
             .select_related(
                 "assigned_to",
                 "created_by",
@@ -129,14 +147,14 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
 
     def list(self, request, *args, **kwargs):
         try:
-            if self._organization() is None:
+            if self._organization() is None and not is_service_desk_staff(request.user):
                 return failure("Organisation context required.", status_code=400)
             qs = self.filter_queryset(self.get_queryset())
             page = self.paginate_queryset(qs)
             if page is not None:
-                serializer = ProblemSerializer(page, many=True)
+                serializer = self.get_serializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
-            serializer = ProblemSerializer(qs, many=True)
+            serializer = self.get_serializer(qs, many=True)
             return success(serializer.data)
         except Exception:
             logger.exception("Error listing problems")
@@ -157,7 +175,7 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
                 problem=problem,
             )
             return success(
-                ProblemSerializer(problem).data, "Problem created successfully.", 201
+                ProblemSerializer(problem, context=self.get_serializer_context()).data, "Problem created successfully.", 201
             )
         except ValidationError as exc:
             return failure("Validation failed.", errors=exc.detail, status_code=400)
@@ -179,11 +197,8 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
     queryset = Problem.objects.all()
 
     def get_queryset(self):
-        organization = self._organization()
-        if organization is None:
-            return Problem.objects.none()
         return (
-            super().get_queryset()
+            _problem_queryset_for_request(self.request)
             .select_related(
                 "assigned_to",
                 "created_by",
@@ -202,7 +217,7 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
     def retrieve(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
-            return success(ProblemSerializer(instance).data)
+            return success(self.get_serializer(instance).data)
         except Exception:
             logger.exception("Error retrieving problem %s", kwargs.get("pk"))
             return failure("Problem not found.", status_code=404)
@@ -210,6 +225,10 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
     def partial_update(self, request, *args, **kwargs):
         try:
             instance = self.get_object()
+            if not can_edit_service_record(request.user, instance):
+                return failure("Only assigned engineers, NOC, leads, or admins can edit this problem.", status_code=403)
+            if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_manage_service_desk(request.user):
+                return failure("Only NOC, leads, or admins can change problem assignment.", status_code=403)
             tracked_before = {
                 field: _activity_value(getattr(instance, field, None))
                 for field in PROBLEM_ACTIVITY_FIELDS
@@ -233,7 +252,7 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
                         problem=problem,
                     )
             return success(
-                ProblemSerializer(problem).data, "Problem updated successfully."
+                ProblemSerializer(problem, context=self.get_serializer_context()).data, "Problem updated successfully."
             )
         except ValidationError as exc:
             return failure("Validation failed.", errors=exc.detail, status_code=400)
@@ -258,12 +277,11 @@ class ProblemStatsView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
         try:
-            qs = Problem.objects.filter(organization=organization)
+            qs = _problem_queryset_for_request(request)
 
             # Aggregate state counts in a single query
             state_rows = qs.values("state").annotate(n=Count("id"))
@@ -320,13 +338,14 @@ class ProblemWorkNoteView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        problem = _problem_queryset_for_request(request).filter(id=pk).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, problem):
+            return failure("Only assigned engineers, NOC, leads, or admins can add work notes.", status_code=403)
 
         serializer = WorkNoteCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -372,19 +391,20 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        problem = _problem_queryset_for_request(request).filter(id=pk).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, problem):
+            return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
 
         incident_id = request.data.get("incident_id") or request.data.get("incidentId")
         if not incident_id:
             return failure("incident_id is required", status_code=400)
 
-        incident = Incident.objects.filter(id=incident_id, organization=organization).first()
+        incident = Incident.objects.filter(id=incident_id, organization=problem.organization).first()
         if not incident:
             return failure("Incident not found.", status_code=404)
 
@@ -431,7 +451,7 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
             .first()
         )
         return success(
-            ProblemSerializer(problem).data,
+            ProblemSerializer(problem, context={"request": request}).data,
             "incident linked to problem" if created else "problem incident link updated",
             201 if created else 200,
         )
@@ -441,19 +461,20 @@ class ProblemChangeLinkView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        problem = _problem_queryset_for_request(request).filter(id=pk).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, problem):
+            return failure("Only assigned engineers, NOC, leads, or admins can link changes.", status_code=403)
 
         change_id = request.data.get("change_id") or request.data.get("changeId")
         if not change_id:
             return failure("change_id is required", status_code=400)
 
-        change = Change.objects.filter(id=change_id, organization=organization).first()
+        change = Change.objects.filter(id=change_id, organization=problem.organization).first()
         if not change:
             return failure("Change not found.", status_code=404)
 
@@ -481,7 +502,7 @@ class ProblemChangeLinkView(OrgScopedMixin, APIView):
             .prefetch_related("linked_incidents__incident", "work_notes__author", "activities__user")
             .first()
         )
-        return success(ProblemSerializer(problem).data, "change linked to problem")
+        return success(ProblemSerializer(problem, context={"request": request}).data, "change linked to problem")
 
 
 class ProblemAiRcaView(OrgScopedMixin, APIView):
@@ -498,13 +519,14 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        problem = _problem_queryset_for_request(request).filter(id=pk).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
+        if not can_edit_service_record(request.user, problem):
+            return failure("Only assigned engineers, NOC, leads, or admins can run RCA.", status_code=403)
 
         try:
             problem = ProblemService.run_ai_rca(problem)
@@ -516,7 +538,7 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
                 problem=problem,
             )
             return success(
-                ProblemSerializer(problem).data,
+                ProblemSerializer(problem, context={"request": request}).data,
                 "AI root-cause analysis complete.",
             )
         except Exception:
@@ -537,13 +559,14 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def patch(self, request, pk):
-        organization = self._organization()
-        if organization is None:
+        if self._organization() is None and not is_service_desk_staff(request.user):
             return failure("Organisation context required.", status_code=400)
 
-        problem = Problem.objects.filter(id=pk, organization=organization).first()
+        problem = _problem_queryset_for_request(request).filter(id=pk).first()
         if not problem:
             return failure("Problem not found.", status_code=404)
+        if not can_edit_service_record(request.user, problem):
+            return failure("Only assigned engineers, NOC, leads, or admins can update RCA fields.", status_code=403)
 
         allowed_fields = {"root_cause", "workaround", "permanent_fix"}
         update_data = {
@@ -566,4 +589,4 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
             problem=problem,
         )
 
-        return success(ProblemSerializer(problem).data, "RCA fields updated.")
+        return success(ProblemSerializer(problem, context={"request": request}).data, "RCA fields updated.")

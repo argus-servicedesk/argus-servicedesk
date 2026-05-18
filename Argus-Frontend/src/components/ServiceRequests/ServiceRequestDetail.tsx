@@ -206,7 +206,7 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Rea
 function ServiceRequestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canManage } = useAuth();
+  const { canManage, isClient } = useAuth();
 
   const { data, isLoading, isError } = useServiceRequest(id!);
   const approveRequest = useApproveServiceRequest();
@@ -437,7 +437,7 @@ function ServiceRequestDetail() {
         )}
 
         {/* Approval Actions */}
-        {canManage('catalog') && showApprovalActions && (
+        {canManage('catalog') && !isClient && showApprovalActions && (
           <SectionCard title="Approval" icon={ShieldCheck}>
             {!showRejectForm ? (
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

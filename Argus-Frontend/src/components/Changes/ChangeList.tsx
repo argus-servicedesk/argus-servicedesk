@@ -44,6 +44,8 @@ interface Change {
   plannedEndDate?: string;
   scheduledStart?: string;
   createdAt?: string;
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 const PAGE_SIZE = 25;
@@ -351,6 +353,7 @@ export default function ChangeList() {
             <table className="sn-list-table">
               <colgroup>
                 <col style={{ width: 42 }} />
+                <col style={{ width: 64 }} />
                 <col style={{ width: 132 }} />
                 <col style={{ width: 118 }} />
                 <col style={{ width: 142 }} />
@@ -363,6 +366,7 @@ export default function ChangeList() {
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Select all changes" /></th>
+                  <th title="Assigned to you directly or through your team">Mine</th>
                   <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
                   <th><SortButton field="type" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Type</SortButton></th>
                   <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
@@ -374,9 +378,16 @@ export default function ChangeList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((change) => (
-                  <tr key={change.id} onDoubleClick={() => navigate(`/changes/${change.id}`)}>
+                {rows.map((change) => {
+                  const isMine = Boolean(change.isAssignedToMe);
+                  return (
+                  <tr key={change.id} className={isMine ? 'sn-row-mine' : undefined} onDoubleClick={() => navigate(`/changes/${change.id}`)}>
                     <td><input type="checkbox" aria-label={`Select ${changeNumber(change)}`} /></td>
+                    <td className="sn-ownership-cell">
+                      {isMine ? (
+                        <span className="sn-owned-badge" title="Assigned to you directly or through your team">Mine</span>
+                      ) : null}
+                    </td>
                     <td>
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/changes/${change.id}`)}>
                         {changeNumber(change)}
@@ -390,7 +401,8 @@ export default function ChangeList() {
                     <td>{formatDateTime(startDate(change))}</td>
                     <td>{formatDateTime(change.createdAt)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -1,7 +1,6 @@
-import React from 'react';
 import { useAssignmentRules, useCreateAssignmentRule, useCategoryGroupMappings } from '../../hooks/useAssignments';
 import { SNPage, SNRecordHeader, SNCollapsibleSection, SNRecordGrid, SNRecordField, SNPillBadge, sn } from '../ITSMTemplates/ServiceNowUI';
-import { Settings, Plus, LayoutGrid, Zap, ShieldCheck } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 export default function AssignmentRulesPage() {
   const { data: rules, isLoading: rulesLoading } = useAssignmentRules();
@@ -11,6 +10,7 @@ export default function AssignmentRulesPage() {
     <SNPage className="sn-admin-page">
       <SNRecordHeader
         number="Assignment Rules"
+        priorityPill={<SNPillBadge label="Routing" tone="neutral" />}
         statePill={<SNPillBadge label="Active" tone="success" />}
         secondaryActions={(
           <button className="sn-primary-button inline-flex items-center gap-2">
@@ -21,10 +21,7 @@ export default function AssignmentRulesPage() {
       />
 
       <div className="flex flex-col gap-6 mt-6">
-        <SNCollapsibleSection 
-          title="Active Routing Rules" 
-          icon={<Zap size={18} className="text-amber-500" />}
-        >
+        <SNCollapsibleSection title="Active Routing Rules">
           <div className="sn-admin-table-container">
             <table className="sn-admin-table w-full text-left">
               <thead>
@@ -61,10 +58,7 @@ export default function AssignmentRulesPage() {
           </div>
         </SNCollapsibleSection>
 
-        <SNCollapsibleSection 
-          title="Category to Group Mappings" 
-          icon={<LayoutGrid size={18} className="text-indigo-500" />}
-        >
+        <SNCollapsibleSection title="Category to Group Mappings">
           <div className="sn-admin-table-container">
             <table className="sn-admin-table w-full text-left">
               <thead>

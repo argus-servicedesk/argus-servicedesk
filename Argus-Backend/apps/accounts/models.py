@@ -49,6 +49,7 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True, null=True)
     timezone = models.CharField(max_length=50, default="UTC")
     notification_prefs = models.JSONField(default=dict, blank=True)
+    must_change_password = models.BooleanField(default=False)
     
     # MFA
     mfa_enabled = models.BooleanField(default=False)
@@ -58,7 +59,11 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     def has_role(self, role_name):
-        return self.roles.filter(name=role_name).exists()
+        target = str(role_name).replace("_", " ").casefold()
+        return any(
+            str(name).replace("_", " ").casefold() == target
+            for name in self.roles.values_list("name", flat=True)
+        )
 
     @property
     def role_names(self):

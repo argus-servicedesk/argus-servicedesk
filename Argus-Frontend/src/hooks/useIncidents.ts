@@ -25,6 +25,8 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   linked_problems: 'linkedProblems',
   linked_changes: 'linkedChanges',
   available_transitions: 'availableTransitions',
+  is_assigned_to_me: 'isAssignedToMe',
+  can_edit: 'canEdit',
   old_value: 'oldValue',
   new_value: 'newValue',
   created_at: 'createdAt',
@@ -53,6 +55,7 @@ const FIELD_TO_SNAKE: Record<string, string> = {
   holdReason: 'hold_reason',
   isInternal: 'is_internal',
   parentId: 'parent',
+  organizationId: 'organization_id',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

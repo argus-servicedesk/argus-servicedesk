@@ -24,17 +24,17 @@ const categories = [
 ];
 
 const impactOptions = [
-  { value: '', label: 'Select impact' },
-  { value: '1', label: '1 - High' },
-  { value: '2', label: '2 - Medium' },
-  { value: '3', label: '3 - Low' },
+  { value: 'INDIVIDUAL', label: 'Individual' },
+  { value: 'TEAM', label: 'Team' },
+  { value: 'DEPARTMENT', label: 'Department' },
+  { value: 'ENTERPRISE', label: 'Enterprise' },
 ];
 
 const urgencyOptions = [
-  { value: '', label: 'Select urgency' },
-  { value: '1', label: '1 - High' },
-  { value: '2', label: '2 - Medium' },
-  { value: '3', label: '3 - Low' },
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'CRITICAL', label: 'Critical' },
 ];
 
 export default function PortalIncidentCreate() {
@@ -51,14 +51,21 @@ export default function PortalIncidentCreate() {
       shortDescription: '',
       description: '',
       category: '',
-      impact: '',
-      urgency: '',
+      impact: 'INDIVIDUAL',
+      urgency: 'MEDIUM',
     },
   });
 
   const createIncident = useMutation({
     mutationFn: async (data: IncidentFormData) => {
-      const res = await api.post('/incidents', data);
+      const res = await api.post('/incidents/', {
+        short_description: data.shortDescription,
+        description: data.description,
+        category: data.category,
+        impact: data.impact,
+        urgency: data.urgency,
+        source: 'MANUAL',
+      });
       return res.data;
     },
     onSuccess: (res: any) => {

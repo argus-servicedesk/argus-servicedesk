@@ -5,8 +5,8 @@ from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.permissions import DenyViewerMutations, IsAdminOrManager
-from apps.common.responses import success
+from apps.common.permissions import DenyViewerMutations, IsAdminOrManager, is_service_desk_staff
+from apps.common.responses import failure, success
 
 
 from .models import Team, TeamMember
@@ -44,7 +44,7 @@ class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     
     def create(self, request, *args, **kwargs):
         if not IsAdminOrManager().has_permission(request, self):
-            return success({}, "Only admins and managers can create teams", 403)
+            return failure("Only admins, NOC, and team leads can create teams", status_code=403)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         team = serializer.save()
@@ -65,7 +65,7 @@ class TeamDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
 
     def partial_update(self, request, *args, **kwargs):
         if not IsAdminOrManager().has_permission(request, self):
-            return success({}, "Only admins and managers can update teams", 403)
+            return failure("Only admins, NOC, and team leads can update teams", status_code=403)
         return super().partial_update(request, *args, **kwargs)
 
 
@@ -75,6 +75,15 @@ class TeamMemberCreateView(generics.CreateAPIView):
     
     def perform_create(self, serializer):
         team_id = self.kwargs.get('team_id')
+        team = Team.objects.filter(pk=team_id).first()
+        if team is None:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("team not found")
+        if not is_service_desk_staff(self.request.user) and team.organization_id != self.request.organization_id:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("team access denied")
         serializer.save(team_id=team_id)
 
 

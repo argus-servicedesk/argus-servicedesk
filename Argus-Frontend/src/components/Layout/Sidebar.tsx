@@ -7,6 +7,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Building2,
   Bug,
   CalendarClock,
   CalendarDays,
@@ -24,6 +25,7 @@ import {
   Layers,
   LayoutDashboard,
   LifeBuoy,
+  Lock,
   LogOut,
   MapPin,
   Monitor,
@@ -67,12 +69,18 @@ interface NavGroup {
   items: NavItem[];
 }
 
+const SUPPORT_ROLES = ['ADMIN', 'MANAGER', 'OPERATOR', 'ENGINEER'];
+const SUPPORT_AND_CLIENT_ROLES = [...SUPPORT_ROLES, 'CLIENT'];
+const LEAD_ROLES = ['ADMIN', 'MANAGER', 'OPERATOR'];
+const MANAGER_ROLES = ['ADMIN', 'MANAGER'];
+
 const navGroups: NavGroup[] = [
   {
     label: 'Overview',
     icon: LayoutDashboard,
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
+      { to: '/notifications', icon: Bell, label: 'Notifications' },
     ],
   },
   {
@@ -80,20 +88,29 @@ const navGroups: NavGroup[] = [
     icon: LifeBuoy,
     items: [
       { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
-      { to: '/problems', icon: Bug, label: 'Problems' },
-      { to: '/changes', icon: GitBranch, label: 'Changes' },
-      { to: '/changes/calendar', icon: CalendarDays, label: 'Change Calendar' },
+      { to: '/problems', icon: Bug, label: 'Problems', roles: SUPPORT_AND_CLIENT_ROLES },
+      { to: '/changes', icon: GitBranch, label: 'Changes', roles: SUPPORT_AND_CLIENT_ROLES },
+      { to: '/changes/calendar', icon: CalendarDays, label: 'Change Calendar', roles: SUPPORT_AND_CLIENT_ROLES },
+    ],
+  },
+  {
+    label: 'Self Service',
+    icon: ClipboardList,
+    items: [
+      { to: '/catalog', icon: Package, label: 'Catalog' },
+      { to: '/service-requests', icon: ClipboardCheck, label: 'Service Requests' },
+      { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
     ],
   },
   {
     label: 'Operations',
     icon: Activity,
     items: [
-      { to: '/alerts', icon: Bell, label: 'Alerts & Events' },
-      { to: '/oncall', icon: Phone, label: 'On-Call' },
-      { to: '/escalations', icon: GitMerge, label: 'Escalations' },
-      { to: '/sla-policies', icon: Clock, label: 'SLA Policies' },
-      { to: '/maintenance', icon: CalendarClock, label: 'Maintenance' },
+      { to: '/alerts', icon: Bell, label: 'Alerts & Events', roles: SUPPORT_ROLES },
+      { to: '/oncall', icon: Phone, label: 'On-Call', roles: SUPPORT_ROLES },
+      { to: '/escalations', icon: GitMerge, label: 'Escalations', roles: SUPPORT_ROLES },
+      { to: '/sla-policies', icon: Clock, label: 'SLA Policies', roles: SUPPORT_ROLES },
+      { to: '/maintenance', icon: CalendarClock, label: 'Maintenance', roles: SUPPORT_ROLES },
       { to: '/noc', icon: Monitor, label: 'NOC View', badge: 'LIVE', superAdminOnly: true },
     ],
   },
@@ -113,9 +130,8 @@ const navGroups: NavGroup[] = [
     label: 'AI & Automation',
     icon: Sparkles,
     items: [
-      { to: '/aiops', icon: Sparkles, label: 'AIOps', badge: 'AI' },
+      { to: '/aiops', icon: Sparkles, label: 'AIOps', badge: 'AI', roles: SUPPORT_ROLES },
       { to: '/runbooks', icon: Zap, label: 'Runbooks', roles: ['ADMIN', 'MANAGER'] },
-      { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
       { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
@@ -123,16 +139,17 @@ const navGroups: NavGroup[] = [
     label: 'Settings',
     icon: Settings,
     items: [
-      { to: '/teams', icon: Users, label: 'Teams' },
-      { to: '/users', icon: Shield, label: 'Users', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/teams', icon: Users, label: 'Teams', roles: LEAD_ROLES },
+      { to: '/clients', icon: Building2, label: 'Clients', roles: LEAD_ROLES },
+      { to: '/users', icon: Shield, label: 'Users', roles: LEAD_ROLES },
       { to: '/roles', icon: Lock, label: 'Roles & Permissions', roles: ['ADMIN'] },
-      { to: '/vendors', icon: Package, label: 'Vendors', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/vendors', icon: Package, label: 'Vendors', roles: MANAGER_ROLES },
       { to: '/integrations', icon: Plug, label: 'Integrations', roles: ['ADMIN'] },
       { to: '/workflows', icon: GitBranch, label: 'Workflows', roles: ['ADMIN'] },
       { to: '/automations', icon: Zap, label: 'Automations', roles: ['ADMIN'] },
-      { to: '/assignment-rules', icon: GitMerge, label: 'Assignment Rules', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/assignment-rules', icon: GitMerge, label: 'Assignment Rules', roles: MANAGER_ROLES },
       { to: '/settings/sites', icon: MapPin, label: 'Sites', superAdminOnly: true },
-      { to: '/audit', icon: ScrollText, label: 'Audit Log', roles: ['ADMIN', 'MANAGER'] },
+      { to: '/audit', icon: ScrollText, label: 'Audit Log', roles: MANAGER_ROLES },
       { to: '/profile', icon: UserCircle, label: 'Profile' },
       { to: '/settings', icon: Settings, label: 'Settings' },
     ],

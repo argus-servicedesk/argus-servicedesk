@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { CheckCircle, Loader2, XCircle, FileText, Send, Clock, Users, UserCheck, ShieldAlert } from 'lucide-react';
 import {
@@ -19,6 +20,14 @@ import {
 } from './ServiceNowUI';
 import { useAuth } from '../../hooks/useAuth';
 import { useAddChangeWorkNote } from '../../hooks/useChanges';
+import api from '../../lib/api';
+import {
+  assignableUsersForTeam,
+  assignmentPersonLabel,
+  extractAssignmentList,
+  orderedAssignmentTeams,
+  type AssignmentRosterTeam,
+} from '../../utils/assignmentRoster';
 
 const CHANGE_TYPES = ['NORMAL', 'STANDARD', 'EMERGENCY'];
 const RISK_LEVELS = ['HIGH', 'MEDIUM', 'LOW'];
@@ -36,14 +45,7 @@ const CHANGE_STATE_LABELS: Record<string, string> = {
 };
 
 function formatPersonName(value: unknown): string {
-  if (!value) return 'Unassigned';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as { firstName?: string; lastName?: string; name?: string };
-    if (obj.firstName || obj.lastName) return [obj.firstName, obj.lastName].filter(Boolean).join(' ');
-    if (obj.name) return obj.name;
-  }
-  return 'Unassigned';
+  return assignmentPersonLabel(value);
 }
 
 function formatDateTime(iso?: string | null): string {
@@ -90,8 +92,9 @@ export default function ChangeServiceNowPanel({
   onReject?: (comments: string) => void;
 }) {
   const navigate = useNavigate();
-  const { user, isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
-  const canModify = canManage('changes');
+  const { user, isClient, isManager, isAdmin } = useAuth();
+  const canModify = !isClient && (isManager || isAdmin || Boolean(change.canEdit));
+  const canAssign = !isClient && (isManager || isAdmin);
 
   const [shortDescription, setShortDescription] = useState(change.shortDescription || '');
   const [description, setDescription] = useState(change.description || '');
@@ -105,6 +108,8 @@ export default function ChangeServiceNowPanel({
   const [testPlan, setTestPlan] = useState(change.testPlan || '');
   const [reviewNotes, setReviewNotes] = useState(change.reviewNotes || '');
   const [closureCode, setClosureCode] = useState(change.closureCode || '');
+  const [assignmentGroupId, setAssignmentGroupId] = useState(change.assignmentGroupId || change.assignmentGroup?.id || '');
+  const [assignedToId, setAssignedToId] = useState(change.assignedToId || change.assignedTo?.id || '');
 
   const [newWorkNote, setNewWorkNote] = useState('');
   const addWorkNote = useAddChangeWorkNote(change?.id || '');
@@ -127,7 +132,24 @@ export default function ChangeServiceNowPanel({
     setTestPlan(change.testPlan || '');
     setReviewNotes(change.reviewNotes || '');
     setClosureCode(change.closureCode || '');
+    setAssignmentGroupId(change.assignmentGroupId || change.assignmentGroup?.id || '');
+    setAssignedToId(change.assignedToId || change.assignedTo?.id || '');
   }, [change.id, change.updatedAt]);
+
+  const changeOrganizationId = change.organizationId || change.organization?.id || '';
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams', 'change-assignment', changeOrganizationId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '200', is_active: 'true' });
+      if (changeOrganizationId) params.set('organization', changeOrganizationId);
+      const { data } = await api.get(`/teams/?${params}`);
+      return data;
+    },
+    enabled: canAssign,
+    staleTime: 60000,
+  });
+  const assignmentTeams = orderedAssignmentTeams(extractAssignmentList(teamsData) as AssignmentRosterTeam[]);
+  const assignableUsers = assignableUsersForTeam(assignmentTeams, assignmentGroupId, change.assignedTo);
 
   const stateOptions = Object.keys(CHANGE_STATE_LABELS);
   const approvals = Array.isArray(change.approvals) ? change.approvals : [];
@@ -155,6 +177,8 @@ export default function ChangeServiceNowPanel({
     if (testPlan !== (change.testPlan || '')) data.testPlan = testPlan || null;
     if (reviewNotes !== (change.reviewNotes || '')) data.reviewNotes = reviewNotes || null;
     if (closureCode !== (change.closureCode || '')) data.closureCode = closureCode || null;
+    if ((assignmentGroupId || '') !== (change.assignmentGroupId || change.assignmentGroup?.id || '')) data.assignmentGroupId = assignmentGroupId || null;
+    if ((assignedToId || '') !== (change.assignedToId || change.assignedTo?.id || '')) data.assignedToId = assignedToId || null;
 
     if (state !== change.state) {
       const requiredMap = (change.requiredFieldsForState || {}) as Record<string, string[]>;
@@ -248,7 +272,7 @@ export default function ChangeServiceNowPanel({
         updateLoading={Boolean(updateChange.isPending)}
         secondaryActions={
           <div className="flex items-center gap-2">
-            {change.state === 'APPROVAL' && isPendingApprover && (
+            {canModify && change.state === 'APPROVAL' && isPendingApprover && (
               <>
                 <button
                   type="button"
@@ -291,34 +315,80 @@ export default function ChangeServiceNowPanel({
             <SNReadOnly color={sn.link}>{formatPersonName(change.requestedBy || change.createdBy)}</SNReadOnly>
           </SNFormRow>
           <SNFormRow label="Type">
-            <select className="sn-field" value={type} onChange={(event) => setType(event.target.value)}>
-              {CHANGE_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={type} onChange={(event) => setType(event.target.value)}>
+                {CHANGE_TYPES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{type || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="State">
-            <select className="sn-field" value={state} onChange={(event) => setState(event.target.value)}>
-              {stateOptions.map((value) => <option key={value} value={value}>{CHANGE_STATE_LABELS[value] || value}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={state} onChange={(event) => setState(event.target.value)}>
+                {stateOptions.map((value) => <option key={value} value={value}>{CHANGE_STATE_LABELS[value] || value}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{CHANGE_STATE_LABELS[state] || state || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Risk">
-            <select className="sn-field" value={risk} onChange={(event) => setRisk(event.target.value)}>
-              {RISK_LEVELS.map((value) => <option key={value} value={value}>{riskLabel(value)}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={risk} onChange={(event) => setRisk(event.target.value)}>
+                {RISK_LEVELS.map((value) => <option key={value} value={value}>{riskLabel(value)}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{riskLabel(risk)}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="Category">
-            <select className="sn-field" value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="">-</option>
-              {CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="">-</option>
+                {CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{category || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Assignment group">
-            <SNReadOnly>{formatPersonName(change.assignmentGroup)}</SNReadOnly>
+            {canAssign ? (
+              <select
+                className="sn-field"
+                value={assignmentGroupId}
+                onChange={(event) => {
+                  setAssignmentGroupId(event.target.value);
+                  setAssignedToId('');
+                }}
+              >
+                <option value="">-- None --</option>
+                {assignmentTeams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.name}</option>
+                ))}
+              </select>
+            ) : (
+              <SNReadOnly>{formatPersonName(change.assignmentGroup)}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="Assigned to">
-            <SNReadOnly>{formatPersonName(change.assignedTo)}</SNReadOnly>
+            {canAssign ? (
+              <select
+                className="sn-field"
+                value={assignedToId}
+                onChange={(event) => setAssignedToId(event.target.value)}
+                disabled={!assignmentGroupId}
+              >
+                <option value="">-- None --</option>
+                {assignableUsers.map((user) => (
+                  <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{formatPersonName(user)}</option>
+                ))}
+              </select>
+            ) : (
+              <SNReadOnly>{formatPersonName(change.assignedTo)}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Planned start">
             <SNReadOnly>{formatDateTime(change.plannedStartDate || change.scheduledStart)}</SNReadOnly>
@@ -332,13 +402,25 @@ export default function ChangeServiceNowPanel({
           </SNFormRow>
 
           <SNFormRow label="Short Description" required fullWidth>
-            <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
+            {canModify ? (
+              <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
+            ) : (
+              <SNReadOnly>{shortDescription || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Description" fullWidth>
-            <textarea className="sn-field" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{description || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Justification" fullWidth>
-            <textarea className="sn-field" rows={2} value={justification} onChange={(event) => setJustification(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={2} value={justification} onChange={(event) => setJustification(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{justification || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
@@ -346,24 +428,44 @@ export default function ChangeServiceNowPanel({
       <SNCollapsibleSection title="Planning">
         <SNFieldGrid>
           <SNFormRow label="Implementation plan" fullWidth>
-            <textarea className="sn-field" rows={4} value={implementationPlan} onChange={(event) => setImplementationPlan(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={4} value={implementationPlan} onChange={(event) => setImplementationPlan(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{implementationPlan || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Backout plan" fullWidth>
-            <textarea className="sn-field" rows={4} value={rollbackPlan} onChange={(event) => setRollbackPlan(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={4} value={rollbackPlan} onChange={(event) => setRollbackPlan(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{rollbackPlan || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Test plan" fullWidth>
-            <textarea className="sn-field" rows={4} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={4} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{testPlan || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Review notes" fullWidth>
-            <textarea className="sn-field" rows={2} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={2} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{reviewNotes || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Closure code">
-            <select className="sn-field" value={closureCode} onChange={(event) => setClosureCode(event.target.value)}>
-              <option value="">-</option>
-              <option value="SUCCESSFUL">Successful</option>
-              <option value="FAILED">Failed</option>
-              <option value="PARTIAL">Partial</option>
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={closureCode} onChange={(event) => setClosureCode(event.target.value)}>
+                <option value="">-</option>
+                <option value="SUCCESSFUL">Successful</option>
+                <option value="FAILED">Failed</option>
+                <option value="PARTIAL">Partial</option>
+              </select>
+            ) : (
+              <SNReadOnly>{closureCode || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>

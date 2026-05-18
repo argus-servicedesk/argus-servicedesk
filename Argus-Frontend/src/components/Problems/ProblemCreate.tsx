@@ -69,21 +69,30 @@ function nowForHeader(): string {
 export default function ProblemCreate() {
   const navigate = useNavigate();
   const createProblem = useCreateProblem();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isClient } = useAuth();
 
   const { data: teamsData } = useQuery({
     queryKey: ['teams'],
-    queryFn: async () => { const { data } = await api.get('/teams'); return data; },
+    queryFn: async () => { const { data } = await api.get('/teams/'); return data; },
     staleTime: 60000,
+    enabled: !isClient,
   });
   const { data: usersData } = useQuery({
     queryKey: ['users'],
-    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
+    queryFn: async () => { const { data } = await api.get('/auth/users/?limit=200'); return data; },
     staleTime: 60000,
+    enabled: !isClient,
+  });
+  const { data: assetsData } = useQuery({
+    queryKey: ['assets'],
+    queryFn: async () => { const { data } = await api.get('/assets/'); return data; },
+    staleTime: 60000,
+    enabled: !isClient,
   });
 
   const teams: { id: string; name: string }[] = teamsData?.data || [];
   const users: any[] = usersData?.data || [];
+  const configItems: { id: string; name: string; hostname?: string; type?: string }[] = assetsData?.data || [];
 
   const {
     register,
@@ -91,7 +100,7 @@ export default function ProblemCreate() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<ProblemFormData & { requestedById: string }>({
+  } = useForm<ProblemFormData & { openedById: string; subcategory: string; configItemId: string }>({
     defaultValues: {
       shortDescription: '',
       description: '',
@@ -101,17 +110,20 @@ export default function ProblemCreate() {
       assignedToId: '',
       rootCause: '',
       workaround: '',
+      subcategory: '',
+      configItemId: '',
       openedById: currentUser?.id || '',
     },
   });
 
   const selectedPriority = watch('priority');
   const category = watch('category');
+  const subcategory = watch('subcategory');
   const assignmentGroupId = watch('assignmentGroupId');
   const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
   const teamMembers = teamMembersResponse?.data || [];
 
-  const { data: suggestion } = useAssignmentPreview({ category });
+  const { data: suggestion } = useAssignmentPreview({ category }, !isClient);
 
   const applySuggestion = () => {
     if (suggestion?.suggested_group) {
@@ -134,8 +146,8 @@ export default function ProblemCreate() {
         ...data,
         requested_by: data.openedById,
         state: 'NEW',
-        assignment_group: data.assignmentGroupId || undefined,
-        assigned_to: data.assignedToId || undefined,
+        assignment_group: isClient ? undefined : data.assignmentGroupId || undefined,
+        assigned_to: isClient ? undefined : data.assignedToId || undefined,
         rootCause: data.rootCause || undefined,
         workaround: data.workaround || undefined,
       });
@@ -201,12 +213,14 @@ export default function ProblemCreate() {
               </select>
             </SNRecordField>
 
-            <SNRecordField label="Assignment Group">
-              <select className="sn-field" {...register('assignmentGroupId')}>
-                <option value="">-- None --</option>
-                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Assignment Group">
+                <select className="sn-field" {...register('assignmentGroupId')}>
+                  <option value="">-- None --</option>
+                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </SNRecordField>
+            )}
             <SNRecordField label="Short Description" required>
               <input
                 className="sn-field"
@@ -219,33 +233,37 @@ export default function ProblemCreate() {
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />
             </SNRecordField>
-            <SNRecordField label="Configuration Item">
-              <select className="sn-field" {...register('configItemId')}>
-                <option value="">-- None --</option>
-                {configItems
-                  .filter((ci: any) => {
-                    if (!subcategory || subcategory === 'other') return true;
-                    const typeMap: Record<string, string> = {
-                      'server': 'SERVER',
-                      'firewall': 'FIREWALL',
-                      'switch': 'SWITCH',
-                      'software': 'SOFTWARE',
-                      'database': 'DATABASE'
-                    };
-                    return ci.type === typeMap[subcategory];
-                  })
-                  .map((ci: any) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Configuration Item">
+                <select className="sn-field" {...register('configItemId')}>
+                  <option value="">-- None --</option>
+                  {configItems
+                    .filter((ci: any) => {
+                      if (!subcategory || subcategory === 'other') return true;
+                      const typeMap: Record<string, string> = {
+                        'server': 'SERVER',
+                        'firewall': 'FIREWALL',
+                        'switch': 'SWITCH',
+                        'software': 'SOFTWARE',
+                        'database': 'DATABASE'
+                      };
+                      return ci.type === typeMap[subcategory];
+                    })
+                    .map((ci: any) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
+                </select>
+              </SNRecordField>
+            )}
     
-            <SNRecordField label="Assigned To">
-              <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
-                <option value="">-- None --</option>
-                {teamMembers.map((user: any) => (
-                  <option key={user.id} value={user.id}>{personLabel(user)}</option>
-                ))}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Assigned To">
+                <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
+                  <option value="">-- None --</option>
+                  {teamMembers.map((user: any) => (
+                    <option key={user.id} value={user.id}>{personLabel(user)}</option>
+                  ))}
+                </select>
+              </SNRecordField>
+            )}
 
             <SNRecordField label="Description" fullWidth tall stack>
               <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />

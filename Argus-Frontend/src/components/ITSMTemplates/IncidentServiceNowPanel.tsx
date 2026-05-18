@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SNPage, SNRecordHeader, SNCollapsibleSection, SNFieldGrid, SNFormRow, SNPillBadge, SNReadOnly, SNProcessRibbon, SNRelatedList, SNEmptyRelatedList, sn, SNModal, SNLabel } from './ServiceNowUI';
 import { Upload, AlertCircle, CheckCircle2, ArrowUpCircle, XCircle, TrendingUp, Link2, Users, BarChart3, CheckSquare, Square } from 'lucide-react';
 import api from '../../lib/api';
@@ -12,6 +13,13 @@ import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateInc
 import { useAuth } from '../../hooks/useAuth';
 import type { Incident, Priority } from '../../types';
 import IncidentBreadcrumb from '../Incidents/IncidentBreadcrumb';
+import {
+  assignableUsersForTeam,
+  assignmentPersonLabel,
+  extractAssignmentList,
+  orderedAssignmentTeams,
+  type AssignmentRosterTeam,
+} from '../../utils/assignmentRoster';
 
 type IncidentState = Incident['state'];
 
@@ -122,14 +130,8 @@ function callerLabel(inc: Incident): ReactNode {
 }
 
 function formatPersonName(value: unknown): string {
-  if (!value) return '-';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as { firstName?: string; lastName?: string; name?: string; email?: string };
-    if (obj.firstName || obj.lastName) return [obj.firstName, obj.lastName].filter(Boolean).join(' ');
-    return obj.name || obj.email || '-';
-  }
-  return '-';
+  const label = assignmentPersonLabel(value);
+  return label === 'Unassigned' ? '-' : label;
 }
 
 export default function IncidentServiceNowPanel({
@@ -163,11 +165,15 @@ export default function IncidentServiceNowPanel({
   onOpenLinkProblem: () => void;
 }) {
   const navigate = useNavigate();
-  const { isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
-  const canResolve = isEngineer || isAdmin || isManager;
+  const queryClient = useQueryClient();
+  const { isManager, isAdmin, isClient } = useAuth();
+  const canEditIncident = !isClient && (isManager || isAdmin || Boolean(incident.canEdit));
+  const canResolve = canEditIncident;
   const canClose = isManager || isAdmin;
-  const canEscalate = hasRole('Engineer', 'Manager', 'Org Admin', 'Super Admin', 'Operator');
-  const canPromote = isEngineer || isManager || isAdmin;
+  const canEscalate = canEditIncident;
+  const canPromote = canEditIncident;
+  const canAssign = !isClient && (isManager || isAdmin);
+  const canReopen = canResolve || isClient;
 
   const resolveIncident = useResolveIncident();
   const reopenIncident = useReopenIncident();
@@ -198,6 +204,19 @@ export default function IncidentServiceNowPanel({
   const [bulkResolutionCode, setBulkResolutionCode] = useState('');
   const [bulkResolutionNotes, setBulkResolutionNotes] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [assignmentGroupId, setAssignmentGroupId] = useState(incident.assignmentGroupId || incident.assignmentGroup?.id || '');
+  const [assignedToId, setAssignedToId] = useState(incident.assignedToId || incident.assignedTo?.id || '');
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+
+  const teamsQuery = useQuery({
+    queryKey: ['assignment-teams'],
+    queryFn: async () => {
+      const { data } = await api.get('/teams/?limit=200&is_active=true');
+      return extractAssignmentList(data) as AssignmentRosterTeam[];
+    },
+    enabled: canAssign,
+    staleTime: 60000,
+  });
 
   useEffect(() => {
     setShortDescription(incident.shortDescription || '');
@@ -210,7 +229,16 @@ export default function IncidentServiceNowPanel({
     setHoldReason((incident as any).holdReason || '');
     setResolutionCode(incident.resolutionCode || '');
     setResolutionNotes(incident.resolutionNotes || '');
+    setAssignmentGroupId(incident.assignmentGroupId || incident.assignmentGroup?.id || '');
+    setAssignedToId(incident.assignedToId || incident.assignedTo?.id || '');
   }, [incident.id, incident.updatedAt, state]);
+
+  const assignmentTeams = orderedAssignmentTeams(teamsQuery.data ?? []);
+  const assignableUsers = assignableUsersForTeam(assignmentTeams, assignmentGroupId, incident.assignedTo as any);
+
+  const isAssignmentChanged =
+    assignmentGroupId !== (incident.assignmentGroupId || incident.assignmentGroup?.id || '')
+    || assignedToId !== (incident.assignedToId || incident.assignedTo?.id || '');
 
   const stateDropdownOptions = Object.keys(STATE_LABEL).map((value) => ({
     value: value as IncidentState,
@@ -262,6 +290,27 @@ export default function IncidentServiceNowPanel({
       } else {
         toast.error(errorMessage);
       }
+    }
+  }
+
+  async function handleAssignmentUpdate() {
+    if (!isAssignmentChanged) {
+      toast('No assignment changes to save');
+      return;
+    }
+
+    setAssignmentSaving(true);
+    try {
+      await api.post(`/incidents/${incidentId}/reassign/`, {
+        assignment_group: assignmentGroupId || undefined,
+        assigned_to: assignedToId || undefined,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      toast.success('Assignment updated');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.response?.data?.message || 'Assignment update failed');
+    } finally {
+      setAssignmentSaving(false);
     }
   }
 
@@ -480,10 +529,10 @@ export default function IncidentServiceNowPanel({
         titleNumber={incident.number}
         priorityPill={priorityBadge}
         statePill={stateBadge}
-        onClone={canManage('incidents') ? handleClone : undefined}
-        onLink={canManage('incidents') ? onOpenLinkProblem : undefined}
+        onClone={canEditIncident ? handleClone : undefined}
+        onLink={canEditIncident ? onOpenLinkProblem : undefined}
         onPrint={() => window.print()}
-        onUpdate={canManage('incidents') ? handleUpdate : undefined}
+        onUpdate={canEditIncident ? handleUpdate : undefined}
         updateLoading={saving}
       secondaryActions={
           <div className="flex items-center gap-2 flex-wrap">
@@ -521,7 +570,7 @@ export default function IncidentServiceNowPanel({
               </button>
             )}
             {/* Reopen — visible when resolved or closed */}
-            {canResolve && ['RESOLVED', 'CLOSED'].includes(state) && (
+            {canReopen && ['RESOLVED', 'CLOSED'].includes(state) && (
               <button
                 type="button"
                 className="sn-soft-button flex items-center gap-1"
@@ -576,7 +625,7 @@ export default function IncidentServiceNowPanel({
               <SNReadOnly>{callerLabel(incident)}</SNReadOnly>
             </SNFormRow>
             <SNFormRow label="Category">
-              <select className="sn-field" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <select className="sn-field" value={category} onChange={(e) => setCategory(e.target.value)} disabled={!canEditIncident}>
                 <option value="">-</option>
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -587,7 +636,7 @@ export default function IncidentServiceNowPanel({
             </SNFormRow>
 
             <SNFormRow label="Subcategory">
-              <select className="sn-field" value={subcategory} onChange={(e) => setSubcategory(e.target.value)}>
+              <select className="sn-field" value={subcategory} onChange={(e) => setSubcategory(e.target.value)} disabled={!canEditIncident}>
                 <option value="">-</option>
                 {SUBCAT_SUGGESTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -597,7 +646,7 @@ export default function IncidentServiceNowPanel({
               </select>
             </SNFormRow>
             <SNFormRow label="Contact Type">
-              <select className="sn-field" value={contactTypeFromSource(incident.source)} onChange={() => undefined}>
+              <select className="sn-field" value={contactTypeFromSource(incident.source)} onChange={() => undefined} disabled={!canEditIncident}>
                 {CONTACT_TYPES.map((v) => (
                   <option key={v} value={v}>
                     {v}
@@ -605,9 +654,50 @@ export default function IncidentServiceNowPanel({
                 ))}
               </select>
             </SNFormRow>
+            <SNFormRow label="Assignment group">
+              <select
+                className="sn-field"
+                value={assignmentGroupId}
+                onChange={(e) => {
+                  setAssignmentGroupId(e.target.value);
+                  setAssignedToId('');
+                }}
+                disabled={!canAssign || teamsQuery.isLoading}
+              >
+                <option value="">-- None --</option>
+                {assignmentTeams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.name}</option>
+                ))}
+              </select>
+            </SNFormRow>
+            <SNFormRow label="Assigned to">
+              <div className="flex gap-2">
+                <select
+                  className="sn-field"
+                  value={assignedToId}
+                  onChange={(e) => setAssignedToId(e.target.value)}
+                  disabled={!canAssign || !assignmentGroupId}
+                >
+                  <option value="">-- None --</option>
+                  {assignableUsers.map((user) => (
+                    <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{assignmentPersonLabel(user)}</option>
+                  ))}
+                </select>
+                {canAssign && (
+                  <button
+                    type="button"
+                    className="sn-soft-button min-w-[86px]"
+                    onClick={handleAssignmentUpdate}
+                    disabled={!isAssignmentChanged || assignmentSaving}
+                  >
+                    {assignmentSaving ? <Loader2 size={14} className="animate-spin" /> : 'Assign'}
+                  </button>
+                )}
+              </div>
+            </SNFormRow>
 
             <SNFormRow label="State">
-              <select className="sn-field" value={stateSel} onChange={(e) => setStateSel(e.target.value as IncidentState)}>
+              <select className="sn-field" value={stateSel} onChange={(e) => setStateSel(e.target.value as IncidentState)} disabled={!canEditIncident}>
                 {stateDropdownOptions.map((o) => (
                   <option 
                     key={o.value} 
@@ -623,7 +713,7 @@ export default function IncidentServiceNowPanel({
               </select>
             </SNFormRow>
             <SNFormRow label="Hold reason">
-              <select className="sn-field" value={holdReason} onChange={(e) => setHoldReason(e.target.value)}>
+              <select className="sn-field" value={holdReason} onChange={(e) => setHoldReason(e.target.value)} disabled={!canEditIncident}>
                 <option value="">-</option>
                 {HOLD_REASONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -633,7 +723,7 @@ export default function IncidentServiceNowPanel({
               </select>
             </SNFormRow>
             <SNFormRow label="Impact">
-              <select className="sn-field" value={impact} onChange={(e) => setImpact(e.target.value as Incident['impact'])}>
+              <select className="sn-field" value={impact} onChange={(e) => setImpact(e.target.value as Incident['impact'])} disabled={!canEditIncident}>
                 {Object.entries(IMPACT_SN).map(([k, lab]) => (
                   <option key={k} value={k}>
                     {lab}
@@ -643,7 +733,7 @@ export default function IncidentServiceNowPanel({
             </SNFormRow>
 
             <SNFormRow label="Urgency">
-              <select className="sn-field" value={urgency} onChange={(e) => setUrgency(e.target.value as Incident['urgency'])}>
+              <select className="sn-field" value={urgency} onChange={(e) => setUrgency(e.target.value as Incident['urgency'])} disabled={!canEditIncident}>
                 {Object.entries(URGENCY_SN).map(([k, lab]) => (
                   <option key={k} value={k}>
                     {lab}
@@ -660,10 +750,11 @@ export default function IncidentServiceNowPanel({
                 className="sn-field"
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
+                disabled={!canEditIncident}
               />
             </SNFormRow>
             <SNFormRow label="Resolution Code">
-              <select className="sn-field" value={resolutionCode} onChange={(e) => setResolutionCode(e.target.value)}>
+              <select className="sn-field" value={resolutionCode} onChange={(e) => setResolutionCode(e.target.value)} disabled={!canEditIncident}>
                 <option value="">-</option>
                 {RESOLUTION_CODES.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -678,6 +769,7 @@ export default function IncidentServiceNowPanel({
                 rows={6}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                disabled={!canEditIncident}
               />
             </SNFormRow>
             <SNFormRow label="Resolution Notes" fullWidth>
@@ -686,6 +778,7 @@ export default function IncidentServiceNowPanel({
                 rows={4}
                 value={resolutionNotes}
                 onChange={(e) => setResolutionNotes(e.target.value)}
+                disabled={!canEditIncident}
               />
             </SNFormRow>
           </SNFieldGrid>
@@ -814,7 +907,7 @@ export default function IncidentServiceNowPanel({
           <div className="flex items-center justify-between p-3 border-b bg-slate-50">
              <span className="text-xs text-slate-500">Sub-incidents linked to this parent</span>
              <div className="flex items-center gap-2">
-               {incident.childIncidents && incident.childIncidents.length > 0 && (
+               {canEditIncident && incident.childIncidents && incident.childIncidents.length > 0 && (
                  <button 
                    type="button"
                    className="sn-soft-button flex items-center gap-1"
@@ -825,24 +918,26 @@ export default function IncidentServiceNowPanel({
                    <span>Bulk Actions ({selectedChildren.length})</span>
                  </button>
                )}
-               <button 
-                 type="button"
-                 className="sn-soft-button flex items-center gap-1"
-                 onClick={() => navigate('/incidents/create', { 
-                   state: { 
-                     clone: { 
-                       shortDescription: `Child of ${incident.number}: ${incident.shortDescription}`,
-                       category: incident.category,
-                       impact: incident.impact,
-                       urgency: incident.urgency,
-                       parentId: incident.id
+               {canEditIncident && (
+                 <button 
+                   type="button"
+                   className="sn-soft-button flex items-center gap-1"
+                   onClick={() => navigate('/incidents/create', { 
+                     state: { 
+                       clone: { 
+                         shortDescription: `Child of ${incident.number}: ${incident.shortDescription}`,
+                         category: incident.category,
+                         impact: incident.impact,
+                         urgency: incident.urgency,
+                         parentId: incident.id
+                       } 
                      } 
-                   } 
-                 })}
-               >
-                  <Link2 size={12} />
-                  <span>Create Child Incident</span>
-               </button>
+                   })}
+                 >
+                    <Link2 size={12} />
+                    <span>Create Child Incident</span>
+                 </button>
+               )}
              </div>
           </div>
           {(!incident.childIncidents || incident.childIncidents.length === 0) ? (

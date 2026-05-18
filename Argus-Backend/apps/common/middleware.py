@@ -3,6 +3,7 @@ import uuid
 from django.http import JsonResponse
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.common.permissions import is_service_desk_staff
 from apps.organizations.models import Organization
 
 
@@ -74,24 +75,27 @@ class OrganizationContextMiddleware:
                 return JsonResponse({"detail": "Invalid organization ID"}, status=400)
 
         user_org_id = getattr(request.user, "organization_id", None)
+        is_internal_staff = is_service_desk_staff(request.user)
 
         if validated_org_uuid is not None:
-            if str(user_org_id) != str(validated_org_uuid):
+            if not is_internal_staff and str(user_org_id) != str(validated_org_uuid):
                 return JsonResponse({"detail": "Organization access denied"}, status=403)
             organization = Organization.objects.filter(
                 id=validated_org_uuid,
                 is_active=True,
             ).first()
-        else:
+        elif user_org_id and not is_internal_staff:
             organization = Organization.objects.filter(
                 id=user_org_id,
                 is_active=True,
             ).first()
+        else:
+            organization = None
 
-        if organization is None:
+        if organization is None and not is_internal_staff:
             return JsonResponse({"detail": "Organization access denied"}, status=403)
 
         request.organization = organization
-        request.organization_id = organization.id
+        request.organization_id = organization.id if organization else None
         return self.get_response(request)
 

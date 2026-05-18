@@ -119,8 +119,11 @@ export function SNPage({
           background: #fff;
           padding: 8px 12px;
         }
+        .sn-itsm-page .sn-record-label-wide {
+          grid-column: 1;
+        }
         .sn-itsm-page .sn-record-control-wide {
-          grid-column: span 3;
+          grid-column: 2 / -1;
         }
         .sn-itsm-page .sn-record-control-stack {
           align-items: stretch;
@@ -213,6 +216,15 @@ export function SNPage({
         .sn-itsm-page .sn-list-table tr:hover td {
           background: #f8fbff;
         }
+        .sn-itsm-page .sn-list-table tr.sn-row-mine td {
+          background: #f0f6ff;
+        }
+        .sn-itsm-page .sn-list-table tr.sn-row-mine:hover td {
+          background: #eaf2ff;
+        }
+        .sn-itsm-page .sn-list-table tr.sn-row-mine td:first-child {
+          box-shadow: inset 4px 0 0 #4f46e5;
+        }
         .sn-itsm-page .sn-list-link {
           color: ${sn.navy};
           font-weight: 700;
@@ -220,6 +232,25 @@ export function SNPage({
         }
         .sn-itsm-page .sn-list-link:hover {
           text-decoration: underline;
+        }
+        .sn-itsm-page .sn-ownership-cell {
+          text-align: center;
+        }
+        .sn-itsm-page .sn-owned-badge {
+          display: inline-flex;
+          min-width: 42px;
+          height: 20px;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #93c5fd;
+          border-radius: 4px;
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 1;
+          text-transform: uppercase;
+          white-space: nowrap;
         }
         .sn-itsm-page .sn-list-empty {
           min-height: 280px;
@@ -477,7 +508,7 @@ export function SNRecordField({
 }) {
   return (
     <>
-      <div className={clsx('sn-record-label', tall && 'sn-record-label-tall')}>
+      <div className={clsx('sn-record-label', fullWidth && 'sn-record-label-wide', tall && 'sn-record-label-tall')}>
         <span>
           {label}
           {required && <span style={{ color: sn.critical }}> *</span>}

@@ -75,6 +75,8 @@ class ChangeSerializer(serializers.ModelSerializer):
     activities = ChangeActivitySerializer(many=True, read_only=True)
     available_transitions = serializers.SerializerMethodField()
     required_fields_for_state = serializers.SerializerMethodField()
+    is_assigned_to_me = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Change
@@ -87,7 +89,8 @@ class ChangeSerializer(serializers.ModelSerializer):
             'user_impact', 'git_repo_url', 'git_branch', 'git_commit_hash',
             'pull_request_url', 'review_notes', 'closure_code', 'organization',
             'approvals', 'affected_cis', 'linked_incidents', 'work_notes',
-            'activities', 'available_transitions', 'required_fields_for_state', 'created_at', 'updated_at'
+            'activities', 'available_transitions', 'required_fields_for_state',
+            'is_assigned_to_me', 'can_edit', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'number', 'created_by', 'created_at', 'updated_at']
 
@@ -107,6 +110,20 @@ class ChangeSerializer(serializers.ModelSerializer):
             Change.State.IMPLEMENTING: ["implementation_plan", "rollback_plan", "test_plan"],
             Change.State.CLOSED: ["review_notes", "closure_code"],
         }
+
+    def get_is_assigned_to_me(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return False
+        from apps.common.permissions import is_assigned_to_service_record
+        return is_assigned_to_service_record(request.user, obj)
+
+    def get_can_edit(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return False
+        from apps.common.permissions import can_edit_service_record
+        return can_edit_service_record(request.user, obj)
 
 
 class ChangeCreateSerializer(serializers.ModelSerializer):

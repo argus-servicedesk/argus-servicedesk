@@ -28,6 +28,8 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   alert_name: 'alertName',
   link_type: 'linkType',
   available_transitions: 'availableTransitions',
+  is_assigned_to_me: 'isAssignedToMe',
+  can_edit: 'canEdit',
 };
 
 const FIELD_TO_SNAKE: Record<string, string> = {

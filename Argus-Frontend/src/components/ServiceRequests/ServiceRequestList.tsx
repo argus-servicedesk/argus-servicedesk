@@ -1,506 +1,370 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import clsx from 'clsx';
 import {
-  Search, ChevronLeft, ChevronRight, Filter,
-  ClipboardList, Clock, ShieldCheck, CheckCircle2,
-  ChevronsUpDown, X,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Filter,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import { useServiceRequests } from '../../hooks/useServiceRequests';
-import type { ServiceRequest, ServiceRequestState, Priority } from '../../types/index';
+import type { Priority, ServiceRequest, ServiceRequestState } from '../../types/index';
+import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
 
-// =============================================================================
-// Constants & Mappings
-// =============================================================================
+type SortField = 'number' | 'priority' | 'state' | 'shortDescription' | 'requestedBy' | 'createdAt';
+type SortDir = 'asc' | 'desc';
 
-const STATE_CONFIG: Record<ServiceRequestState, { label: string; color: string; bg: string; border: string }> = {
-  NEW:         { label: 'New',             color: '#3B82F6', bg: 'rgba(59,130,246,0.10)',  border: '#3B82F6' },
-  APPROVAL:    { label: 'Approval',        color: '#F59E0B', bg: 'rgba(245,158,11,0.10)',  border: '#F59E0B' },
-  APPROVED:    { label: 'Approved',         color: '#22C55E', bg: 'rgba(34,197,94,0.10)',   border: '#22C55E' },
-  FULFILLMENT: { label: 'Fulfillment',     color: '#6366F1', bg: 'rgba(99,102,241,0.10)',  border: '#6366F1' },
-  FULFILLED:   { label: 'Fulfilled',       color: '#10B981', bg: 'rgba(16,185,129,0.10)',  border: '#10B981' },
-  CLOSED:      { label: 'Closed',          color: '#64748B', bg: 'rgba(100,116,139,0.10)', border: '#64748B' },
-  CANCELLED:   { label: 'Cancelled',       color: '#EF4444', bg: 'rgba(239,68,68,0.10)',   border: '#EF4444' },
-};
-
-const PRIORITY_CONFIG: Record<Priority, { label: string; color: string; bg: string; border: string }> = {
-  P1: { label: 'Critical', color: '#EF4444', bg: 'rgba(239,68,68,0.12)',  border: '#EF4444' },
-  P2: { label: 'High',     color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', border: '#F59E0B' },
-  P3: { label: 'Medium',   color: '#6366F1', bg: 'rgba(99,102,241,0.12)', border: '#6366F1' },
-  P4: { label: 'Low',      color: '#10B981', bg: 'rgba(16,185,129,0.12)', border: '#10B981' },
-};
-
+const PAGE_SIZE = 25;
 const ALL_STATES: ServiceRequestState[] = ['NEW', 'APPROVAL', 'APPROVED', 'FULFILLMENT', 'FULFILLED', 'CLOSED', 'CANCELLED'];
 const ALL_PRIORITIES: Priority[] = ['P1', 'P2', 'P3', 'P4'];
-const PAGE_SIZES = [15, 25, 50];
 
-// =============================================================================
-// Helpers
-// =============================================================================
+const priorityLabel: Record<string, string> = {
+  P1: '1 - Critical',
+  P2: '2 - High',
+  P3: '3 - Moderate',
+  P4: '4 - Low',
+};
 
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const priorityTone: Record<string, { bg: string; fg: string; border: string; dot: string }> = {
+  P1: { bg: '#fff6f6', fg: '#d0272b', border: '#fca5a5', dot: '#d0272b' },
+  P2: { bg: '#fff7e8', fg: '#b45309', border: '#f5c266', dot: '#f59e0b' },
+  P3: { bg: '#eef2ff', fg: '#3730a3', border: '#c7d2fe', dot: '#4f46e5' },
+  P4: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#10b981' },
+};
+
+const stateLabel: Record<string, string> = {
+  NEW: 'New',
+  APPROVAL: 'Approval',
+  APPROVED: 'Approved',
+  FULFILLMENT: 'Fulfillment',
+  FULFILLED: 'Fulfilled',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
+};
+
+const stateTone: Record<string, { bg: string; fg: string; border: string; dot: string }> = {
+  NEW: { bg: '#eef2ff', fg: '#1d4ed8', border: '#bfdbfe', dot: '#2563eb' },
+  APPROVAL: { bg: '#fff7e8', fg: '#b45309', border: '#f5c266', dot: '#f59e0b' },
+  APPROVED: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#12b76a' },
+  FULFILLMENT: { bg: '#fff1df', fg: '#f05a00', border: '#fed7aa', dot: '#f05a00' },
+  FULFILLED: { bg: '#ecfdf3', fg: '#067647', border: '#9be7bd', dot: '#12b76a' },
+  CLOSED: { bg: '#f5f6f7', fg: '#475467', border: '#d8dde6', dot: '#98a2b3' },
+  CANCELLED: { bg: '#f5f6f7', fg: '#475467', border: '#d8dde6', dot: '#98a2b3' },
+};
+
+type PersonSummary = NonNullable<ServiceRequest['requestedBy']> & {
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
+
+function personLabel(user: ServiceRequest['requestedBy']): string {
+  if (!user) return '';
+  const person = user as PersonSummary;
+  const first = person.firstName ?? person.first_name ?? '';
+  const last = person.lastName ?? person.last_name ?? '';
+  return `${first} ${last}`.trim() || person.email || person.username || '';
 }
 
-// =============================================================================
-// Sub-components
-// =============================================================================
+function formatDateTime(iso?: string): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
 
-function StateBadge({ state }: { state: ServiceRequestState }) {
-  const cfg = STATE_CONFIG[state];
+function compareValues(a: string | number, b: string | number, dir: SortDir): number {
+  const result = typeof a === 'number' && typeof b === 'number'
+    ? a - b
+    : String(a).localeCompare(String(b));
+  return dir === 'asc' ? result : -result;
+}
+
+function SortButton({
+  field,
+  activeField,
+  sortDir,
+  children,
+  onSort,
+}: {
+  field: SortField;
+  activeField: SortField;
+  sortDir: SortDir;
+  children: string;
+  onSort: (field: SortField) => void;
+}) {
+  const active = field === activeField;
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '3px 10px',
-        borderRadius: 9999,
-        fontSize: 12,
-        fontWeight: 600,
-        color: cfg.color,
-        backgroundColor: cfg.bg,
-        border: `1px solid ${cfg.border}`,
-        lineHeight: '18px',
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cfg.color }} />
-      {cfg.label}
+    <button type="button" onClick={() => onSort(field)} className="flex w-full items-center justify-between gap-2 text-left">
+      <span>{children}</span>
+      {active ? (
+        sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+      ) : (
+        <ChevronDown size={14} style={{ color: '#98a2b3' }} />
+      )}
+    </button>
+  );
+}
+
+function StatusChip({
+  value,
+  tones,
+  fallback,
+}: {
+  value?: string;
+  tones: Record<string, { bg: string; fg: string; border: string; dot: string }>;
+  fallback?: string;
+}) {
+  const tone = tones[value ?? ''] ?? { bg: '#f5f6f7', fg: '#344054', border: '#d8dde6', dot: '#98a2b3' };
+  return (
+    <span className="sn-status-chip" style={{ background: tone.bg, color: tone.fg, borderColor: tone.border }}>
+      <span className="h-2 w-2 rounded-full" style={{ background: tone.dot }} />
+      {fallback ?? value ?? ''}
     </span>
   );
 }
 
-function PriorityBadge({ priority }: { priority: Priority }) {
-  const cfg = PRIORITY_CONFIG[priority];
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '3px 10px',
-        borderRadius: 9999,
-        fontSize: 12,
-        fontWeight: 600,
-        color: cfg.color,
-        backgroundColor: cfg.bg,
-        border: `1px solid ${cfg.border}`,
-        lineHeight: '18px',
-      }}
-    >
-      {priority} - {cfg.label}
-    </span>
-  );
-}
-
-function KpiCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: number; color: string }) {
-  return (
-    <div
-      style={{
-        background: '#ffffff',
-        borderRadius: 12,
-        padding: '20px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-        border: '1px solid #e2e8f0',
-        flex: '1 1 0',
-        minWidth: 180,
-      }}
-    >
-      <div
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: 10,
-          backgroundColor: `${color}14`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon size={22} style={{ color }} />
-      </div>
-      <div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// Main Component
-// =============================================================================
-
-function ServiceRequestList() {
+export default function ServiceRequestList() {
   const navigate = useNavigate();
-
-  // Filters
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [stateFilter, setStateFilter] = useState<ServiceRequestState | ''>('');
-  const [priorityFilter, setPriorityFilter] = useState<Priority | ''>('');
+  const [state, setState] = useState('');
+  const [priority, setPriority] = useState('');
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [myRequests, setMyRequests] = useState(false);
 
-  const filters = useMemo(() => {
-    const f: Record<string, string | number | boolean | undefined> = { page, limit: pageSize };
-    if (search) f.search = search;
-    if (stateFilter) f.state = stateFilter;
-    if (priorityFilter) f.priority = priorityFilter;
-    return f;
-  }, [search, stateFilter, priorityFilter, page, pageSize]);
+  const { data, isLoading, isError, refetch, isFetching } = useServiceRequests({
+    page,
+    limit: PAGE_SIZE,
+    search: search || undefined,
+    state: state || undefined,
+    priority: priority || undefined,
+  });
 
-  const { data, isLoading, isError } = useServiceRequests(filters);
+  const serviceRequests = useMemo<ServiceRequest[]>(() => data?.data ?? [], [data?.data]);
+  const pagination = data?.pagination;
+  const totalItems = pagination?.total ?? serviceRequests.length;
+  const totalPages = pagination?.totalPages ?? pagination?.pages ?? Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  const hasFilters = Boolean(search || state || priority);
 
-  const serviceRequests: ServiceRequest[] = data?.data ?? [];
-  const pagination = data?.pagination ?? { total: 0, totalPages: 1, page: 1 };
+  const visibleRequests = useMemo(() => {
+    const filtered = myRequests
+      ? serviceRequests.filter((item) => item.requestedById === user?.id || item.requestedBy?.id === user?.id)
+      : serviceRequests;
 
-  // KPI calculations
-  const kpis = useMemo(() => {
-    const total = pagination.total ?? serviceRequests.length;
-    const open = serviceRequests.filter((sr) => ['NEW', 'APPROVAL', 'APPROVED', 'FULFILLMENT'].includes(sr.state)).length;
-    const pendingApproval = serviceRequests.filter((sr) => sr.state === 'APPROVAL').length;
-    const fulfilled = serviceRequests.filter((sr) => sr.state === 'FULFILLED').length;
-    return { total, open, pendingApproval, fulfilled };
-  }, [serviceRequests, pagination.total]);
+    return [...filtered].sort((a, b) => {
+      if (sortField === 'priority') {
+        const rank: Record<string, number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
+        return compareValues(rank[a.priority ?? ''] ?? 99, rank[b.priority ?? ''] ?? 99, sortDir);
+      }
+      if (sortField === 'createdAt') {
+        return compareValues(new Date(a.createdAt ?? 0).getTime(), new Date(b.createdAt ?? 0).getTime(), sortDir);
+      }
+      if (sortField === 'requestedBy') {
+        return compareValues(personLabel(a.requestedBy), personLabel(b.requestedBy), sortDir);
+      }
+      return compareValues(String(a[sortField] ?? ''), String(b[sortField] ?? ''), sortDir);
+    });
+  }, [myRequests, serviceRequests, sortDir, sortField, user?.id]);
 
-  const handleRowClick = useCallback(
-    (id: string) => navigate(`/service-requests/${id}`),
-    [navigate],
-  );
+  const openCount = serviceRequests.filter((item) => !['FULFILLED', 'CLOSED', 'CANCELLED'].includes(item.state)).length;
+  const approvalCount = serviceRequests.filter((item) => item.state === 'APPROVAL').length;
+  const fulfilledCount = serviceRequests.filter((item) => item.state === 'FULFILLED').length;
 
-  const clearFilters = () => {
-    setSearch('');
-    setStateFilter('');
-    setPriorityFilter('');
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir((current) => current === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'createdAt' ? 'desc' : 'asc');
+    }
     setPage(1);
   };
 
-  const hasActiveFilters = search || stateFilter || priorityFilter;
-
-  // =========================================================================
-  // Render
-  // =========================================================================
+  const clearFilters = () => {
+    setSearch('');
+    setState('');
+    setPriority('');
+    setPage(1);
+  };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#F8FAFC' }}>
-      {/* Hero Banner */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)',
-          padding: '36px 40px 32px',
-          marginBottom: 28,
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
-          Service Requests
-        </h1>
-        <p style={{ margin: '6px 0 24px', fontSize: 14, color: '#94a3b8' }}>
-          Track and manage service requests across your organization
-        </p>
-
-        {/* KPI Cards */}
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <KpiCard icon={ClipboardList} label="Total" value={kpis.total} color="#6366f1" />
-          <KpiCard icon={Clock} label="Open" value={kpis.open} color="#F59E0B" />
-          <KpiCard icon={ShieldCheck} label="Pending Approval" value={kpis.pendingApproval} color="#8B5CF6" />
-          <KpiCard icon={CheckCircle2} label="Fulfilled" value={kpis.fulfilled} color="#10B981" />
-        </div>
-      </div>
-
-      {/* Content area */}
-      <div style={{ padding: '0 40px 40px' }}>
-        {/* Filter Bar */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: 12,
-            padding: '16px 20px',
-            marginBottom: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            flexWrap: 'wrap',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          }}
-        >
-          {/* Search */}
-          <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 200 }}>
-            <Search
-              size={16}
-              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}
-            />
-            <input
-              type="text"
-              placeholder="Search service requests..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              style={{
-                width: '100%',
-                padding: '9px 12px 9px 36px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                fontSize: 14,
-                color: '#0f172a',
-                backgroundColor: '#F8FAFC',
-                outline: 'none',
-              }}
-            />
+    <SNPage className="min-h-full" style={{ margin: '-24px', padding: 24, background: sn.shellBg }}>
+      <div className="sn-list-shell">
+        <div className="sn-list-titlebar flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-end gap-6">
+              <div className="text-[22px] font-bold" style={{ color: sn.navy }}>Service Requests</div>
+              <div className="mb-1 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setMyRequests(false); setPage(1); }}
+                  className={clsx('rounded px-3 py-1 text-xs font-bold', !myRequests ? 'bg-slate-200' : 'hover:bg-slate-100')}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMyRequests(true); setPage(1); }}
+                  className={clsx('rounded px-3 py-1 text-xs font-bold', myRequests ? 'bg-slate-200' : 'hover:bg-slate-100')}
+                >
+                  My Requests
+                </button>
+              </div>
+            </div>
+            <div className="mt-1 text-[12px]" style={{ color: '#667085' }}>
+              List view: <span className="font-bold">{myRequests ? 'My Requests' : 'All'}</span> | Total rows: <span className="font-bold">{totalItems}</span> | Open: <span className="font-bold">{openCount}</span> | Pending approval: <span className="font-bold">{approvalCount}</span> | Fulfilled: <span className="font-bold">{fulfilledCount}</span>
+            </div>
           </div>
-
-          {/* State Filter */}
-          <div style={{ position: 'relative' }}>
-            <Filter size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-            <select
-              value={stateFilter}
-              onChange={(e) => { setStateFilter(e.target.value as ServiceRequestState | ''); setPage(1); }}
-              style={{
-                padding: '9px 32px 9px 30px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                fontSize: 14,
-                color: '#0f172a',
-                backgroundColor: '#F8FAFC',
-                cursor: 'pointer',
-                appearance: 'none',
-                outline: 'none',
-              }}
-            >
-              <option value="">All States</option>
-              {ALL_STATES.map((s) => (
-                <option key={s} value={s}>{STATE_CONFIG[s].label}</option>
-              ))}
-            </select>
-            <ChevronsUpDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-          </div>
-
-          {/* Priority Filter */}
-          <div style={{ position: 'relative' }}>
-            <select
-              value={priorityFilter}
-              onChange={(e) => { setPriorityFilter(e.target.value as Priority | ''); setPage(1); }}
-              style={{
-                padding: '9px 32px 9px 12px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                fontSize: 14,
-                color: '#0f172a',
-                backgroundColor: '#F8FAFC',
-                cursor: 'pointer',
-                appearance: 'none',
-                outline: 'none',
-              }}
-            >
-              <option value="">All Priorities</option>
-              {ALL_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p} - {PRIORITY_CONFIG[p].label}</option>
-              ))}
-            </select>
-            <ChevronsUpDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
-          </div>
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '8px 14px',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                background: '#ffffff',
-                fontSize: 13,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
-            >
-              <X size={14} />
-              Clear
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="sn-soft-button inline-flex items-center gap-2" onClick={() => refetch()}>
+              {isFetching ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+              Refresh
             </button>
-          )}
+            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/service-requests/create')}>
+              <Plus size={16} />
+              New
+            </button>
+          </div>
         </div>
 
-        {/* Table */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: 12,
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            overflow: 'hidden',
-          }}
-        >
-          {isLoading ? (
-            <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-              Loading service requests...
+        <div className="sn-list-toolbar flex flex-col gap-3 px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
+            <div className="relative min-w-[260px] max-w-[520px] flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#667085' }} />
+              <input
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                className="sn-list-input"
+                placeholder="Search service requests"
+              />
             </div>
-          ) : isError ? (
-            <div style={{ padding: 60, textAlign: 'center', color: '#EF4444', fontSize: 14 }}>
-              Failed to load service requests. Please try again.
+            <div className="flex flex-wrap items-center gap-2">
+              <Filter size={16} style={{ color: '#667085' }} />
+              <select value={priority} onChange={(event) => { setPriority(event.target.value); setPage(1); }} className="sn-list-select">
+                <option value="">Priority: All</option>
+                {ALL_PRIORITIES.map((item) => <option key={item} value={item}>{priorityLabel[item]}</option>)}
+              </select>
+              <select value={state} onChange={(event) => { setState(event.target.value); setPage(1); }} className="sn-list-select">
+                <option value="">State: All</option>
+                {ALL_STATES.map((item) => <option key={item} value={item}>{stateLabel[item]}</option>)}
+              </select>
+              {hasFilters && (
+                <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
+                  <X size={14} />
+                  Clear
+                </button>
+              )}
             </div>
-          ) : serviceRequests.length === 0 ? (
-            <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-              No service requests found.
-            </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          </div>
+
+          <div className="flex items-center gap-2 text-[12px]" style={{ color: '#667085' }}>
+            Page {page} of {totalPages}
+            <button type="button" className="sn-soft-button inline-flex items-center" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+              <ChevronLeft size={15} />
+            </button>
+            <button type="button" className="sn-soft-button inline-flex items-center" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+
+        {isError ? (
+          <div className="sn-list-empty flex items-center justify-center text-sm font-bold" style={{ color: sn.critical }}>
+            Unable to load service requests.
+          </div>
+        ) : isLoading ? (
+          <div className="sn-list-empty flex items-center justify-center gap-3 text-sm font-bold" style={{ color: '#667085' }}>
+            <Loader2 size={18} className="animate-spin" />
+            Loading service requests...
+          </div>
+        ) : visibleRequests.length === 0 ? (
+          <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
+            <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
+            <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new service request.</div>
+            <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/service-requests/create')}>
+              <Plus size={16} />
+              New Service Request
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="sn-list-table">
+              <colgroup>
+                <col style={{ width: 42 }} />
+                <col style={{ width: 140 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 140 }} />
+                <col style={{ width: 420 }} />
+                <col style={{ width: 170 }} />
+                <col style={{ width: 170 }} />
+                <col style={{ width: 170 }} />
+                <col style={{ width: 140 }} />
+              </colgroup>
               <thead>
-                <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  {['Number', 'Short Description', 'State', 'Priority', 'Requested By', 'Created At'].map((header) => (
-                    <th
-                      key={header}
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'left',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                        backgroundColor: '#F8FAFC',
-                      }}
-                    >
-                      {header}
-                    </th>
-                  ))}
+                <tr>
+                  <th><input type="checkbox" aria-label="Select all service requests" /></th>
+                  <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
+                  <th><SortButton field="priority" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Priority</SortButton></th>
+                  <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
+                  <th><SortButton field="shortDescription" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Short description</SortButton></th>
+                  <th><SortButton field="requestedBy" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Requested by</SortButton></th>
+                  <th>Assignment group</th>
+                  <th><SortButton field="createdAt" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Opened</SortButton></th>
+                  <th>Items</th>
                 </tr>
               </thead>
               <tbody>
-                {serviceRequests.map((sr) => (
-                  <tr
-                    key={sr.id}
-                    onClick={() => handleRowClick(sr.id)}
-                    style={{
-                      borderBottom: '1px solid #f1f5f9',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.15s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, color: '#6366f1' }}>
-                      {sr.number}
+                {visibleRequests.map((request) => (
+                  <tr key={request.id} onDoubleClick={() => navigate(`/service-requests/${request.id}`)}>
+                    <td><input type="checkbox" aria-label={`Select ${request.number}`} /></td>
+                    <td>
+                      <button type="button" className="sn-list-link" onClick={() => navigate(`/service-requests/${request.id}`)}>
+                        {request.number}
+                      </button>
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: '#0f172a', maxWidth: 320 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {sr.shortDescription}
-                      </div>
+                    <td>
+                      <StatusChip
+                        value={request.priority}
+                        tones={priorityTone}
+                        fallback={priorityLabel[request.priority] ?? request.priority}
+                      />
                     </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      <StateBadge state={sr.state} />
+                    <td>
+                      <StatusChip
+                        value={request.state}
+                        tones={stateTone}
+                        fallback={stateLabel[request.state] ?? request.state}
+                      />
                     </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      <PriorityBadge priority={sr.priority} />
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: '#475569' }}>
-                      {sr.requestedBy
-                        ? `${sr.requestedBy.firstName} ${sr.requestedBy.lastName}`
-                        : '-'}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: '#64748b' }}>
-                      {relativeTime(sr.createdAt)}
-                    </td>
+                    <td className="truncate" title={request.shortDescription}>{request.shortDescription}</td>
+                    <td className="truncate" title={personLabel(request.requestedBy)}>{personLabel(request.requestedBy) || '-'}</td>
+                    <td className="truncate" title={request.assignmentGroup?.name}>{request.assignmentGroup?.name || '-'}</td>
+                    <td>{formatDateTime(request.createdAt)}</td>
+                    <td>{request.requestItems?.length ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-
-          {/* Pagination */}
-          {serviceRequests.length > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                borderTop: '1px solid #e2e8f0',
-                backgroundColor: '#F8FAFC',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#64748b' }}>
-                <span>Rows per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    fontSize: 13,
-                    color: '#0f172a',
-                    backgroundColor: '#ffffff',
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  {PAGE_SIZES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <span style={{ marginLeft: 8 }}>
-                  Page {pagination.page} of {pagination.totalPages}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                    opacity: page <= 1 ? 0.4 : 1,
-                    color: '#0f172a',
-                  }}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-                  disabled={page >= pagination.totalPages}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 34,
-                    height: 34,
-                    borderRadius: 8,
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    cursor: page >= pagination.totalPages ? 'not-allowed' : 'pointer',
-                    opacity: page >= pagination.totalPages ? 0.4 : 1,
-                    color: '#0f172a',
-                  }}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </SNPage>
   );
 }
-
-export default ServiceRequestList;

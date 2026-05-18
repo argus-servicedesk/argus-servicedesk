@@ -49,6 +49,8 @@ interface Incident {
   parent?: { id: string; number: string } | null;
   childIncidents?: { id: string; number: string }[];
   hierarchyLevel?: number;
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
@@ -186,7 +188,7 @@ function HierarchyIndicator({ incident }: { incident: Incident }) {
 
 export default function IncidentList() {
   const navigate = useNavigate();
-  const { canManage } = useAuth();
+  const { canManage, isClient } = useAuth();
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('');
   const [state, setState] = useState('');
@@ -231,6 +233,7 @@ export default function IncidentList() {
   const openCount = incidents.filter((item) => !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(item.state ?? '')).length;
   const p1Count = incidents.filter((item) => item.priority === 'P1').length;
   const breachedCount = incidents.filter((item) => item.slaBreached).length;
+  const canCreateIncident = canManage('incidents') || isClient;
 
   const handleSort = (field: SortField) => {
     if (field === sortField) {
@@ -251,7 +254,7 @@ export default function IncidentList() {
 
   const handleExport = async () => {
     try {
-      const response = await api.get('/incidents/export/', { responseType: 'blob' });
+      const response = await api.get('/incidents/export/csv/', { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -299,7 +302,7 @@ export default function IncidentList() {
               <Download size={15} />
               Export
             </button>
-            {canManage('incidents') && (
+            {canCreateIncident && (
               <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
                 <Plus size={16} />
                 New
@@ -362,7 +365,7 @@ export default function IncidentList() {
           <div className="sn-list-empty flex flex-col items-center justify-center gap-3 text-center">
             <div className="text-[20px] font-bold" style={{ color: sn.navy }}>No records to display</div>
             <div className="max-w-md text-sm" style={{ color: '#667085' }}>Change the filter criteria or create a new incident record.</div>
-            {canManage('incidents') && (
+            {canCreateIncident && (
               <button type="button" className="sn-primary-button inline-flex items-center gap-2" onClick={() => navigate('/incidents/create')}>
                 <Plus size={16} />
                 New Incident
@@ -374,6 +377,7 @@ export default function IncidentList() {
             <table className="sn-list-table">
               <colgroup>
                 <col style={{ width: 42 }} />
+                <col style={{ width: 64 }} />
                 <col style={{ width: 132 }} />
                 <col style={{ width: 80 }} />
                 <col style={{ width: 128 }} />
@@ -388,6 +392,7 @@ export default function IncidentList() {
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Select all incidents" /></th>
+                  <th title="Assigned to you directly or through your team">Mine</th>
                   <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
                   <th>Hierarchy</th>
                   <th><SortButton field="priority" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Priority</SortButton></th>
@@ -401,9 +406,16 @@ export default function IncidentList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((incident) => (
-                  <tr key={incident.id} onDoubleClick={() => navigate(`/incidents/${incident.id}`)}>
+                {rows.map((incident) => {
+                  const isMine = Boolean(incident.isAssignedToMe);
+                  return (
+                  <tr key={incident.id} className={isMine ? 'sn-row-mine' : undefined} onDoubleClick={() => navigate(`/incidents/${incident.id}`)}>
                     <td><input type="checkbox" aria-label={`Select ${incident.number}`} /></td>
+                    <td className="sn-ownership-cell">
+                      {isMine ? (
+                        <span className="sn-owned-badge" title="Assigned to you directly or through your team">Mine</span>
+                      ) : null}
+                    </td>
                     <td>
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/incidents/${incident.id}`)}>
                         {incident.number}
@@ -437,7 +449,8 @@ export default function IncidentList() {
                     </td>
                     <td className="truncate">{incident.source || incident.category || '-'}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

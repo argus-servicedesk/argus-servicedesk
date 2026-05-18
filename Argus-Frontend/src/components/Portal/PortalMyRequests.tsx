@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { useMyServiceRequests } from '../../hooks/useServiceRequests';
 import { useIncidents } from '../../hooks/useIncidents';
 import { useAuthStore } from '../../stores/authStore';
+import api from '../../lib/api';
 
 type Tab = 'service-requests' | 'incidents';
 
@@ -170,8 +173,25 @@ function ExpandableRow({
   isLast: boolean;
   onToggle: () => void;
 }) {
+  const queryClient = useQueryClient();
   const desc = item.shortDescription ?? item.description ?? '-';
   const state = item.state ?? item.status ?? 'new';
+  const normalizedState = String(state).toUpperCase();
+  const canReopen = tab === 'incidents' && ['RESOLVED', 'CLOSED'].includes(normalizedState);
+
+  const reopenIncident = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/incidents/${item.id}/reopen/`, {
+        reason: 'Client reopened from self-service portal',
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      toast.success('Ticket reopened');
+    },
+    onError: () => toast.error('Unable to reopen ticket'),
+  });
 
   return (
     <>
@@ -229,6 +249,21 @@ function ExpandableRow({
                 <Detail label="Created" value={formatDate(item.createdAt)} />
                 <Detail label="Updated" value={formatDate(item.updatedAt)} />
               </div>
+              {canReopen ? (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      reopenIncident.mutate();
+                    }}
+                    disabled={reopenIncident.isPending}
+                    className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {reopenIncident.isPending ? 'Reopening...' : 'Reopen Ticket'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </td>
         </tr>

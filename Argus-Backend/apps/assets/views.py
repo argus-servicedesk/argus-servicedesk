@@ -42,21 +42,25 @@ from .serializers import (
 
 
 from rest_framework.exceptions import PermissionDenied
-from apps.common.permissions import DenyViewerMutations, IsAdminOrManager
+from apps.common.permissions import DenyViewerMutations, IsAdminOrManager, is_service_desk_staff
 
 
 class AssetOrgMixin:
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
-    def org_id(self):
+    def org_id(self, required=True):
         organization = getattr(self.request, "organization", None)
         if organization is None:
+            if not required and is_service_desk_staff(self.request.user):
+                return None
             raise PermissionDenied("Organization access denied")
         return str(organization.id)
 
-    def organization(self):
+    def organization(self, required=True):
         organization = getattr(self.request, "organization", None)
         if organization is None:
+            if not required and is_service_desk_staff(self.request.user):
+                return None
             raise PermissionDenied("Organization access denied")
         return organization
 
@@ -67,8 +71,9 @@ class ConfigurationItemListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.
     filterset_fields = ['type', 'status', 'category', 'site', 'environment']
 
     def get_queryset(self):
-        org_id = self.org_id()
-        self._ensure_default_seed(org_id)
+        org_id = self.org_id(required=False)
+        if org_id:
+            self._ensure_default_seed(org_id)
         queryset = super().get_queryset().select_related('owner', 'support_group', 'site', 'organization')
 
         search = self.request.query_params.get('search')
@@ -134,8 +139,14 @@ class ConfigurationItemDetailView(AssetOrgMixin, OrgQuerysetMixin, generics.Retr
 
 class ConfigurationItemStatsView(AssetOrgMixin, generics.GenericAPIView):
     def get(self, request):
-        org_id = self.org_id()
-        queryset = ConfigurationItem.objects.filter(organization_id=org_id)
+        org_id = self.org_id(required=False)
+        queryset = ConfigurationItem.objects.all()
+        relationship_queryset = AssetRelationship.objects.all()
+        discovery_queryset = AssetDiscoveryResult.objects.all()
+        if org_id:
+            queryset = queryset.filter(organization_id=org_id)
+            relationship_queryset = relationship_queryset.filter(organization_id=org_id)
+            discovery_queryset = discovery_queryset.filter(organization_id=org_id)
 
         stats = {
             'total': queryset.count(),
@@ -143,8 +154,8 @@ class ConfigurationItemStatsView(AssetOrgMixin, generics.GenericAPIView):
             'by_status': dict(queryset.values_list('status').annotate(count=models.Count('id'))),
             'by_site': dict(queryset.exclude(site__isnull=True).values_list('site__name').annotate(count=models.Count('id'))),
             'monitoring_enabled': queryset.filter(monitoring_enabled=True).count(),
-            'relationship_count': AssetRelationship.objects.filter(organization_id=org_id).count(),
-            'discovery_new': AssetDiscoveryResult.objects.filter(organization_id=org_id, status=AssetDiscoveryResult.Status.NEW).count(),
+            'relationship_count': relationship_queryset.count(),
+            'discovery_new': discovery_queryset.filter(status=AssetDiscoveryResult.Status.NEW).count(),
         }
 
         return success(stats)

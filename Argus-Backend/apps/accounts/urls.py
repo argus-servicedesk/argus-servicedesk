@@ -4,7 +4,8 @@ from .views import (
     AuthIndexView, LoginView, LogoutView, MeView, RefreshView, 
     SignupView, UserListView, ForgotPasswordView, ResetPasswordView,
     InviteUserView, AcceptInviteView, UserDetailView,
-    MFASetupView, MFADisableView, RoleViewSet, PermissionViewSet
+    MFASetupView, MFADisableView, RoleViewSet, PermissionViewSet,
+    UserResetPasswordView, ChangePasswordView,
 )
 
 router = SimpleRouter(trailing_slash=False)
@@ -22,6 +23,7 @@ urlpatterns = [
     path("me", MeView.as_view()),
     path("forgot-password", ForgotPasswordView.as_view()),
     path("reset-password", ResetPasswordView.as_view()),
+    path("change-password", ChangePasswordView.as_view()),
     path("invite", InviteUserView.as_view()),
     path("accept-invite", AcceptInviteView.as_view()),
     path("mfa/setup", MFASetupView.as_view()),
@@ -31,4 +33,6 @@ urlpatterns = [
     path("users/", UserListView.as_view()),
     path("users/<uuid:pk>", UserDetailView.as_view()),
     path("users/<uuid:pk>/", UserDetailView.as_view()),
+    path("users/<uuid:pk>/reset-password", UserResetPasswordView.as_view()),
+    path("users/<uuid:pk>/reset-password/", UserResetPasswordView.as_view()),
 ]

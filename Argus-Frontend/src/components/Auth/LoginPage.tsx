@@ -82,7 +82,12 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      navigate(redirectPath, { replace: true });
+      const target = result.user?.mustChangePassword
+        ? '/change-password'
+        : result.user?.role === 'CLIENT'
+          ? '/portal'
+          : redirectPath;
+      navigate(target, { replace: true });
     } catch (err: any) {
       setError(err?.message || 'Invalid credentials. Please try again.');
       setShake(true);

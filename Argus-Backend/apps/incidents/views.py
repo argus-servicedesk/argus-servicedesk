@@ -6,7 +6,13 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.permissions import DenyViewerMutations, IncidentTransitionRBAC
+from apps.common.permissions import (
+    DenyViewerMutations,
+    IncidentTransitionRBAC,
+    can_edit_service_record,
+    can_manage_service_desk,
+    is_service_desk_staff,
+)
 from apps.common.responses import success, failure
 from apps.common.pagination import DefaultPagination
 from apps.changes.models import Change
@@ -33,6 +39,8 @@ ACTIVITY_FIELD_LABELS = {
     "resolution_notes": "Resolution notes",
 }
 
+ASSIGNMENT_FIELDS = {"assigned_to", "assignment_group"}
+
 
 def _activity_value(value):
     if value is None:
@@ -46,6 +54,20 @@ def _activity_value(value):
     return str(value)
 
 
+def _incident_queryset_for_request(request):
+    queryset = Incident.objects.all()
+    if is_service_desk_staff(request.user):
+        org_id = (
+            request.query_params.get("organization")
+            or request.query_params.get("organization_id")
+            or getattr(request, "organization_id", None)
+        )
+        if org_id:
+            return queryset.filter(organization_id=org_id)
+        return queryset
+    return queryset.filter(organization=request.organization)
+
+
 from .filters import IncidentFilter
 
 class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
@@ -56,7 +78,7 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     pagination_class = DefaultPagination
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = _incident_queryset_for_request(self.request)
         return queryset.select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'linked_problems__problem', 'linked_changes__change')
     
     def get_serializer_class(self):
@@ -89,7 +111,7 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
             resource_id=incident.id
         )
         
-        return success(IncidentSerializer(incident).data, "incident created", 201)
+        return success(IncidentSerializer(incident, context=self.get_serializer_context()).data, "incident created", 201)
 
 
 class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
@@ -102,7 +124,7 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
         return IncidentSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems__problem', 'linked_changes__change')
+        return _incident_queryset_for_request(self.request).select_related('assigned_to', 'created_by', 'assignment_group').prefetch_related('work_notes', 'activities', 'attachments', 'linked_problems__problem', 'linked_changes__change')
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -111,6 +133,10 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
+        if not can_edit_service_record(request.user, instance):
+            return failure("Only assigned engineers, NOC, leads, or admins can edit this incident.", status_code=403)
+        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_manage_service_desk(request.user):
+            return failure("Only NOC, leads, or admins can change incident assignment.", status_code=403)
         previous_state = instance.state
         tracked_before = {
             field: _activity_value(getattr(instance, field, None))
@@ -139,14 +165,14 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
                 )
 
         incident = self.get_queryset().filter(pk=incident.pk).first()
-        return success(IncidentSerializer(incident).data)
+        return success(IncidentSerializer(incident, context=self.get_serializer_context()).data)
 
 
 class IncidentStatsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        queryset = Incident.objects.filter(organization=request.organization)
+        queryset = _incident_queryset_for_request(request)
         
         stats = {
             'total': queryset.count(),
@@ -167,13 +193,12 @@ class IncidentProblemLinkView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = getattr(request, "organization", None)
-        if organization is None:
-            return failure("organization access denied", status_code=403)
-
-        incident = Incident.objects.filter(organization=organization, pk=pk).first()
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if incident is None:
             return failure("incident not found", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
+        organization = incident.organization
 
         problem_id = request.data.get("problem_id") or request.data.get("problemId")
         if not problem_id:
@@ -220,7 +245,7 @@ class IncidentProblemLinkView(APIView):
             .first()
         )
         return success(
-            IncidentSerializer(incident).data,
+            IncidentSerializer(incident, context={"request": request}).data,
             "problem linked to incident" if created else "incident problem link updated",
             201 if created else 200,
         )
@@ -230,13 +255,12 @@ class IncidentChangeLinkView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        organization = getattr(request, "organization", None)
-        if organization is None:
-            return failure("organization access denied", status_code=403)
-
-        incident = Incident.objects.filter(organization=organization, pk=pk).first()
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if incident is None:
             return failure("incident not found", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
+        organization = incident.organization
 
         change_id = request.data.get("change_id") or request.data.get("changeId")
         if not change_id:
@@ -272,7 +296,7 @@ class IncidentChangeLinkView(APIView):
             .first()
         )
         return success(
-            IncidentSerializer(incident).data,
+            IncidentSerializer(incident, context={"request": request}).data,
             "change linked to incident" if created else "incident change link updated",
             201 if created else 200,
         )
@@ -282,15 +306,16 @@ class WorkNoteCreateView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, incident_id):
-        organization = getattr(request, "organization", None)
-        if organization is None:
-            return failure("organization access denied", status_code=403)
-
-        incident = Incident.objects.filter(organization=organization, pk=incident_id).first()
+        incident = _incident_queryset_for_request(request).filter(pk=incident_id).first()
         if incident is None:
             return failure("incident not found", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can add work notes.", status_code=403)
 
-        serializer = WorkNoteSerializer(data=request.data)
+        data = request.data.copy()
+        if not is_service_desk_staff(request.user):
+            data["is_internal"] = False
+        serializer = WorkNoteSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         note = serializer.save(author=request.user, incident=incident)
         create_activity(
@@ -307,7 +332,7 @@ class IncidentTimelineView(APIView):
 
     def get(self, request, pk):
         incident = (
-            Incident.objects.filter(organization=request.organization, pk=pk)
+            _incident_queryset_for_request(request).filter(pk=pk)
             .select_related('assigned_to', 'created_by', 'assignment_group')
             .prefetch_related('activities__user', 'work_notes__author')
             .first()
@@ -374,7 +399,7 @@ class IncidentLiveContextView(APIView):
 
     def get(self, request, pk):
         incident = (
-            Incident.objects.filter(organization=request.organization, pk=pk)
+            _incident_queryset_for_request(request).filter(pk=pk)
             .select_related("config_item")
             .first()
         )
@@ -390,8 +415,8 @@ class IncidentLiveContextView(APIView):
         past_incidents = []
         if config_item is not None:
             related = (
-                Incident.objects.filter(
-                    organization=request.organization,
+                _incident_queryset_for_request(request)
+                .filter(
                     config_item=config_item,
                 )
                 .exclude(pk=incident.pk)
@@ -444,9 +469,13 @@ class IncidentEscalateView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not is_service_desk_staff(request.user):
+            return failure("Only service desk staff can escalate incidents.", status_code=403)
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can escalate this incident.", status_code=403)
 
         if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
             return failure("Cannot escalate a resolved, closed, or cancelled incident.", status_code=400)
@@ -478,14 +507,18 @@ class IncidentEscalateView(APIView):
             resource_id=incident.id
         )
 
-        return success(IncidentSerializer(incident).data, "incident escalated")
+        return success(IncidentSerializer(incident, context={"request": request}).data, "incident escalated")
 
 
 class IncidentReassignView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not is_service_desk_staff(request.user):
+            return failure("Only service desk staff can assign incidents.", status_code=403)
+        if not can_manage_service_desk(request.user):
+            return failure("Only NOC, leads, or admins can assign incidents.", status_code=403)
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
             
@@ -523,7 +556,7 @@ class IncidentReassignView(APIView):
                 user=incident.assigned_to
             )
             
-        return success(IncidentSerializer(incident).data, "incident reassigned")
+        return success(IncidentSerializer(incident, context={"request": request}).data, "incident reassigned")
 
 
 class IncidentResolveView(APIView):
@@ -532,9 +565,13 @@ class IncidentResolveView(APIView):
 
     def post(self, request, pk):
         from django.utils import timezone
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not is_service_desk_staff(request.user):
+            return failure("Only service desk staff can resolve incidents.", status_code=403)
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can resolve this incident.", status_code=403)
 
         if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
             return failure(f"Incident is already {incident.state}.", status_code=400)
@@ -582,7 +619,7 @@ class IncidentResolveView(APIView):
         incident = Incident.objects.select_related(
             'assigned_to', 'created_by', 'assignment_group'
         ).prefetch_related('work_notes', 'activities', 'attachments').get(pk=incident.pk)
-        return success(IncidentSerializer(incident).data, "incident resolved")
+        return success(IncidentSerializer(incident, context={"request": request}).data, "incident resolved")
 
 
 class IncidentCloseView(APIView):
@@ -591,7 +628,11 @@ class IncidentCloseView(APIView):
 
     def post(self, request, pk):
         from django.utils import timezone
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        if not is_service_desk_staff(request.user):
+            return failure("Only service desk staff can close incidents.", status_code=403)
+        if not can_manage_service_desk(request.user):
+            return failure("Only NOC, leads, or admins can close incidents.", status_code=403)
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
 
@@ -610,17 +651,19 @@ class IncidentCloseView(APIView):
             incident=incident
         )
 
-        return success(IncidentSerializer(incident).data, "incident closed")
+        return success(IncidentSerializer(incident, context={"request": request}).data, "incident closed")
 
 
 class IncidentReopenView(APIView):
-    permission_classes = [IsAuthenticated, DenyViewerMutations, IncidentTransitionRBAC]
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
         from django.utils import timezone
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can reopen this incident.", status_code=403)
 
         if incident.state not in [Incident.State.RESOLVED, Incident.State.CLOSED]:
             return failure("Only RESOLVED or CLOSED incidents can be reopened.", status_code=400)
@@ -642,7 +685,7 @@ class IncidentReopenView(APIView):
             incident=incident
         )
 
-        return success(IncidentSerializer(incident).data, "incident reopened")
+        return success(IncidentSerializer(incident, context={"request": request}).data, "incident reopened")
 
 
 class IncidentBulkUpdateView(APIView):
@@ -654,8 +697,10 @@ class IncidentBulkUpdateView(APIView):
         
         if not ids:
             return failure("no incident ids provided", status_code=400)
+        if not can_manage_service_desk(request.user):
+            return failure("Only NOC, leads, or admins can bulk update incidents.", status_code=403)
             
-        incidents = Incident.objects.filter(organization=request.organization, pk__in=ids)
+        incidents = _incident_queryset_for_request(request).filter(pk__in=ids)
         count = incidents.count()
         
         # Simple implementation - iterate and save to trigger signals/logic
@@ -685,14 +730,17 @@ class IncidentChildBulkOperationsView(APIView):
 
     def post(self, request, pk):
         """Perform bulk operations on child incidents"""
-        try:
-            parent_incident = Incident.objects.get(pk=pk, organization=request.organization)
-        except Incident.DoesNotExist:
+        parent_incident = _incident_queryset_for_request(request).filter(pk=pk).first()
+        if parent_incident is None:
             return failure("Parent incident not found", status_code=404)
 
         action = request.data.get("action")
         child_ids = request.data.get("child_ids", [])
         updates = request.data.get("updates", {})
+        if not can_edit_service_record(request.user, parent_incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can update child incidents.", status_code=403)
+        if ASSIGNMENT_FIELDS.intersection(updates.keys()) and not can_manage_service_desk(request.user):
+            return failure("Only NOC, leads, or admins can change incident assignment.", status_code=403)
 
         # If no specific child IDs provided, operate on all children
         if not child_ids:
@@ -763,7 +811,7 @@ class IncidentExportCSVView(APIView):
         from django.http import HttpResponse
         from .filters import IncidentFilter
         
-        queryset = Incident.objects.filter(organization=request.organization)
+        queryset = _incident_queryset_for_request(request)
         filtered_qs = IncidentFilter(request.GET, queryset=queryset).qs
         
         response = HttpResponse(content_type='text/csv')
@@ -789,9 +837,11 @@ class IncidentAttachmentUploadView(APIView):
     permission_classes = [IsAuthenticated, DenyViewerMutations]
 
     def post(self, request, pk):
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can upload attachments.", status_code=403)
             
         file_obj = request.FILES.get("file")
         if not file_obj:
@@ -846,9 +896,11 @@ class IncidentPromoteToProblemView(APIView):
         from apps.problems.serializers import ProblemSerializer
         from apps.common.utils import generate_record_number
 
-        incident = Incident.objects.filter(organization=request.organization, pk=pk).first()
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can promote this incident.", status_code=403)
 
         # Operators and Viewers cannot promote
         if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin")
@@ -887,4 +939,4 @@ class IncidentPromoteToProblemView(APIView):
             problem=problem,
         )
 
-        return success(ProblemSerializer(problem).data, f"Incident promoted to Problem {problem.number}", 201)
+        return success(ProblemSerializer(problem, context={"request": request}).data, f"Incident promoted to Problem {problem.number}", 201)

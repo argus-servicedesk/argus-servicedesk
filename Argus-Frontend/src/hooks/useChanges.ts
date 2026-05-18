@@ -40,6 +40,8 @@ const FIELD_TO_CAMEL: Record<string, string> = {
   approved_at: 'approvedAt',
   available_transitions: 'availableTransitions',
   required_fields_for_state: 'requiredFieldsForState',
+  is_assigned_to_me: 'isAssignedToMe',
+  can_edit: 'canEdit',
 };
 
 const FIELD_TO_SNAKE: Record<string, string> = {

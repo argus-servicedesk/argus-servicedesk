@@ -22,9 +22,9 @@ def setup_specific_teams():
 
     # Data structure for teams and members
     teams_data = {
-        "Networking Team": ["ealukondulo siva", "devendara reddy"],
-        "Software Team": ["Rajkumar Ashokan", "Vediyappan M"],
-        "DevOps Team": ["rajkumar madhu", "Hoysala Bise"]
+        "Infra Team": ["Devendra Reddy", "Edukondalu", "Siva", "Udhayakumar"],
+        "DevOps Team": ["Rajkumar-Madhu", "Hoysala Bisa"],
+        "Software Team": ["Vediyappan M", "Rajkumar-Ashokan"],
     }
 
     for team_name, member_names in teams_data.items():

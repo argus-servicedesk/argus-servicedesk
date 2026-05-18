@@ -2,7 +2,7 @@
 // Matches Prisma schema. All date fields are ISO 8601 strings from API.
 
 // ── Enums ──
-export type Role = 'ADMIN' | 'MANAGER' | 'ENGINEER' | 'OPERATOR' | 'VIEWER';
+export type Role = 'ADMIN' | 'MANAGER' | 'ENGINEER' | 'OPERATOR' | 'CLIENT' | 'VIEWER';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
 export type TeamMemberRole = 'LEAD' | 'MEMBER' | 'OBSERVER';
 
@@ -10,7 +10,7 @@ export type IncidentState = 'NEW' | 'IN_PROGRESS' | 'ON_HOLD' | 'ESCALATED' | 'R
 export type Impact = 'ENTERPRISE' | 'DEPARTMENT' | 'TEAM' | 'INDIVIDUAL';
 export type Urgency = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
-export type IncidentSource = 'MANUAL' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
+export type IncidentSource = 'MANUAL' | 'PROMETHEUS' | 'GRAFANA' | 'API' | 'EMAIL' | 'VOICE' | 'SLACK';
 
 export type ChangeType = 'NORMAL' | 'STANDARD' | 'EMERGENCY';
 export type ChangeState = 'NEW' | 'ASSESSMENT' | 'APPROVAL' | 'SCHEDULED' | 'IMPLEMENTING' | 'REVIEW' | 'CLOSED' | 'CANCELLED';
@@ -139,6 +139,8 @@ export interface Incident {
   linkedChanges?: IncidentChange[];
   linkedProblems?: IncidentProblem[];
   availableTransitions?: IncidentState[];
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 export interface Change {
@@ -184,6 +186,8 @@ export interface Change {
   linkedIncidents?: IncidentChange[];
   availableTransitions?: ChangeState[];
   requiredFieldsForState?: Record<string, string[]>;
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 export interface Problem {
@@ -216,6 +220,8 @@ export interface Problem {
   activities?: Activity[];
   linkedIncidents?: IncidentProblem[];
   availableTransitions?: ProblemState[];
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 export interface Approval {

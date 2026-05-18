@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   ArrowLeft, Package, Loader2, Tag, FileText, Edit3, Save, X,
   DollarSign, Clock, ShieldCheck, Users, Layers, Calendar,
-  Monitor, KeyRound, Settings, Boxes, CheckCircle,
+  Monitor, KeyRound, Settings, Boxes, CheckCircle, Send,
 } from 'lucide-react';
 import type { CatalogItem, CatalogItemType } from '../../types/index';
 import { useCatalogItem, useUpdateCatalogItem } from '../../hooks/useCatalog';
@@ -62,7 +62,8 @@ const labelStyle: React.CSSProperties = {
 function CatalogItemDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { canManage } = useAuth();
+  const { canManage, isClient } = useAuth();
+  const canConfigureCatalog = canManage('catalog') && !isClient;
   const [editing, setEditing] = useState(false);
 
   const { data: itemRes, isLoading } = useCatalogItem(id ?? '');
@@ -184,20 +185,38 @@ function CatalogItemDetail() {
                 </p>
               </div>
             </div>
-            {canManage('catalog') && !editing && (
-              <button
-                onClick={startEditing}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '10px 18px', borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  background: 'rgba(255,255,255,0.08)',
-                  color: '#ffffff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
-                }}
-              >
-                <Edit3 size={15} />
-                Edit
-              </button>
+            {!editing && (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => navigate(`/service-requests/create?item=${item.id}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '10px 18px', borderRadius: 10,
+                    border: 'none',
+                    background: PRIMARY,
+                    color: '#ffffff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
+                  }}
+                >
+                  <Send size={15} />
+                  Request
+                </button>
+                {canConfigureCatalog && (
+                  <button
+                    onClick={startEditing}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '10px 18px', borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: '#ffffff', fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    <Edit3 size={15} />
+                    Edit
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

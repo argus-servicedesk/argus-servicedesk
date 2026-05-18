@@ -5,6 +5,7 @@ import LoginPage from './components/Auth/LoginPage';
 const SignupPage = lazy(() => import('./components/Auth/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('./components/Auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./components/Auth/ResetPasswordPage'));
+const ChangePasswordRequiredPage = lazy(() => import('./components/Auth/ChangePasswordRequiredPage'));
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import { useAuthStore } from './stores/authStore';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -63,21 +64,16 @@ const CatalogList = lazy(() => import('./components/Catalog/CatalogList'));
 const CatalogItemCreate = lazy(() => import('./components/Catalog/CatalogItemCreate'));
 const CatalogItemDetail = lazy(() => import('./components/Catalog/CatalogItemDetail'));
 const ServiceRequestList = lazy(() => import('./components/ServiceRequests/ServiceRequestList'));
+const ServiceRequestCreate = lazy(() => import('./components/ServiceRequests/ServiceRequestCreate'));
 const ServiceRequestDetail = lazy(() => import('./components/ServiceRequests/ServiceRequestDetail'));
 const KBArticleList = lazy(() => import('./components/KnowledgeBase/KBArticleList'));
 const KBArticleCreate = lazy(() => import('./components/KnowledgeBase/KBArticleCreate'));
 const KBArticleDetail = lazy(() => import('./components/KnowledgeBase/KBArticleDetail'));
 const RoleManagement = lazy(() => import('./components/Admin/RoleManagement'));
+const ClientManagement = lazy(() => import('./components/Admin/ClientManagement'));
 const WorkflowDesigner = lazy(() => import('./components/Workflows/WorkflowDesigner'));
 const AutomationRulesPage = lazy(() => import('./components/Automation/AutomationRulesPage'));
 const ApprovalCenter = lazy(() => import('./components/Auth/ApprovalCenter'));
-const PortalLayout = lazy(() => import('./components/Portal/PortalLayout'));
-const PortalHome = lazy(() => import('./components/Portal/PortalHome'));
-const PortalCatalog = lazy(() => import('./components/Portal/PortalCatalog'));
-const PortalIncidentCreate = lazy(() => import('./components/Portal/PortalIncidentCreate'));
-const PortalKnowledgeBase = lazy(() => import('./components/Portal/PortalKnowledgeBase'));
-const PortalArticleView = lazy(() => import('./components/Portal/PortalArticleView'));
-const PortalMyRequests = lazy(() => import('./components/Portal/PortalMyRequests'));
 const VendorList = lazy(() => import('./components/Vendors/VendorList'));
 const AssignmentRulesPage = lazy(() => import('./components/Assignments/AssignmentRulesPage'));
 
@@ -116,6 +112,7 @@ export default function App() {
       <Route path="/signup" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><SignupPage /></Suspense>} />
       <Route path="/forgot-password" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><ForgotPasswordPage /></Suspense>} />
       <Route path="/reset-password" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><ResetPasswordPage /></Suspense>} />
+      <Route path="/change-password" element={<ProtectedRoute><Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><ChangePasswordRequiredPage /></Suspense></ProtectedRoute>} />
       <Route path="/docs" element={<Suspense fallback={<div style={{ background: '#f8fafc', minHeight: '100vh' }} />}><DeveloperDocs /></Suspense>} />
       <Route path="/status/:orgSlug" element={<Suspense fallback={<div style={{ background: '#f8fafc', minHeight: '100vh' }} />}><StatusPage /></Suspense>} />
 
@@ -147,7 +144,7 @@ export default function App() {
         <Route path="/automation" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
         <Route path="/runbooks" element={<Suspense fallback={<LoadingFallback />}><AutomationDashboard /></Suspense>} />
         <Route path="/users" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OPERATOR']}>
             <Suspense fallback={<LoadingFallback />}><UserList /></Suspense>
           </ProtectedRoute>
         } />
@@ -180,6 +177,11 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/teams" element={<Suspense fallback={<LoadingFallback />}><TeamList /></Suspense>} />
+        <Route path="/clients" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OPERATOR']}>
+            <Suspense fallback={<LoadingFallback />}><ClientManagement /></Suspense>
+          </ProtectedRoute>
+        } />
         <Route path="/reports" element={<Suspense fallback={<LoadingFallback />}><ReportsDashboard /></Suspense>} />
         <Route path="/sms" element={<Suspense fallback={<LoadingFallback />}><SMSDashboard /></Suspense>} />
         <Route path="/voice" element={<Suspense fallback={<LoadingFallback />}><VoiceDashboard /></Suspense>} />
@@ -201,6 +203,7 @@ export default function App() {
         <Route path="/catalog/create" element={<Suspense fallback={<LoadingFallback />}><CatalogItemCreate /></Suspense>} />
         <Route path="/catalog/:id" element={<Suspense fallback={<LoadingFallback />}><CatalogItemDetail /></Suspense>} />
         <Route path="/service-requests" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestList /></Suspense>} />
+        <Route path="/service-requests/create" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestCreate /></Suspense>} />
         <Route path="/service-requests/:id" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestDetail /></Suspense>} />
         {/* ── Knowledge Base (new) ── */}
         <Route path="/vendors" element={<Suspense fallback={<LoadingFallback />}><VendorList /></Suspense>} />
@@ -219,15 +222,13 @@ export default function App() {
         <Route path="*" element={<Suspense fallback={<LoadingFallback />}><NotFound /></Suspense>} />
       </Route>
 
-      {/* Self-Service Portal — simplified layout */}
-      <Route element={<ErrorBoundary><ProtectedRoute><Suspense fallback={<LoadingFallback />}><PortalLayout /></Suspense></ProtectedRoute></ErrorBoundary>}>
-        <Route path="/portal" element={<Suspense fallback={<LoadingFallback />}><PortalHome /></Suspense>} />
-        <Route path="/portal/catalog" element={<Suspense fallback={<LoadingFallback />}><PortalCatalog /></Suspense>} />
-        <Route path="/portal/report-issue" element={<Suspense fallback={<LoadingFallback />}><PortalIncidentCreate /></Suspense>} />
-        <Route path="/portal/knowledge-base" element={<Suspense fallback={<LoadingFallback />}><PortalKnowledgeBase /></Suspense>} />
-        <Route path="/portal/knowledge-base/:id" element={<Suspense fallback={<LoadingFallback />}><PortalArticleView /></Suspense>} />
-        <Route path="/portal/my-requests" element={<Suspense fallback={<LoadingFallback />}><PortalMyRequests /></Suspense>} />
-      </Route>
+      {/* Legacy portal URLs now land in the main app shell. */}
+      <Route path="/portal" element={<ProtectedRoute><Navigate to="/dashboard" replace /></ProtectedRoute>} />
+      <Route path="/portal/catalog" element={<ProtectedRoute><Navigate to="/catalog" replace /></ProtectedRoute>} />
+      <Route path="/portal/report-issue" element={<ProtectedRoute><Navigate to="/incidents/create" replace /></ProtectedRoute>} />
+      <Route path="/portal/knowledge-base" element={<ProtectedRoute><Navigate to="/kb" replace /></ProtectedRoute>} />
+      <Route path="/portal/knowledge-base/:id" element={<ProtectedRoute><Navigate to="/kb" replace /></ProtectedRoute>} />
+      <Route path="/portal/my-requests" element={<ProtectedRoute><Navigate to="/incidents" replace /></ProtectedRoute>} />
     </Routes>
   );
 }

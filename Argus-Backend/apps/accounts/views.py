@@ -1,16 +1,31 @@
 from django.contrib.auth import authenticate, get_user_model
+from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from apps.common.pagination import DefaultPagination
+from apps.common.permissions import (
+    Roles,
+    can_manage_service_desk,
+    is_service_desk_staff,
+)
 from apps.common.responses import failure, success
 from apps.common.audit import create_audit_log
 from .models import Role, Permission
 from .serializers import (
-    MeSerializer, SignupSerializer, UserSerializer,
-    RoleSerializer, PermissionSerializer
+    ChangePasswordSerializer,
+    ManagedUserCreateSerializer,
+    ManagedUserUpdateSerializer,
+    MeSerializer,
+    PasswordSetSerializer,
+    PermissionSerializer,
+    ProfileUpdateSerializer,
+    RoleSerializer,
+    SignupSerializer,
+    UserSerializer,
 )
 
 User = get_user_model()
@@ -25,10 +40,10 @@ class RoleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Role.objects.filter(organization=self.request.organization).order_by('name')
+        return Role.objects.all().order_by('name')
 
     def perform_create(self, serializer):
-        serializer.save(organization=self.request.organization)
+        serializer.save()
 
 
 def _token_payload(user):
@@ -37,7 +52,7 @@ def _token_payload(user):
 
 
 def _ensure_user_organization(user):
-    return getattr(user, "organization_id", None) is not None
+    return getattr(user, "organization_id", None) is not None or is_service_desk_staff(user)
 
 
 class SignupView(APIView):
@@ -105,14 +120,17 @@ class LoginView(APIView):
             )
             return failure("invalid credentials", status_code=401)
 
+        if not user.is_active_member:
+            return failure("account is disabled", status_code=403)
+
         if not _ensure_user_organization(user):
             return failure("user does not have organization access", status_code=403)
 
         if user.mfa_enabled:
-            code = request.data.get("code")
+            code = request.data.get("code") or request.data.get("mfaToken")
             if not code:
                 return success(
-                    {"mfa_required": True, "userId": str(user.id)}, 
+                    {"mfa_required": True, "requiresMfa": True, "userId": str(user.id)}, 
                     "MFA verification required"
                 )
             
@@ -139,7 +157,7 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get("refreshToken")
+        refresh_token = request.data.get("refreshToken") or request.data.get("refresh")
         if refresh_token:
             try:
                 RefreshToken(refresh_token).blacklist()
@@ -155,10 +173,10 @@ class MeView(APIView):
         return success(MeSerializer(request.user).data)
 
     def patch(self, request):
-        serializer = MeSerializer(request.user, data=request.data, partial=True)
+        serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return success(serializer.data, "profile updated")
+        return success(MeSerializer(request.user).data, "profile updated")
 
 
 import secrets
@@ -425,56 +443,159 @@ class MFADisableView(APIView):
             return failure("Invalid verification code.", status_code=400)
 
 
+def _manageable_user_queryset(request):
+    queryset = User.objects.all().select_related("organization").prefetch_related("roles")
+    if is_service_desk_staff(request.user):
+        org_id = request.query_params.get("organization") or request.query_params.get("organization_id")
+        if org_id:
+            queryset = queryset.filter(organization_id=org_id)
+        return queryset
+    organization = getattr(request, "organization", None)
+    if organization is None:
+        return User.objects.none()
+    return queryset.filter(organization=organization)
+
+
 class UserListView(APIView):
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get(self, request):
-        organization = getattr(request, "organization", None)
-        if organization is None:
-            return failure("organization access denied", status_code=403)
+        users = _manageable_user_queryset(request)
 
-        users = User.objects.filter(organization=organization, is_active=True).order_by(
-            "first_name", "last_name"
+        search = request.query_params.get("search")
+        if search:
+            users = users.filter(
+                Q(username__icontains=search)
+                | Q(email__icontains=search)
+                | Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(organization__name__icontains=search)
+            )
+
+        role = request.query_params.get("role")
+        role_aliases = {
+            "ADMIN": [Roles.SUPER_ADMIN, Roles.ORG_ADMIN],
+            "MANAGER": [Roles.MANAGER, Roles.TEAM_LEAD],
+            "ENGINEER": [Roles.ENGINEER],
+            "OPERATOR": [Roles.NOC, Roles.OPERATOR],
+            "CLIENT": [Roles.CLIENT_USER],
+            "VIEWER": [Roles.VIEWER],
+        }
+        if role and role != "ALL":
+            users = users.filter(roles__name__in=role_aliases.get(role, [role])).distinct()
+
+        status = request.query_params.get("status")
+        if status == "ACTIVE":
+            users = users.filter(is_active=True, is_active_member=True)
+        elif status in {"INACTIVE", "LOCKED"}:
+            users = users.filter(Q(is_active=False) | Q(is_active_member=False))
+
+        users = users.order_by("organization__name", "first_name", "last_name", "email")
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(users, request)
+        serializer = UserSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        if not can_manage_service_desk(request.user):
+            return failure("Only admins, NOC, and team leads can create accounts.", status_code=403)
+
+        data = request.data.copy()
+        if not is_service_desk_staff(request.user):
+            data["organization_id"] = str(request.organization_id)
+
+        serializer = ManagedUserCreateSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        create_audit_log(
+            request,
+            "USER_CREATED",
+            "USER",
+            resource_id=user.id,
+            description=f"Created account for {user.email}",
+            organization=user.organization,
         )
-        return success(UserSerializer(users, many=True).data)
+        return success(UserSerializer(user).data, "user created", 201)
 
 
 class UserDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _get_user(self, request, pk):
+        return _manageable_user_queryset(request).filter(pk=pk).first()
+
     def get(self, request, pk):
-        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin") or request.user.has_role("Manager")) and str(request.user.id) != str(pk):
+        if not can_manage_service_desk(request.user) and str(request.user.id) != str(pk):
             return failure("Access denied.", status_code=403)
-        
-        user = User.objects.filter(pk=pk, organization=request.organization).first()
+
+        user = self._get_user(request, pk)
         if not user:
             return failure("User not found.", status_code=404)
-        
+
         return success(UserSerializer(user).data)
 
     def patch(self, request, pk):
-        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin") or request.user.has_role("Manager")):
-            return failure("Only admins and managers can update users.", status_code=403)
-        
-        user = User.objects.filter(pk=pk, organization=request.organization).first()
+        if not can_manage_service_desk(request.user):
+            return failure("Only admins, NOC, and team leads can update users.", status_code=403)
+
+        user = self._get_user(request, pk)
         if not user:
             return failure("User not found.", status_code=404)
 
-        serializer = UserSerializer(user, data=request.data, partial=True)
+        data = request.data.copy()
+        if not is_service_desk_staff(request.user):
+            data.pop("organization_id", None)
+        serializer = ManagedUserUpdateSerializer(user, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return success(serializer.data, "User updated successfully.")
+        user = serializer.save()
+        return success(UserSerializer(user).data, "user updated")
 
     def delete(self, request, pk):
-        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin")):
+        if not can_manage_service_desk(request.user):
             return failure("Only admins can deactivate users.", status_code=403)
-        
-        user = User.objects.filter(pk=pk, organization=request.organization).first()
+
+        user = self._get_user(request, pk)
         if not user:
             return failure("User not found.", status_code=404)
 
-        # Soft delete
         user.is_active_member = False
-        user.is_active = False # Also disable Django login
-        user.save()
-        return success(message="User deactivated successfully.")
+        user.is_active = False
+        user.save(update_fields=["is_active_member", "is_active", "updated_at"])
+        return success(UserSerializer(user).data, "user deactivated")
+
+
+class UserResetPasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if not can_manage_service_desk(request.user):
+            return failure("Only admins, NOC, and team leads can reset passwords.", status_code=403)
+
+        user = _manageable_user_queryset(request).filter(pk=pk).first()
+        if not user:
+            return failure("User not found.", status_code=404)
+
+        serializer = PasswordSetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user.set_password(serializer.validated_data["password"])
+        user.must_change_password = serializer.validated_data["must_change_password"]
+        user.save(update_fields=["password", "must_change_password", "updated_at"])
+        return success(UserSerializer(user).data, "password reset")
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        current_password = serializer.validated_data["current_password"]
+        if not request.user.must_change_password and not request.user.check_password(current_password):
+            return failure("Current password is incorrect.", status_code=400)
+
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.must_change_password = False
+        request.user.save(update_fields=["password", "must_change_password", "updated_at"])
+        return success(UserSerializer(request.user).data, "password changed")

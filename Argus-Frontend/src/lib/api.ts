@@ -20,9 +20,10 @@ api.interceptors.request.use((config) => {
         config.headers['Authorization'] = `Bearer ${state.accessToken}`;
       }
       // Resolve org id — selectedOrgId > organizationId > nested organization object
+      const isClientUser = state?.user?.role === 'CLIENT';
       let orgId: string | null = state?.selectedOrgId || null;
-      if (!orgId) orgId = state?.user?.organizationId || null;
-      if (!orgId) {
+      if (!orgId && isClientUser) orgId = state?.user?.organizationId || null;
+      if (!orgId && isClientUser) {
         const org = state?.user?.organization;
         if (org && typeof org === 'object') orgId = org.id || null;
         else if (org && typeof org === 'string') orgId = org;

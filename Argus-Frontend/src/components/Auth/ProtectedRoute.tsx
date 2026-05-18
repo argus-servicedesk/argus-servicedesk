@@ -6,6 +6,27 @@ interface Props {
   allowedRoles?: string[];
 }
 
+const CLIENT_ALLOWED_PREFIXES = [
+  '/dashboard',
+  '/incidents',
+  '/problems',
+  '/changes',
+  '/catalog',
+  '/service-requests',
+  '/kb',
+  '/knowledge-base',
+  '/notifications',
+  '/profile',
+  '/settings',
+  '/portal',
+];
+
+function clientCanOpen(pathname: string) {
+  if (pathname === '/change-password') return true;
+  if (pathname === '/catalog/create') return false;
+  return CLIENT_ALLOWED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const { isAuthenticated, user, isLoading, hasHydrated } = useAuthStore();
   const location = useLocation();
@@ -23,6 +44,14 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user?.mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" state={{ from: location }} replace />;
+  }
+
+  if (user?.role === 'CLIENT' && !clientCanOpen(location.pathname)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {

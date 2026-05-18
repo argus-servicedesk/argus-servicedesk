@@ -116,6 +116,8 @@ class ProblemSerializer(serializers.ModelSerializer):
     activities = ActivityReadSerializer(many=True, read_only=True)
     tasks = ProblemTaskSerializer(many=True, read_only=True)
     available_transitions = serializers.SerializerMethodField()
+    is_assigned_to_me = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Problem
@@ -144,6 +146,8 @@ class ProblemSerializer(serializers.ModelSerializer):
             "is_known_error",
             "known_error_id",
             "available_transitions",
+            "is_assigned_to_me",
+            "can_edit",
             # nested
             "linked_incidents",
             "work_notes",
@@ -189,6 +193,20 @@ class ProblemSerializer(serializers.ModelSerializer):
             Problem.State.CLOSED: [Problem.State.INVESTIGATION],
         }
         return transitions.get(obj.state, [])
+
+    def get_is_assigned_to_me(self, obj: Problem) -> bool:
+        request = self.context.get("request")
+        if request is None:
+            return False
+        from apps.common.permissions import is_assigned_to_service_record
+        return is_assigned_to_service_record(request.user, obj)
+
+    def get_can_edit(self, obj: Problem) -> bool:
+        request = self.context.get("request")
+        if request is None:
+            return False
+        from apps.common.permissions import can_edit_service_record
+        return can_edit_service_record(request.user, obj)
 
 
 class ProblemCreateSerializer(serializers.ModelSerializer):

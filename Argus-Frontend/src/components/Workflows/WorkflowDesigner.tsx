@@ -21,7 +21,9 @@ interface State {
 interface Transition {
   id?: string;
   from_state: string;
+  from_state_name?: string;
   to_state: string;
+  to_state_name?: string;
   name: string;
   required_permission?: string;
 }

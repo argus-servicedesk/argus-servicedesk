@@ -12,8 +12,72 @@ class Roles:
     ORG_ADMIN = "Org Admin"
     MANAGER = "Manager"
     ENGINEER = "Engineer"
+    TEAM_LEAD = "Team Lead"
+    NOC = "NOC"
+    CLIENT_USER = "Client User"
     OPERATOR = "Operator"
     VIEWER = "Viewer"
+
+
+INTERNAL_ROLE_NAMES = {
+    Roles.SUPER_ADMIN,
+    Roles.ORG_ADMIN,
+    Roles.MANAGER,
+    Roles.ENGINEER,
+    Roles.TEAM_LEAD,
+    Roles.NOC,
+    Roles.OPERATOR,
+}
+
+
+ADMIN_ROLE_NAMES = {
+    Roles.SUPER_ADMIN,
+    Roles.ORG_ADMIN,
+    Roles.MANAGER,
+    Roles.TEAM_LEAD,
+    Roles.NOC,
+}
+
+
+def has_any_role(user: User, *role_names: str) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    return any(user.has_role(role_name) for role_name in role_names)
+
+
+def is_service_desk_staff(user: User) -> bool:
+    return has_any_role(user, *INTERNAL_ROLE_NAMES)
+
+
+def can_manage_service_desk(user: User) -> bool:
+    return has_any_role(user, *ADMIN_ROLE_NAMES)
+
+
+def is_assigned_to_service_record(user: User, obj) -> bool:
+    """Return true when the user owns the record directly or through its team."""
+    if not user or not getattr(user, "is_authenticated", False) or obj is None:
+        return False
+    if getattr(obj, "assigned_to_id", None) == user.id:
+        return True
+
+    assignment_group = getattr(obj, "assignment_group", None)
+    if not assignment_group:
+        return False
+    try:
+        return assignment_group.members.filter(user=user).exists()
+    except Exception:
+        return False
+
+
+def can_edit_service_record(user: User, obj) -> bool:
+    if can_manage_service_desk(user):
+        return True
+    if not is_service_desk_staff(user):
+        return False
+    return is_assigned_to_service_record(user, obj)
+
 
 class DenyViewerMutations(BasePermission):
     """VIEWER may only use safe HTTP methods."""
@@ -39,12 +103,18 @@ class IncidentTransitionRBAC(BasePermission):
             return True
         
         user = request.user
-        roles = user.role_names
-        
-        if Roles.SUPER_ADMIN in roles or Roles.ORG_ADMIN in roles or Roles.MANAGER in roles or Roles.ENGINEER in roles:
+        if has_any_role(
+            user,
+            Roles.SUPER_ADMIN,
+            Roles.ORG_ADMIN,
+            Roles.MANAGER,
+            Roles.TEAM_LEAD,
+            Roles.NOC,
+            Roles.ENGINEER,
+        ):
             return True
             
-        if Roles.OPERATOR not in roles:
+        if not has_any_role(user, Roles.OPERATOR):
             return False
 
         new_state = request.data.get("state", obj.state)
@@ -66,12 +136,18 @@ class ProblemTransitionRBAC(BasePermission):
             return True
             
         user = request.user
-        roles = user.role_names
-        
-        if Roles.SUPER_ADMIN in roles or Roles.ORG_ADMIN in roles or Roles.MANAGER in roles or Roles.ENGINEER in roles:
+        if has_any_role(
+            user,
+            Roles.SUPER_ADMIN,
+            Roles.ORG_ADMIN,
+            Roles.MANAGER,
+            Roles.TEAM_LEAD,
+            Roles.NOC,
+            Roles.ENGINEER,
+        ):
             return True
 
-        if Roles.OPERATOR not in roles:
+        if not has_any_role(user, Roles.OPERATOR):
             return False
 
         new_state = request.data.get("state", obj.state)
@@ -100,21 +176,26 @@ class ChangeTransitionRBAC(BasePermission):
             return True
             
         user = request.user
-        roles = user.role_names
-        
-        if Roles.SUPER_ADMIN in roles or Roles.ORG_ADMIN in roles or Roles.MANAGER in roles:
+        if has_any_role(
+            user,
+            Roles.SUPER_ADMIN,
+            Roles.ORG_ADMIN,
+            Roles.MANAGER,
+            Roles.TEAM_LEAD,
+            Roles.NOC,
+        ):
             return True
 
         new_state = request.data.get("state", obj.state)
         if new_state == obj.state:
             return True
 
-        if Roles.OPERATOR in roles:
+        if has_any_role(user, Roles.OPERATOR):
             if new_state in self._GOVERNANCE_STATES or new_state == "CANCELLED":
                 return False
             return True
 
-        if Roles.ENGINEER in roles:
+        if has_any_role(user, Roles.ENGINEER):
             if new_state in self._CLOSED:
                 return False
             return True
@@ -131,7 +212,7 @@ class ChangeApprovalRBAC(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         user = request.user
-        return user.has_role(Roles.SUPER_ADMIN) or user.has_role(Roles.ORG_ADMIN) or user.has_role(Roles.MANAGER)
+        return can_manage_service_desk(user)
 
 
 class IsAdminOrManager(BasePermission):
@@ -140,7 +221,7 @@ class IsAdminOrManager(BasePermission):
 
     def has_permission(self, request, view) -> bool:
         user = request.user
-        return user.has_role(Roles.SUPER_ADMIN) or user.has_role(Roles.ORG_ADMIN) or user.has_role(Roles.MANAGER)
+        return can_manage_service_desk(user)
 
 
 class IsOrgMember(BasePermission):
@@ -150,6 +231,8 @@ class IsOrgMember(BasePermission):
     def has_permission(self, request, view) -> bool:
         # Note: request.organization is usually set by a middleware
         user_org = request.user.organization
+        if is_service_desk_staff(request.user):
+            return True
         if not user_org:
             return False
         

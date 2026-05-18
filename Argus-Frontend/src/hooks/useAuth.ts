@@ -15,12 +15,17 @@ export function useAuth() {
   const store = useAuthStore();
   const roles = store.user?.roleNames ?? [];
 
-  const isAdmin    = roles.includes('Super Admin') || roles.includes('Org Admin');
-  const isManager  = roles.includes('Manager') || isAdmin;
-  const isEngineer = roles.includes('Engineer') || isManager;
+  const normalizedRoles = roles.map((role) => role.replace(/_/g, ' ').trim().toLowerCase());
+  const hasNormalizedRole = (...targetRoles: string[]) =>
+    targetRoles.some((role) => normalizedRoles.includes(role.replace(/_/g, ' ').trim().toLowerCase()));
+
+  const isAdmin    = hasNormalizedRole('Super Admin', 'Org Admin');
+  const isManager  = hasNormalizedRole('Manager', 'Team Lead', 'NOC') || isAdmin;
+  const isEngineer = hasNormalizedRole('Engineer', 'NOC') || isManager;
+  const isClient   = store.user?.role === 'CLIENT' || hasNormalizedRole('Client User');
 
   function hasRole(...targetRoles: string[]): boolean {
-    return targetRoles.some(r => roles.includes(r));
+    return hasNormalizedRole(...targetRoles);
   }
 
   /**
@@ -33,10 +38,13 @@ export function useAuth() {
       if (resource === 'settings') return isAdmin; // Only Super/Org Admin for settings
       return true;
     }
-    if (roles.includes('Engineer')) {
+    if (hasNormalizedRole('Engineer')) {
       if (['incidents', 'problems', 'kb', 'catalog', 'assets', 'vendors'].includes(resource)) return true;
     }
-    if (roles.includes('Operator') && (resource === 'incidents' || resource === 'kb')) return true;
+    if (isClient) {
+      return ['incidents', 'problems', 'changes', 'kb', 'catalog'].includes(resource);
+    }
+    if (hasNormalizedRole('Operator') && (resource === 'incidents' || resource === 'kb')) return true;
     return false;
   }
 
@@ -46,6 +54,7 @@ export function useAuth() {
     isAdmin,
     isManager,
     isEngineer,
+    isClient,
     hasRole,
     canManage,
   };

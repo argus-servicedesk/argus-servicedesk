@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Loader2, Sparkles, Send, FileText, CheckCircle } from 'lucide-react';
 import {
@@ -17,6 +18,13 @@ import {
 } from './ServiceNowUI';
 import { useAuth } from '../../hooks/useAuth';
 import { useAiRCA, useAddProblemWorkNote } from '../../hooks/useProblems';
+import api from '../../lib/api';
+import {
+  assignableUsersForTeam,
+  assignmentPersonLabel,
+  orderedAssignmentTeams,
+  type AssignmentRosterTeam,
+} from '../../utils/assignmentRoster';
 
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
 const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', 'Cloud', 'Infrastructure', 'Application', 'Configuration', 'Human Error', 'Other'];
@@ -38,14 +46,7 @@ const PROBLEM_STATE_LABELS: Record<string, string> = {
 };
 
 function formatPersonName(value: unknown): string {
-  if (!value) return 'Unassigned';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as { firstName?: string; lastName?: string; name?: string };
-    if (obj.firstName || obj.lastName) return [obj.firstName, obj.lastName].filter(Boolean).join(' ');
-    if (obj.name) return obj.name;
-  }
-  return 'Unassigned';
+  return assignmentPersonLabel(value);
 }
 
 function formatDateTime(iso?: string | null): string {
@@ -79,8 +80,9 @@ export default function ProblemServiceNowPanel({
   };
 }) {
   const navigate = useNavigate();
-  const { isEngineer, isManager, isAdmin, hasRole, canManage } = useAuth();
-  const canModify = canManage('problems');
+  const { isClient, isManager, isAdmin } = useAuth();
+  const canModify = !isClient && (isManager || isAdmin || Boolean(problem.canEdit));
+  const canAssign = !isClient && (isManager || isAdmin);
 
   const aiRCA = useAiRCA();
   const addWorkNote = useAddProblemWorkNote(problem?.id || '');
@@ -90,6 +92,8 @@ export default function ProblemServiceNowPanel({
   const [priority, setPriority] = useState(problem.priority || 'P3');
   const [state, setState] = useState(problem.state || 'NEW');
   const [category, setCategory] = useState(problem.category || '');
+  const [assignmentGroupId, setAssignmentGroupId] = useState(problem.assignmentGroupId || problem.assignmentGroup?.id || '');
+  const [assignedToId, setAssignedToId] = useState(problem.assignedToId || problem.assignedTo?.id || '');
   const [rootCause, setRootCause] = useState(problem.rootCause || '');
   const [workaround, setWorkaround] = useState(problem.workaround || '');
   const [permanentFix, setPermanentFix] = useState(problem.permanentFix || '');
@@ -102,10 +106,28 @@ export default function ProblemServiceNowPanel({
     setPriority(problem.priority || 'P3');
     setState(problem.state || 'NEW');
     setCategory(problem.category || '');
+    setAssignmentGroupId(problem.assignmentGroupId || problem.assignmentGroup?.id || '');
+    setAssignedToId(problem.assignedToId || problem.assignedTo?.id || '');
     setRootCause(problem.rootCause || '');
     setWorkaround(problem.workaround || '');
     setPermanentFix(problem.permanentFix || '');
   }, [problem.id, problem.updatedAt]);
+
+  const problemOrganizationId = problem.organizationId || problem.organization?.id || '';
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams', 'problem-assignment', problemOrganizationId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '200' });
+      if (problemOrganizationId) params.set('organization', problemOrganizationId);
+      const { data } = await api.get(`/teams/?${params}`);
+      return data;
+    },
+    enabled: canAssign,
+    staleTime: 60000,
+  });
+  const allTeams = (teamsData?.data || []) as AssignmentRosterTeam[];
+  const teams = orderedAssignmentTeams(allTeams);
+  const assignableUsers = assignableUsersForTeam(teams, assignmentGroupId, problem.assignedTo);
 
   const stateOptions = Object.keys(PROBLEM_STATE_LABELS);
   const linkedIncidents = Array.isArray(problem.linkedIncidents) ? problem.linkedIncidents : [];
@@ -123,6 +145,8 @@ export default function ProblemServiceNowPanel({
       if (state === 'KNOWN_ERROR') data.isKnownError = true;
     }
     if (category !== (problem.category || '')) data.category = category || null;
+    if ((assignmentGroupId || '') !== (problem.assignmentGroupId || problem.assignmentGroup?.id || '')) data.assignmentGroupId = assignmentGroupId || null;
+    if ((assignedToId || '') !== (problem.assignedToId || problem.assignedTo?.id || '')) data.assignedToId = assignedToId || null;
     if (rootCause !== (problem.rootCause || '')) data.rootCause = rootCause || null;
     if (workaround !== (problem.workaround || '')) data.workaround = workaround || null;
     if (permanentFix !== (problem.permanentFix || '')) data.permanentFix = permanentFix || null;
@@ -196,7 +220,7 @@ export default function ProblemServiceNowPanel({
         updateLoading={Boolean(updateProblem.isPending)}
         secondaryActions={
           <div className="flex items-center gap-2 flex-wrap">
-            {canManage && state !== 'RESOLVED' && state !== 'CLOSED' && (
+            {canModify && state !== 'RESOLVED' && state !== 'CLOSED' && (
               <button
                 type="button"
                 className="sn-soft-button flex items-center gap-1"
@@ -209,7 +233,7 @@ export default function ProblemServiceNowPanel({
                 <CheckCircle size={12} /> Resolve
               </button>
             )}
-            {canManage && (state === 'RESOLVED' || state === 'CLOSED') && (
+            {canModify && (state === 'RESOLVED' || state === 'CLOSED') && (
               <button
                 type="button"
                 className="sn-soft-button"
@@ -240,28 +264,70 @@ export default function ProblemServiceNowPanel({
             <SNReadOnly color={sn.link}>{formatPersonName(problem.createdBy)}</SNReadOnly>
           </SNFormRow>
           <SNFormRow label="Category">
-            <select className="sn-field" value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="">-</option>
-              {CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="">-</option>
+                {CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{category || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="State">
-            <select className="sn-field" value={state} onChange={(event) => setState(event.target.value)}>
-              {stateOptions.map((value) => <option key={value} value={value}>{PROBLEM_STATE_LABELS[value] || value}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={state} onChange={(event) => setState(event.target.value)}>
+                {stateOptions.map((value) => <option key={value} value={value}>{PROBLEM_STATE_LABELS[value] || value}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{PROBLEM_STATE_LABELS[state] || state || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Priority">
-            <select className="sn-field" value={priority} onChange={(event) => setPriority(event.target.value)}>
-              {PRIORITIES.map((value) => <option key={value} value={value}>{PRIORITY_LABELS[value]}</option>)}
-            </select>
+            {canModify ? (
+              <select className="sn-field" value={priority} onChange={(event) => setPriority(event.target.value)}>
+                {PRIORITIES.map((value) => <option key={value} value={value}>{PRIORITY_LABELS[value]}</option>)}
+              </select>
+            ) : (
+              <SNReadOnly>{PRIORITY_LABELS[priority] || priority || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="Assignment group">
-            <SNReadOnly>{formatPersonName(problem.assignmentGroup)}</SNReadOnly>
+            {canAssign ? (
+              <select
+                className="sn-field"
+                value={assignmentGroupId}
+                onChange={(event) => {
+                  setAssignmentGroupId(event.target.value);
+                  setAssignedToId('');
+                }}
+              >
+                <option value="">-- None --</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.name}</option>
+                ))}
+              </select>
+            ) : (
+              <SNReadOnly>{formatPersonName(problem.assignmentGroup)}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Assigned to">
-            <SNReadOnly>{formatPersonName(problem.assignedTo)}</SNReadOnly>
+            {canAssign ? (
+              <select
+                className="sn-field"
+                value={assignedToId}
+                onChange={(event) => setAssignedToId(event.target.value)}
+                disabled={!assignmentGroupId}
+              >
+                <option value="">-- None --</option>
+                {assignableUsers.map((user: any) => (
+                  <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{formatPersonName(user)}</option>
+                ))}
+              </select>
+            ) : (
+              <SNReadOnly>{formatPersonName(problem.assignedTo)}</SNReadOnly>
+            )}
           </SNFormRow>
 
           <SNFormRow label="Known Error ID">
@@ -272,42 +338,64 @@ export default function ProblemServiceNowPanel({
           </SNFormRow>
 
           <SNFormRow label="Short Description" required fullWidth>
-            <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
+            {canModify ? (
+              <input className="sn-field" value={shortDescription} onChange={(event) => setShortDescription(event.target.value)} />
+            ) : (
+              <SNReadOnly>{shortDescription || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Description" fullWidth>
-            <textarea className="sn-field" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+            {canModify ? (
+              <textarea className="sn-field" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+            ) : (
+              <SNReadOnly muted>{description || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
 
       <SNCollapsibleSection title="Root cause analysis">
         <SNFieldGrid>
-          <SNFormRow label="AI RCA Assistance" fullWidth>
-            <div className="flex items-center gap-4 bg-slate-50 p-3 border rounded-md">
-              <Sparkles className="text-purple-600 shrink-0" size={24} />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900">Run Automated Root Cause Analysis</p>
-                <p className="text-xs text-slate-500">Analyze linked incidents and problem description to generate a preliminary RCA.</p>
+          {canModify && (
+            <SNFormRow label="AI RCA Assistance" fullWidth>
+              <div className="flex items-center gap-4 bg-slate-50 p-3 border rounded-md">
+                <Sparkles className="text-purple-600 shrink-0" size={24} />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">Run Automated Root Cause Analysis</p>
+                  <p className="text-xs text-slate-500">Analyze linked incidents and problem description to generate a preliminary RCA.</p>
+                </div>
+                <button
+                  type="button"
+                  className="sn-primary-button whitespace-nowrap"
+                  style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                  onClick={handleAiRCA}
+                  disabled={aiRCA.isPending}
+                >
+                  {aiRCA.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Analyzing...</> : 'Generate RCA'}
+                </button>
               </div>
-              <button
-                type="button"
-                className="sn-primary-button whitespace-nowrap"
-                style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
-                onClick={handleAiRCA}
-                disabled={aiRCA.isPending}
-              >
-                {aiRCA.isPending ? <><Loader2 size={14} className="animate-spin inline mr-1" />Analyzing...</> : 'Generate RCA'}
-              </button>
-            </div>
-          </SNFormRow>
+            </SNFormRow>
+          )}
           <SNFormRow label="Root cause" fullWidth>
-            <textarea className="sn-field" rows={4} value={rootCause} onChange={(event) => setRootCause(event.target.value)} placeholder="Describe the underlying cause..." />
+            {canModify ? (
+              <textarea className="sn-field" rows={4} value={rootCause} onChange={(event) => setRootCause(event.target.value)} placeholder="Describe the underlying cause..." />
+            ) : (
+              <SNReadOnly muted>{rootCause || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Workaround" fullWidth>
-            <textarea className="sn-field" rows={3} value={workaround} onChange={(event) => setWorkaround(event.target.value)} placeholder="Temporary fix or mitigation..." />
+            {canModify ? (
+              <textarea className="sn-field" rows={3} value={workaround} onChange={(event) => setWorkaround(event.target.value)} placeholder="Temporary fix or mitigation..." />
+            ) : (
+              <SNReadOnly muted>{workaround || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
           <SNFormRow label="Permanent fix" fullWidth>
-            <textarea className="sn-field" rows={3} value={permanentFix} onChange={(event) => setPermanentFix(event.target.value)} placeholder="Long-term resolution..." />
+            {canModify ? (
+              <textarea className="sn-field" rows={3} value={permanentFix} onChange={(event) => setPermanentFix(event.target.value)} placeholder="Long-term resolution..." />
+            ) : (
+              <SNReadOnly muted>{permanentFix || '-'}</SNReadOnly>
+            )}
           </SNFormRow>
         </SNFieldGrid>
       </SNCollapsibleSection>
@@ -393,7 +481,7 @@ export default function ProblemServiceNowPanel({
         </SNRelatedList>
 
         <SNRelatedList title="Activity and Work Notes" count={workNotes.length + activities.length}>
-          {canManage && (
+          {canModify && (
             <div className="p-4 border-b bg-slate-50 flex gap-2 items-start">
               <FileText className="text-slate-400 mt-2 shrink-0" size={18} />
               <div className="flex-1">

@@ -42,6 +42,8 @@ interface Problem {
   knownErrorId?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  isAssignedToMe?: boolean;
+  canEdit?: boolean;
 }
 
 const PAGE_SIZE = 25;
@@ -309,6 +311,7 @@ export default function ProblemList() {
             <table className="sn-list-table">
               <colgroup>
                 <col style={{ width: 42 }} />
+                <col style={{ width: 64 }} />
                 <col style={{ width: 132 }} />
                 <col style={{ width: 128 }} />
                 <col style={{ width: 150 }} />
@@ -321,6 +324,7 @@ export default function ProblemList() {
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Select all problems" /></th>
+                  <th title="Assigned to you directly or through your team">Mine</th>
                   <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
                   <th><SortButton field="priority" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Priority</SortButton></th>
                   <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
@@ -332,9 +336,16 @@ export default function ProblemList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((problem) => (
-                  <tr key={problem.id} onDoubleClick={() => navigate(`/problems/${problem.id}`)}>
+                {rows.map((problem) => {
+                  const isMine = Boolean(problem.isAssignedToMe);
+                  return (
+                  <tr key={problem.id} className={isMine ? 'sn-row-mine' : undefined} onDoubleClick={() => navigate(`/problems/${problem.id}`)}>
                     <td><input type="checkbox" aria-label={`Select ${problem.number}`} /></td>
+                    <td className="sn-ownership-cell">
+                      {isMine ? (
+                        <span className="sn-owned-badge" title="Assigned to you directly or through your team">Mine</span>
+                      ) : null}
+                    </td>
                     <td>
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/problems/${problem.id}`)}>
                         {problem.number}
@@ -366,7 +377,8 @@ export default function ProblemList() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

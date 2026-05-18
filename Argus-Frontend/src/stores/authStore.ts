@@ -33,6 +33,8 @@ export interface User {
   role: string;
   organization: any;
   organizationId?: string | null;
+  must_change_password?: boolean;
+  mustChangePassword?: boolean;
   mfa_enabled: boolean;
   mfaEnabled?: boolean;
   created_at: string;
@@ -50,7 +52,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   hasHydrated: boolean;
-  login: (email: string, password: string, mfaToken?: string) => Promise<{ requiresMfa?: boolean }>;
+  login: (email: string, password: string, mfaToken?: string) => Promise<{ requiresMfa?: boolean; user?: User }>;
   logout: () => Promise<void>;
   setUser: (user: User, tokens?: { access?: string | null; refresh?: string | null }) => void;
   setSelectedOrg: (orgId: string | null) => void;
@@ -83,6 +85,15 @@ function normalizeOrganization(org: any): Organization | null {
   };
 }
 
+function normalizeRoleName(role: string): string {
+  return role.replace(/_/g, ' ').trim().toLowerCase();
+}
+
+function hasRoleName(roles: string[], ...targets: string[]): boolean {
+  const normalized = roles.map(normalizeRoleName);
+  return targets.some((target) => normalized.includes(normalizeRoleName(target)));
+}
+
 function normalizeUser(rawUser: any): User {
   if (rawUser == null || typeof rawUser !== 'object') {
     return {
@@ -91,15 +102,20 @@ function normalizeUser(rawUser: any): User {
       email: '',
       first_name: '',
       last_name: '',
+      role_names: [],
+      roleNames: [],
       role: '',
       organization: null,
       organizationId: null,
       mfa_enabled: false,
+      must_change_password: false,
+      mustChangePassword: false,
       created_at: '',
       updated_at: '',
     };
   }
   const organization = normalizeOrganization(rawUser.organization);
+  const roleNames = rawUser.roleNames ?? rawUser.role_names ?? [];
   return {
     ...rawUser,
     organization,
@@ -109,11 +125,29 @@ function normalizeUser(rawUser: any): User {
     phone: rawUser.phone ?? null,
     department: rawUser.department ?? null,
     timezone: rawUser.timezone ?? 'Asia/Kolkata',
-    roleNames: rawUser.roleNames ?? rawUser.role_names ?? [],
+    roleNames,
+    role: rawUser.role ?? (
+      hasRoleName(roleNames, 'Client User')
+        ? 'CLIENT'
+        : hasRoleName(roleNames, 'Engineer')
+          ? 'ENGINEER'
+          : hasRoleName(roleNames, 'Manager', 'Team Lead')
+            ? 'MANAGER'
+            : hasRoleName(roleNames, 'NOC', 'Operator')
+              ? 'OPERATOR'
+              : hasRoleName(roleNames, 'Super Admin', 'Org Admin')
+                ? 'ADMIN'
+                : 'VIEWER'
+    ),
     mfaEnabled: rawUser.mfaEnabled ?? rawUser.mfa_enabled ?? false,
+    mustChangePassword: rawUser.mustChangePassword ?? rawUser.must_change_password ?? false,
     createdAt: rawUser.createdAt ?? rawUser.created_at,
     updatedAt: rawUser.updatedAt ?? rawUser.updated_at,
   };
+}
+
+function defaultSelectedOrgId(user: User, orgId: string | null) {
+  return user.role === 'CLIENT' ? orgId : null;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -130,7 +164,12 @@ export const useAuthStore = create<AuthState>()(
           if (mfaToken) body.mfaToken = mfaToken;
 
           const response = await api.post('/auth/login', body);
-          const { user: rawUser, access, refresh } = response.data.data;
+          const payload = response.data.data;
+          if (payload?.mfa_required || payload?.requiresMfa) {
+            set({ isLoading: false });
+            return { requiresMfa: true };
+          }
+          const { user: rawUser, access, refresh } = payload;
           const user = normalizeUser(rawUser);
 
           // Resolve org — could be nested object or just an id
@@ -140,14 +179,14 @@ export const useAuthStore = create<AuthState>()(
           set({
             user,
             organization: orgObj,
-            selectedOrgId: orgId,
+            selectedOrgId: defaultSelectedOrgId(user, orgId),
             accessToken: access,
             refreshToken: refresh,
             isAuthenticated: true,
             isLoading: false,
             hasHydrated: true,
           });
-          return {};
+          return { user };
         } catch (err: any) {
           set({ isLoading: false });
           throw new Error(err?.response?.data?.message || err?.message || 'Invalid credentials');
@@ -179,7 +218,7 @@ export const useAuthStore = create<AuthState>()(
           return {
             user,
             organization: orgObj,
-            selectedOrgId: orgId,
+            selectedOrgId: defaultSelectedOrgId(user, orgId),
             accessToken:
               tokens?.access !== undefined ? tokens.access : state.accessToken,
             refreshToken:
@@ -205,7 +244,7 @@ export const useAuthStore = create<AuthState>()(
           set({
             user,
             organization: user.organization || null,
-            selectedOrgId: user.organization?.id || user.organizationId || null,
+            selectedOrgId: defaultSelectedOrgId(user, user.organization?.id || user.organizationId || null),
             isAuthenticated: true,
             isLoading: false,
             hasHydrated: true,
@@ -226,7 +265,7 @@ export const useAuthStore = create<AuthState>()(
                 set({
                   user,
                   organization: user.organization || null,
-                  selectedOrgId: user.organization?.id || user.organizationId || null,
+                  selectedOrgId: defaultSelectedOrgId(user, user.organization?.id || user.organizationId || null),
                   isAuthenticated: true,
                   isLoading: false,
                   hasHydrated: true,

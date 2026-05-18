@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Incident, WorkNote, Activity, Attachment, IncidentProblem, IncidentChange
 from apps.sla.models import TaskSLA
 from apps.accounts.serializers import UserSerializer
+from apps.organizations.models import Organization
 from apps.organizations.serializers import OrganizationSerializer
 from apps.sla.serializers import TaskSLASerializer
 from apps.sla.services import derive_incident_priority, get_sla_targets, apply_incident_sla_targets
@@ -107,6 +108,8 @@ class IncidentSerializer(serializers.ModelSerializer):
     linked_changes = IncidentChangeSerializer(many=True, read_only=True)
     task_slas = TaskSLASerializer(many=True, read_only=True)
     available_transitions = serializers.SerializerMethodField()
+    is_assigned_to_me = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
     parent = ParentIncidentSerializer(read_only=True)
     child_incidents = ParentIncidentSerializer(many=True, read_only=True)
     child_status_summary = serializers.ReadOnlyField()
@@ -129,7 +132,8 @@ class IncidentSerializer(serializers.ModelSerializer):
             'source_alert_id', 'source_alert_name', 'resolved_at', 'closed_at',
             'hold_reason', 'resolution_code', 'resolution_notes', 'organization',
             'work_notes', 'activities', 'attachments', 'linked_problems', 'linked_changes',
-            'task_slas', 'available_transitions', 'created_at', 'updated_at'
+            'task_slas', 'available_transitions', 'is_assigned_to_me', 'can_edit',
+            'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'number', 'created_by', 'created_at', 'updated_at',
@@ -149,22 +153,49 @@ class IncidentSerializer(serializers.ModelSerializer):
     def get_available_transitions(self, obj):
         return IncidentUpdateSerializer.TRANSITIONS.get(obj.state, [])
 
+    def get_is_assigned_to_me(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return False
+        from apps.common.permissions import is_assigned_to_service_record
+        return is_assigned_to_service_record(request.user, obj)
+
+    def get_can_edit(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return False
+        from apps.common.permissions import can_edit_service_record
+        return can_edit_service_record(request.user, obj)
+
 
 class IncidentCreateSerializer(serializers.ModelSerializer):
+    organization_id = serializers.PrimaryKeyRelatedField(
+        source='organization',
+        write_only=True,
+        required=False,
+        queryset=Organization.objects.filter(is_active=True),
+    )
+
     class Meta:
         model = Incident
         fields = [
             'short_description', 'description', 'impact', 'urgency',
             'category', 'subcategory', 'assigned_to', 'assignment_group',
             'config_item', 'source', 'requested_by', 'site', 'location',
-            'parent'
+            'parent', 'organization_id'
         ]
 
     def create(self, validated_data):
         from apps.common.utils import generate_record_number
+        from apps.common.permissions import is_service_desk_staff
         
         request = self.context['request']
-        organization = getattr(request, "organization", None) or request.user.organization
+        explicit_organization = validated_data.pop('organization', None)
+        organization = explicit_organization or getattr(request, "organization", None) or request.user.organization
+        if organization is None:
+            raise serializers.ValidationError({"organization_id": "Client organization is required."})
+        if not is_service_desk_staff(request.user) and organization.id != request.user.organization_id:
+            raise serializers.ValidationError({"organization_id": "Organization access denied."})
         
         validated_data['number'] = generate_record_number("INC", organization, "last_incident_number")
         validated_data['created_by'] = request.user
@@ -179,6 +210,22 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         )
         validated_data["sla_target_response"] = response_target
         validated_data["sla_target_resolution"] = resolution_target
+
+        if not validated_data.get('assignment_group'):
+            from django.db.models import Q
+            from apps.teams.models import Team
+
+            noc_group = (
+                Team.objects.filter(
+                    Q(organization=organization) | Q(organization__isnull=True),
+                    is_active=True,
+                )
+                .filter(Q(name__iexact="NOC") | Q(name__icontains="NOC") | Q(name__icontains="L1"))
+                .order_by("organization_id", "name")
+                .first()
+            )
+            if noc_group:
+                validated_data['assignment_group'] = noc_group
         
         from apps.assignments.services import resolve_assignment
         

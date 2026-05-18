@@ -41,7 +41,8 @@ interface CategoryFormData {
 
 function CatalogList() {
   const navigate = useNavigate();
-  const { canManage } = useAuth();
+  const { canManage, isClient } = useAuth();
+  const canConfigureCatalog = canManage('catalog') && !isClient;
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<CatalogItemType | ''>('');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -104,7 +105,7 @@ function CatalogList() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              {canManage('catalog') && (
+              {canConfigureCatalog && (
                 <>
                   <button
                     onClick={() => setShowCategoryModal(true)}

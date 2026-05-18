@@ -3,7 +3,7 @@ import {
   Zap, Plus, Search, Filter, MoreVertical, 
   Play, Power, Trash2, Edit3, ChevronRight,
   Shield, Bell, GitBranch, Terminal,
-  Clock, CheckCircle2, AlertCircle, X
+  Clock, CheckCircle2, AlertCircle, X, Loader2
 } from 'lucide-react';
 import { useAutomations, useCreateAutomation, useUpdateAutomation, useDeleteAutomation } from '../../hooks/useAutomations';
 import { clsx } from 'clsx';

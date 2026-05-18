@@ -13,7 +13,7 @@ const keys = {
 export function useCatalogCategories() {
   return useQuery({
     queryKey: keys.categories(),
-    queryFn: async () => { const { data } = await api.get('/catalog/categories'); return data; },
+    queryFn: async () => { const { data } = await api.get('/catalog/categories/'); return data; },
     staleTime: 60000,
   });
 }
@@ -24,7 +24,8 @@ export function useCatalogItems(filters: F = {}) {
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') params.append(k, String(v)); });
-      const { data } = await api.get(`/catalog/items?${params}`);
+      const query = params.toString();
+      const { data } = await api.get(`/catalog/items/${query ? `?${query}` : ''}`);
       return data;
     },
     staleTime: 30000,
@@ -34,7 +35,7 @@ export function useCatalogItems(filters: F = {}) {
 export function useCatalogItem(id: string) {
   return useQuery({
     queryKey: keys.detail(id),
-    queryFn: async () => { const { data } = await api.get(`/catalog/items/${id}`); return data; },
+    queryFn: async () => { const { data } = await api.get(`/catalog/items/${id}/`); return data; },
     staleTime: 60000,
     enabled: !!id,
   });
@@ -43,7 +44,7 @@ export function useCatalogItem(id: string) {
 export function useCreateCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/catalog/categories', input); return data; },
+    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/catalog/categories/', input); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.categories() }),
   });
 }
@@ -51,7 +52,7 @@ export function useCreateCategory() {
 export function useCreateCatalogItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/catalog/items', input); return data; },
+    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/catalog/items/', input); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
@@ -59,7 +60,7 @@ export function useCreateCatalogItem() {
 export function useUpdateCatalogItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/catalog/items/${id}`, d); return data; },
+    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/catalog/items/${id}/`, d); return data; },
     onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: keys.detail(v.id) }); qc.invalidateQueries({ queryKey: keys.all }); },
   });
 }
