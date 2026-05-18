@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -45,6 +45,19 @@ interface IncidentFormData {
   organizationId: string;
 }
 
+type IncidentFormValues = IncidentFormData & {
+  openedById: string;
+  siteId: string;
+  location: string;
+};
+
+type ConfigItemOption = {
+  id: string;
+  name: string;
+  hostname?: string;
+  type?: string;
+};
+
 const PRIORITY_MATRIX: Record<Impact, Record<Urgency, Priority>> = {
   ENTERPRISE: { CRITICAL: 'P1', HIGH: 'P1', MEDIUM: 'P2', LOW: 'P3' },
   DEPARTMENT: { CRITICAL: 'P1', HIGH: 'P2', MEDIUM: 'P2', LOW: 'P3' },
@@ -63,14 +76,26 @@ const CATEGORIES = ['Hardware', 'Software', 'Network', 'Database', 'Security', '
 const IMPACTS: Impact[] = ['ENTERPRISE', 'DEPARTMENT', 'TEAM', 'INDIVIDUAL'];
 const URGENCIES: Urgency[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 const SOURCES: Source[] = ['MANUAL', 'API', 'EMAIL', 'VOICE', 'SLACK'];
+const LOCATIONS = ['Bangalore', 'Mumbai', 'Navi Mumbai', 'Chennai', 'GIFT City', 'Kolkata'];
 
 function labelize(value: string): string {
   return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function personLabel(user: any): string {
+function personLabel(user: unknown): string {
   const label = assignmentPersonLabel(user);
   return label === 'Unassigned' ? 'Unknown user' : label;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object') {
+    const candidate = error as {
+      message?: string;
+      response?: { data?: { error?: string; message?: string } };
+    };
+    return candidate.response?.data?.error || candidate.response?.data?.message || candidate.message || fallback;
+  }
+  return fallback;
 }
 
 function nowForHeader(): string {
@@ -95,41 +120,43 @@ export default function IncidentCreate() {
     queryKey: ['teams'],
     queryFn: async () => { const { data } = await api.get('/teams'); return data; },
     staleTime: 60000,
-    enabled: !isClient,
+    enabled: Boolean(currentUser),
   });
   const { data: assetsData } = useQuery({
     queryKey: ['assets'],
     queryFn: async () => { const { data } = await api.get('/assets'); return data; },
     staleTime: 60000,
-    enabled: !isClient,
-  });
-  const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => { const { data } = await api.get('/auth/users?limit=200'); return data; },
-    staleTime: 60000,
-    enabled: !isClient,
+    enabled: Boolean(currentUser),
   });
   const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => { const { data } = await api.get('/organizations/'); return data; },
     staleTime: 60000,
-    enabled: currentUser?.role !== 'CLIENT',
+    enabled: Boolean(currentUser),
   });
 
   const teams = orderedAssignmentTeams((teamsData?.data || []) as AssignmentRosterTeam[]);
-  const configItems: { id: string; name: string; hostname?: string }[] = assetsData?.data || [];
-  const users: any[] = usersData?.data || [];
-  const organizations: { id: string; name: string }[] = Array.isArray(organizationsData)
+  const configItems: ConfigItemOption[] = assetsData?.data || [];
+  const organizationsFromApi: { id: string; name: string }[] = Array.isArray(organizationsData)
     ? organizationsData
     : organizationsData?.data || [];
+  const currentOrganization =
+    currentUser?.organization && typeof currentUser.organization === 'object' && currentUser.organization.id
+      ? { id: currentUser.organization.id, name: currentUser.organization.name || 'Current client' }
+      : null;
+  const organizations = organizationsFromApi.length > 0
+    ? organizationsFromApi
+    : currentOrganization
+      ? [currentOrganization]
+      : [];
 
-    const {
+  const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     formState: { errors },
-  } = useForm<IncidentFormData & { openedById: string; siteId: string; location: string }>({
+  } = useForm<IncidentFormValues>({
     defaultValues: {
       shortDescription: '',
       description: '',
@@ -153,15 +180,15 @@ export default function IncidentCreate() {
     queryKey: ['sites'],
     queryFn: async () => { const { data } = await api.get('/assets/sites'); return data; },
     staleTime: 60000,
-    enabled: !isClient,
+    enabled: Boolean(currentUser),
   });
   const sites: { id: string; name: string }[] = sitesData?.data || [];
 
   useEffect(() => {
-    if (currentUser?.id && !watch('openedById')) {
+    if (currentUser?.id) {
       setValue('openedById', currentUser.id);
     }
-  }, [currentUser, setValue, watch]);
+  }, [currentUser?.id, setValue]);
 
   useEffect(() => {
     const clone = (location.state as { clone?: Partial<IncidentFormData> } | null)?.clone;
@@ -171,35 +198,36 @@ export default function IncidentCreate() {
     });
   }, [location.state, setValue]);
 
-  const impact = watch('impact');
-  const urgency = watch('urgency');
+  const impact = useWatch({ control, name: 'impact' }) ?? 'TEAM';
+  const urgency = useWatch({ control, name: 'urgency' }) ?? 'MEDIUM';
   const priority = useMemo<Priority>(() => PRIORITY_MATRIX[impact][urgency], [impact, urgency]);
 
-  const category = watch('category');
-  const subcategory = watch('subcategory');
-  const assignmentGroupId = watch('assignmentGroupId');
-  const configItemId = watch('configItemId');
+  const category = useWatch({ control, name: 'category' }) ?? '';
+  const subcategory = useWatch({ control, name: 'subcategory' }) ?? '';
+  const assignmentGroupId = useWatch({ control, name: 'assignmentGroupId' }) ?? '';
+  const configItemId = useWatch({ control, name: 'configItemId' }) ?? '';
 
   const teamMembers = assignableUsersForTeam(teams, assignmentGroupId);
 
   const { data: suggestion } = useAssignmentPreview({
     category,
     subcategory,
-    config_item_id: configItemId
-  }, !isClient);
+    config_item_id: configItemId || undefined
+  }, true);
 
-  const parentId = watch('parentId');
+  const parentId = useWatch({ control, name: 'parentId' }) ?? '';
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: IncidentFormValues) => {
     try {
       await createIncident.mutateAsync({
         ...data,
-        source: isClient ? 'MANUAL' : data.source,
+        assignedToId: isClient ? undefined : data.assignedToId || undefined,
+        source: data.source,
         requested_by: data.openedById,
         priority,
         state: 'NEW',
         assignment_group: data.assignmentGroupId || undefined,
-        assigned_to: data.assignedToId || undefined,
+        assigned_to: isClient ? undefined : data.assignedToId || undefined,
         config_item: data.configItemId || undefined,
         subcategory: data.subcategory || undefined,
         site: data.siteId || undefined,
@@ -209,8 +237,8 @@ export default function IncidentCreate() {
       });
       toast.success('Incident created successfully');
       navigate('/incidents');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || err?.message || 'Failed to create incident');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Failed to create incident'));
     }
   };
 
@@ -218,7 +246,7 @@ export default function IncidentCreate() {
     if (suggestion?.suggested_group) {
       setValue('assignmentGroupId', suggestion.suggested_group.id);
     }
-    if (suggestion?.suggested_user) {
+    if (!isClient && suggestion?.suggested_user) {
       setValue('assignedToId', suggestion.suggested_user.id);
     }
   };
@@ -226,9 +254,15 @@ export default function IncidentCreate() {
   // Auto-apply suggestion when category changes
   useEffect(() => {
     if (suggestion?.suggested_group) {
-      applySuggestion();
+      setValue('assignmentGroupId', suggestion.suggested_group.id);
     }
-  }, [suggestion]);
+    if (!isClient && suggestion?.suggested_user) {
+      setValue('assignedToId', suggestion.suggested_user.id);
+    }
+    if (isClient) {
+      setValue('assignedToId', '');
+    }
+  }, [isClient, suggestion, setValue]);
 
   return (
     <SNPage className="min-h-full" style={{ margin: '-24px', background: '#fff' }}>
@@ -271,7 +305,7 @@ export default function IncidentCreate() {
           <div className="px-6 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
             <span className="text-xs font-medium text-indigo-700">
               💡 Assignment Engine suggests: <b>{suggestion.suggested_group.name}</b> 
-              {suggestion.suggested_user ? ` → ${suggestion.suggested_user.name}` : ''}
+              {!isClient && suggestion.suggested_user ? ` → ${suggestion.suggested_user.name}` : ''}
             </span>
             <button type="button" className="text-xs font-bold text-indigo-800 hover:underline" onClick={applySuggestion}>
               Apply Suggestion
@@ -291,16 +325,14 @@ export default function IncidentCreate() {
               <SNReadOnly>{personLabel(currentUser)}</SNReadOnly>
               <input type="hidden" {...register('openedById')} />
             </SNRecordField>
-            {currentUser?.role !== 'CLIENT' && (
-              <SNRecordField label="Client" required>
-                <select className="sn-field" {...register('organizationId', { required: 'Client is required' })}>
-                  <option value="">-- Select client --</option>
-                  {organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>{organization.name}</option>
-                  ))}
-                </select>
-              </SNRecordField>
-            )}
+            <SNRecordField label="Client" required>
+              <select className="sn-field" {...register('organizationId', { required: 'Client is required' })}>
+                <option value="">-- Select client --</option>
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>{organization.name}</option>
+                ))}
+              </select>
+            </SNRecordField>
             <SNRecordField label="Category">
               <select className="sn-field" {...register('category')}>
                 <option value="">-- None --</option>
@@ -319,13 +351,11 @@ export default function IncidentCreate() {
                 <option value="other">Other</option>
               </select>
             </SNRecordField>
-            {!isClient && (
-              <SNRecordField label="Source">
-                <select className="sn-field" {...register('source')}>
-                  {SOURCES.map((source) => <option key={source} value={source}>{labelize(source)}</option>)}
-                </select>
-              </SNRecordField>
-            )}
+            <SNRecordField label="Source">
+              <select className="sn-field" {...register('source')}>
+                {SOURCES.map((source) => <option key={source} value={source}>{labelize(source)}</option>)}
+              </select>
+            </SNRecordField>
 
             <SNRecordField label="Impact">
               <select className="sn-field" {...register('impact')}>
@@ -339,63 +369,62 @@ export default function IncidentCreate() {
               </select>
             </SNRecordField>
             
+            <SNRecordField label="Assignment Group">
+              <select
+                className="sn-field"
+                {...register('assignmentGroupId', {
+                  onChange: () => setValue('assignedToId', ''),
+                })}
+              >
+                <option value="">-- None --</option>
+                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </SNRecordField>
             {!isClient && (
-              <>
-                <SNRecordField label="Assignment Group">
-                  <select
-                    className="sn-field"
-                    {...register('assignmentGroupId', {
-                      onChange: () => setValue('assignedToId', ''),
-                    })}
-                  >
-                    <option value="">-- None --</option>
-                    {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-                  </select>
-                </SNRecordField>
-                <SNRecordField label="Assigned To">
-                  <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
-                    <option value="">-- None --</option>
-                    {teamMembers.map((user: any) => (
-                      <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{personLabel(user)}</option>
-                    ))}
-                  </select>
-                  {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
-                </SNRecordField>
-              </>
-            )}
-
-            {!isClient && (
-              <SNRecordField label="Site">
-                <select className="sn-field" {...register('siteId')}>
+              <SNRecordField label="Assigned To">
+                <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                   <option value="">-- None --</option>
-                  {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {teamMembers.map((user) => (
+                    <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{personLabel(user)}</option>
+                  ))}
                 </select>
+                {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
               </SNRecordField>
             )}
+
+            <SNRecordField label="Site">
+              <select className="sn-field" {...register('siteId')}>
+                <option value="">-- None --</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </SNRecordField>
             <SNRecordField label="Location">
-              <input className="sn-field" placeholder="Physical location details" {...register('location')} />
+              <select className="sn-field" {...register('location')}>
+                <option value="">-- None --</option>
+                {LOCATIONS.map((location) => (
+                  <option key={location} value={location}>{location}</option>
+                ))}
+              </select>
             </SNRecordField>
 
-            {!isClient && (
-              <SNRecordField label="Configuration Item">
-                <select className="sn-field" {...register('configItemId')}>
-                  <option value="">-- None --</option>
-                  {configItems
-                    .filter((ci: any) => {
-                      if (!subcategory || subcategory === 'other') return true;
-                      const typeMap: Record<string, string> = {
-                        'server': 'SERVER',
-                        'firewall': 'FIREWALL',
-                        'switch': 'SWITCH',
-                        'software': 'SOFTWARE',
-                        'database': 'DATABASE'
-                      };
-                      return ci.type === typeMap[subcategory];
-                    })
-                    .map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
-                </select>
-              </SNRecordField>
-            )}
+            <SNRecordField label="Configuration Item">
+              <select className="sn-field" {...register('configItemId')}>
+                <option value="">-- None --</option>
+                {configItems
+                  .filter((ci) => {
+                    if (!subcategory || subcategory === 'other') return true;
+                    const typeMap: Record<string, string> = {
+                      'server': 'SERVER',
+                      'firewall': 'FIREWALL',
+                      'switch': 'SWITCH',
+                      'software': 'SOFTWARE',
+                      'database': 'DATABASE'
+                    };
+                    return ci.type === typeMap[subcategory];
+                  })
+                  .map((ci) => <option key={ci.id} value={ci.id}>{ci.hostname || ci.name}</option>)}
+              </select>
+            </SNRecordField>
             <SNRecordField label="Short Description" required>
               <input
                 className="sn-field"

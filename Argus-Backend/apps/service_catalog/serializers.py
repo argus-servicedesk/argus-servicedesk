@@ -34,6 +34,9 @@ def _active_organization_for_request(request):
     organization = getattr(request, "organization", None)
     if organization:
         return organization
+    organization = getattr(request.user, "organization", None)
+    if organization:
+        return organization
     if is_service_desk_staff(request.user):
         return Organization.objects.filter(is_active=True).order_by("name").first()
     return None

@@ -16,6 +16,7 @@ import {
 import { useChanges } from '../../hooks/useChanges';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
 import { useAuth } from '../../hooks/useAuth';
+import clsx from 'clsx';
 
 type SortField = 'number' | 'type' | 'state' | 'risk' | 'shortDescription' | 'plannedStartDate' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -147,29 +148,66 @@ function compareValues(a: string | number, b: string | number, dir: SortDir): nu
   return dir === 'asc' ? result : -result;
 }
 
-function SortButton({
+interface FilterOption {
+  value: string;
+  label: string;
+}
+
+function HeaderSortFilter({
   field,
   activeField,
   sortDir,
-  children,
+  label,
   onSort,
+  filterValue,
+  onFilterChange,
+  options,
 }: {
   field: SortField;
   activeField: SortField;
   sortDir: SortDir;
-  children: string;
+  label: string;
   onSort: (field: SortField) => void;
+  filterValue?: string;
+  onFilterChange?: (val: string) => void;
+  options?: FilterOption[];
 }) {
   const active = field === activeField;
   return (
-    <button type="button" onClick={() => onSort(field)} className="flex w-full items-center justify-between gap-2 text-left">
-      <span>{children}</span>
-      {active ? (
-        sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-      ) : (
-        <ChevronDown size={14} style={{ color: '#98a2b3' }} />
+    <div className="flex items-center justify-between gap-1 w-full text-[11px] font-bold uppercase tracking-wider text-slate-700">
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className="flex items-center gap-1 hover:text-slate-900 text-left flex-1"
+      >
+        <span>{label}</span>
+        {active && (
+          sortDir === 'asc' ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-500" />
+        )}
+      </button>
+      {onFilterChange && options && (
+        <div className="relative flex items-center justify-center w-4 h-4 rounded hover:bg-slate-200 cursor-pointer">
+          <select
+            value={filterValue ?? ''}
+            onChange={(e) => onFilterChange(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            title={`Filter by ${label}`}
+          >
+            <option value="">All</option>
+            {options.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown
+            size={12}
+            className={clsx(
+              "pointer-events-none",
+              filterValue ? "text-blue-600 font-extrabold stroke-[3]" : "text-slate-400"
+            )}
+          />
+        </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -294,27 +332,12 @@ export default function ChangeList() {
                 placeholder="Search changes"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Filter size={16} style={{ color: '#667085' }} />
-              <select value={type} onChange={(event) => { setType(event.target.value); setPage(1); }} className="sn-list-select">
-                <option value="">Type: All</option>
-                {TYPES.map((item) => <option key={item} value={item}>{typeLabel[item]}</option>)}
-              </select>
-              <select value={state} onChange={(event) => { setState(event.target.value); setPage(1); }} className="sn-list-select">
-                <option value="">State: All</option>
-                {STATES.map((item) => <option key={item} value={item}>{stateLabel[item]}</option>)}
-              </select>
-              <select value={risk} onChange={(event) => { setRisk(event.target.value); setPage(1); }} className="sn-list-select">
-                <option value="">Risk: All</option>
-                {RISKS.map((item) => <option key={item} value={item}>{item.charAt(0) + item.slice(1).toLowerCase()}</option>)}
-              </select>
-              {hasFilters && (
-                <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
-                  <X size={14} />
-                  Clear
-                </button>
-              )}
-            </div>
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
+                <X size={14} />
+                Clear Filters
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-[12px]" style={{ color: '#667085' }}>
@@ -366,15 +389,41 @@ export default function ChangeList() {
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Select all changes" /></th>
-                  <th title="Assigned to you directly or through your team">Mine</th>
-                  <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
-                  <th><SortButton field="type" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Type</SortButton></th>
-                  <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
-                  <th><SortButton field="risk" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Risk</SortButton></th>
-                  <th><SortButton field="shortDescription" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Short description</SortButton></th>
-                  <th>Requested by</th>
-                  <th><SortButton field="plannedStartDate" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Planned start</SortButton></th>
-                  <th><SortButton field="createdAt" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Created</SortButton></th>
+                  <th className="text-[11px] font-bold uppercase tracking-wider text-slate-700" title="Assigned to you directly or through your team">Mine</th>
+                  <th>
+                    <HeaderSortFilter field="number" activeField={sortField} sortDir={sortDir} label="Number" onSort={handleSort} />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="type" activeField={sortField} sortDir={sortDir} label="Type" onSort={handleSort}
+                      filterValue={type} onFilterChange={(val) => { setType(val); setPage(1); }}
+                      options={TYPES.map(t => ({ value: t, label: typeLabel[t] }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="state" activeField={sortField} sortDir={sortDir} label="State" onSort={handleSort}
+                      filterValue={state} onFilterChange={(val) => { setState(val); setPage(1); }}
+                      options={STATES.map(s => ({ value: s, label: stateLabel[s] }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="risk" activeField={sortField} sortDir={sortDir} label="Risk" onSort={handleSort}
+                      filterValue={risk} onFilterChange={(val) => { setRisk(val); setPage(1); }}
+                      options={RISKS.map(r => ({ value: r, label: r.charAt(0) + r.slice(1).toLowerCase() }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter field="shortDescription" activeField={sortField} sortDir={sortDir} label="Short description" onSort={handleSort} />
+                  </th>
+                  <th className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Requested by</th>
+                  <th>
+                    <HeaderSortFilter field="plannedStartDate" activeField={sortField} sortDir={sortDir} label="Planned start" onSort={handleSort} />
+                  </th>
+                  <th>
+                    <HeaderSortFilter field="createdAt" activeField={sortField} sortDir={sortDir} label="Created" onSort={handleSort} />
+                  </th>
                 </tr>
               </thead>
               <tbody>

@@ -140,9 +140,12 @@ class ChangeCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from apps.common.utils import generate_record_number
 
-        organization = self.context['request'].organization
+        request = self.context['request']
+        organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
+        if organization is None:
+            raise serializers.ValidationError("User must belong to an organisation to create a change.")
         validated_data['number'] = generate_record_number("CHG", organization, "last_change_number")
-        validated_data['created_by'] = self.context['request'].user
+        validated_data['created_by'] = request.user
         validated_data['organization'] = organization
 
         # Emergency changes skip straight to IMPLEMENTING

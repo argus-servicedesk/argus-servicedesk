@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
-  BookOpen,
   Building2,
   Bug,
   CalendarClock,
@@ -16,7 +15,6 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardCheck,
-  ClipboardList,
   Clock,
   Eye,
   GitBranch,
@@ -88,18 +86,10 @@ const navGroups: NavGroup[] = [
     icon: LifeBuoy,
     items: [
       { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
+      { to: '/service-requests', icon: ClipboardCheck, label: 'Service Requests' },
       { to: '/problems', icon: Bug, label: 'Problems', roles: SUPPORT_AND_CLIENT_ROLES },
       { to: '/changes', icon: GitBranch, label: 'Changes', roles: SUPPORT_AND_CLIENT_ROLES },
       { to: '/changes/calendar', icon: CalendarDays, label: 'Change Calendar', roles: SUPPORT_AND_CLIENT_ROLES },
-    ],
-  },
-  {
-    label: 'Self Service',
-    icon: ClipboardList,
-    items: [
-      { to: '/catalog', icon: Package, label: 'Catalog' },
-      { to: '/service-requests', icon: ClipboardCheck, label: 'Service Requests' },
-      { to: '/kb', icon: BookOpen, label: 'Knowledge Base' },
     ],
   },
   {

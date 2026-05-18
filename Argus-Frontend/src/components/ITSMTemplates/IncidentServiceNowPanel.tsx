@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SNPage, SNRecordHeader, SNCollapsibleSection, SNFieldGrid, SNFormRow, SNPillBadge, SNReadOnly, SNProcessRibbon, SNRelatedList, SNEmptyRelatedList, sn, SNModal, SNLabel } from './ServiceNowUI';
 import { Upload, AlertCircle, CheckCircle2, ArrowUpCircle, XCircle, TrendingUp, Link2, Users, BarChart3, CheckSquare, Square } from 'lucide-react';
 import api from '../../lib/api';
-import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateIncident, usePromoteIncidentToProblem, useChildBulkOperations } from '../../hooks/useIncidents';
+import { useResolveIncident, useReopenIncident, useCloseIncident, useEscalateIncident, usePromoteIncidentToProblem, useChildBulkOperations, useAddWorkNote } from '../../hooks/useIncidents';
 import { useAuth } from '../../hooks/useAuth';
 import type { Incident, Priority } from '../../types';
 import IncidentBreadcrumb from '../Incidents/IncidentBreadcrumb';
@@ -181,6 +181,7 @@ export default function IncidentServiceNowPanel({
   const escalateIncident = useEscalateIncident();
   const promoteToProb = usePromoteIncidentToProblem();
   const childBulkOps = useChildBulkOperations();
+  const addWorkNote = useAddWorkNote(incidentId);
   const [shortDescription, setShortDescription] = useState(incident.shortDescription || '');
   const [description, setDescription] = useState(incident.description || '');
   const [impact, setImpact] = useState(incident.impact);
@@ -192,6 +193,7 @@ export default function IncidentServiceNowPanel({
   const [resolutionCode, setResolutionCode] = useState(incident.resolutionCode || '');
   const [resolutionNotes, setResolutionNotes] = useState(incident.resolutionNotes || '');
   const [escalationReason, setEscalationReason] = useState('');
+  const [newWorkNote, setNewWorkNote] = useState('');
   const [reopenReason, setReopenReason] = useState('');
   const [promoteConfirm, setPromoteConfirm] = useState(false);
   const [showResolutionModal, setShowResolutionModal] = useState(false);
@@ -311,6 +313,22 @@ export default function IncidentServiceNowPanel({
       toast.error(err.response?.data?.error || err.response?.data?.message || 'Assignment update failed');
     } finally {
       setAssignmentSaving(false);
+    }
+  }
+
+  async function handleAddWorkNote() {
+    const content = newWorkNote.trim();
+    if (!content) {
+      toast.error('Notes are required');
+      return;
+    }
+
+    try {
+      await addWorkNote.mutateAsync({ content, isInternal: !isClient });
+      setNewWorkNote('');
+      toast.success('Note added');
+    } catch {
+      toast.error('Failed to add note');
     }
   }
 
@@ -771,6 +789,28 @@ export default function IncidentServiceNowPanel({
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={!canEditIncident}
               />
+            </SNFormRow>
+            <SNFormRow label="Notes" fullWidth>
+              <div className="flex w-full flex-col gap-2">
+                <textarea
+                  className="sn-field leading-relaxed"
+                  rows={4}
+                  value={newWorkNote}
+                  onChange={(e) => setNewWorkNote(e.target.value)}
+                  placeholder="Add notes for this incident"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="sn-soft-button inline-flex items-center gap-2"
+                    onClick={handleAddWorkNote}
+                    disabled={!newWorkNote.trim() || addWorkNote.isPending}
+                  >
+                    {addWorkNote.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+                    Add Note
+                  </button>
+                </div>
+              </div>
             </SNFormRow>
             <SNFormRow label="Resolution Notes" fullWidth>
               <textarea

@@ -291,7 +291,7 @@ export default function ChangeCreate() {
             )}
 
             {!isClient && (
-              <SNRecordField label="Assigned To">
+              <SNRecordField label="Performed by">
                 <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                   <option value="">-- None --</option>
                   {teamMembers.map((user: any) => (

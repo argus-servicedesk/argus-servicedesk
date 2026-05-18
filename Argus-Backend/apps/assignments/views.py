@@ -1,6 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from uuid import UUID
 from apps.common.mixins import OrgQuerysetMixin
 from apps.common.responses import success, failure
 from apps.teams.models import Team, TeamMember
@@ -52,15 +53,26 @@ class AssignmentPreviewView(APIView):
 
     def post(self, request):
         from apps.incidents.models import Incident
+
+        organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
+        if organization is None:
+            return failure("Organization access denied", status_code=403)
+
+        config_item_id = request.data.get("config_item_id") or None
+        if config_item_id is not None:
+            try:
+                config_item_id = str(UUID(str(config_item_id)))
+            except (AttributeError, TypeError, ValueError):
+                return failure("config_item_id must be a valid UUID", status_code=400)
         
         # Build a temporary incident object (not saved)
         temp_incident = Incident(
-            organization=request.organization,
+            organization=organization,
             category=request.data.get("category"),
             subcategory=request.data.get("subcategory"),
             impact=request.data.get("impact", "TEAM"),
             urgency=request.data.get("urgency", "MEDIUM"),
-            config_item_id=request.data.get("config_item_id")
+            config_item_id=config_item_id
         )
         
         group, individual = resolve_assignment(temp_incident)

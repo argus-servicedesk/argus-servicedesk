@@ -251,7 +251,7 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict) -> dict:
         request = self.context["request"]
-        organization = getattr(request, "organization", None)
+        organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
         if organization is None:
             return attrs
 
@@ -275,7 +275,7 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Problem:
         request = self.context["request"]
-        org = getattr(request, "organization", None)
+        org = getattr(request, "organization", None) or getattr(request.user, "organization", None)
 
         if org is None:
             raise serializers.ValidationError(

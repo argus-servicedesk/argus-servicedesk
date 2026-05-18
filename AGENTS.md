@@ -1,13 +1,13 @@
 <claude-mem-context>
 # Memory Context
 
-# [argus-servicedesk] recent context, 2026-05-18 12:14pm GMT+5:30
+# [argus-servicedesk] recent context, 2026-05-18 1:30pm GMT+5:30
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (19,915t read) | 586,331t work | 97% savings
+Stats: 50 obs (19,537t read) | 1,169,644t work | 98% savings
 
 ### Apr 24, 2026
 S20 User communication preference stored in claude-mem memory (Apr 24, 11:57 AM)
@@ -21,9 +21,6 @@ S26 Frontend Rebuilt Successfully With Auth Store Fixes — New dist/ Contains P
 S27 Full-stack audit and fix for Argus ServiceDesk routing bug — all routes rendering Incidents page content instead of their own components (Apr 24, 12:29 PM)
 S28 Incidents detail page (UUID 48f6ae02-cc0d-4aa7-bb4a-d7d1ee2ff3fe) showing blank white page — root cause found and fixed across three backend apps (Apr 24, 12:54 PM)
 ### May 17, 2026
-656 4:57p 🔵 Two Submit Buttons Cause Playwright Strict Mode Violation — Catalog Item Selection Updates Placeholder
-657 4:58p 🔵 Catalog Item Selection Fully Drives Dynamic State — VPN Item Has Custom formSchema Fields
-658 4:59p 🟣 ServiceRequestCreate End-to-End Submit Verified — Request REQ202600003 Created Successfully
 659 5:01p ✅ ServiceRequestList.tsx Deleted — Rewrite to Match IncidentList SNPage Layout Underway
 660 5:04p 🟣 ServiceRequestList.tsx Rebuilt with SNPage sn-list-shell Pattern Matching IncidentList
 661 " 🔴 ServiceRequestList Build Fails — Dual User Interface Causes first_name/username TypeScript Errors
@@ -72,6 +69,9 @@ S28 Incidents detail page (UUID 48f6ae02-cc0d-4aa7-bb4a-d7d1ee2ff3fe) showing bl
 703 " 🔴 Fixed Wide-Row CSS Grid Layout in `ServiceNowUI.tsx` — Label Class and Column Span
 704 6:43a ✅ Argus Frontend Production Build Succeeds After `ServiceNowUI.tsx` Layout Fix
 705 12:13p 🔵 Admin Unable to Assign Groups and People
+706 12:14p 🔴 Admin Assignment Group and Person Fields Now Editable in Problem Detail Panel
+707 " 🟣 New Django Management Command sync_assignment_teams Created
+708 " 🔵 TeamMembersFilteredView Returns Empty for Cross-Org Admin Sessions
 
-Access 586k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 1170k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

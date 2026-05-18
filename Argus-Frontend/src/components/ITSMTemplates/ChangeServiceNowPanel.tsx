@@ -373,7 +373,7 @@ export default function ChangeServiceNowPanel({
             )}
           </SNFormRow>
 
-          <SNFormRow label="Assigned to">
+          <SNFormRow label="Performed by">
             {canAssign ? (
               <select
                 className="sn-field"

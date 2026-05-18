@@ -119,30 +119,66 @@ function compareValues(a: string | number, b: string | number, dir: SortDir): nu
     : String(a).localeCompare(String(b));
   return dir === 'asc' ? result : -result;
 }
+interface FilterOption {
+  value: string;
+  label: string;
+}
 
-function SortButton({
+function HeaderSortFilter({
   field,
   activeField,
   sortDir,
-  children,
+  label,
   onSort,
+  filterValue,
+  onFilterChange,
+  options,
 }: {
   field: SortField;
   activeField: SortField;
   sortDir: SortDir;
-  children: string;
+  label: string;
   onSort: (field: SortField) => void;
+  filterValue?: string;
+  onFilterChange?: (val: string) => void;
+  options?: FilterOption[];
 }) {
   const active = field === activeField;
   return (
-    <button type="button" onClick={() => onSort(field)} className="flex w-full items-center justify-between gap-2 text-left">
-      <span>{children}</span>
-      {active ? (
-        sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-      ) : (
-        <ChevronDown size={14} style={{ color: '#98a2b3' }} />
+    <div className="flex items-center justify-between gap-1 w-full text-[11px] font-bold uppercase tracking-wider text-slate-700">
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className="flex items-center gap-1 hover:text-slate-900 text-left flex-1"
+      >
+        <span>{label}</span>
+        {active && (
+          sortDir === 'asc' ? <ChevronUp size={12} className="text-slate-500" /> : <ChevronDown size={12} className="text-slate-500" />
+        )}
+      </button>
+      {onFilterChange && options && (
+        <div className="relative flex items-center justify-center w-4 h-4 rounded hover:bg-slate-200 cursor-pointer">
+          <select
+            value={filterValue ?? ''}
+            onChange={(e) => onFilterChange(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            title={`Filter by ${label}`}
+          >
+            <option value="">All</option>
+            {options.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <ChevronDown
+            size={12}
+            className={clsx(
+              "pointer-events-none",
+              filterValue ? "text-blue-600 font-extrabold stroke-[3]" : "text-slate-400"
+            )}
+          />
+        </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -197,6 +233,13 @@ export default function IncidentList() {
   const [page, setPage] = useState(1);
   const [assignedToMe, setAssignedToMe] = useState(false);
 
+  // Additional Filter States
+  const [selectedAssignedTo, setSelectedAssignedTo] = useState('');
+  const [selectedAssignmentGroup, setSelectedAssignmentGroup] = useState('');
+  const [selectedOpened, setSelectedOpened] = useState('');
+  const [selectedSla, setSelectedSla] = useState('');
+  const [selectedSource, setSelectedSource] = useState('');
+
   const { data, isLoading, isError, refetch, isFetching } = useIncidents({
     page,
     limit: PAGE_SIZE,
@@ -212,10 +255,65 @@ export default function IncidentList() {
   const pagination = data?.pagination;
   const totalItems = pagination?.total ?? incidents.length;
   const totalPages = pagination?.totalPages ?? pagination?.pages ?? Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
-  const hasFilters = Boolean(search || priority || state);
+  
+  const hasFilters = Boolean(
+    search || 
+    priority || 
+    state || 
+    selectedAssignedTo || 
+    selectedAssignmentGroup || 
+    selectedOpened || 
+    selectedSla || 
+    selectedSource
+  );
+
+  const uniqueAssignedTo = useMemo(() => {
+    return Array.from(new Set(incidents.map(i => displayName(i.assignedTo)).filter(Boolean))).sort();
+  }, [incidents]);
+
+  const uniqueAssignmentGroups = useMemo(() => {
+    return Array.from(new Set(incidents.map(i => i.assignmentGroup?.name).filter(Boolean))).sort();
+  }, [incidents]);
+
+  const uniqueSources = useMemo(() => {
+    return Array.from(new Set(incidents.map(i => i.source || i.category).filter(Boolean))).sort();
+  }, [incidents]);
 
   const rows = useMemo(() => {
-    return [...incidents].sort((a, b) => {
+    let result = [...incidents];
+
+    if (selectedAssignedTo) {
+      result = result.filter(i => displayName(i.assignedTo) === selectedAssignedTo);
+    }
+    if (selectedAssignmentGroup) {
+      result = result.filter(i => i.assignmentGroup?.name === selectedAssignmentGroup);
+    }
+    if (selectedSource) {
+      result = result.filter(i => (i.source || i.category) === selectedSource);
+    }
+    if (selectedSla) {
+      const isBreached = selectedSla === 'Breached';
+      result = result.filter(i => !!i.slaBreached === isBreached);
+    }
+    if (selectedOpened) {
+      const now = new Date();
+      result = result.filter(i => {
+        if (!i.createdAt) return false;
+        const createdDate = new Date(i.createdAt);
+        const diffTime = Math.abs(now.getTime() - createdDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (selectedOpened === 'Today') {
+          return diffDays <= 1;
+        } else if (selectedOpened === 'Last 7 Days') {
+          return diffDays <= 7;
+        } else if (selectedOpened === 'Last 30 Days') {
+          return diffDays <= 30;
+        }
+        return true;
+      });
+    }
+
+    return result.sort((a, b) => {
       if (sortField === 'priority') {
         const rank: Record<string, number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
         return compareValues(rank[a.priority ?? ''] ?? 99, rank[b.priority ?? ''] ?? 99, sortDir);
@@ -228,7 +326,16 @@ export default function IncidentList() {
       }
       return compareValues(String(a[sortField] ?? ''), String(b[sortField] ?? ''), sortDir);
     });
-  }, [incidents, sortField, sortDir]);
+  }, [
+    incidents, 
+    sortField, 
+    sortDir, 
+    selectedAssignedTo, 
+    selectedAssignmentGroup, 
+    selectedSource, 
+    selectedSla, 
+    selectedOpened
+  ]);
 
   const openCount = incidents.filter((item) => !['RESOLVED', 'CLOSED', 'CANCELLED'].includes(item.state ?? '')).length;
   const p1Count = incidents.filter((item) => item.priority === 'P1').length;
@@ -249,6 +356,11 @@ export default function IncidentList() {
     setSearch('');
     setPriority('');
     setState('');
+    setSelectedAssignedTo('');
+    setSelectedAssignmentGroup('');
+    setSelectedOpened('');
+    setSelectedSla('');
+    setSelectedSource('');
     setPage(1);
   };
 
@@ -322,23 +434,12 @@ export default function IncidentList() {
                 placeholder="Search incidents"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Filter size={16} style={{ color: '#667085' }} />
-              <select value={priority} onChange={(event) => { setPriority(event.target.value); setPage(1); }} className="sn-list-select">
-                <option value="">Priority: All</option>
-                {PRIORITIES.map((item) => <option key={item} value={item}>{priorityLabel[item]}</option>)}
-              </select>
-              <select value={state} onChange={(event) => { setState(event.target.value); setPage(1); }} className="sn-list-select">
-                <option value="">State: All</option>
-                {STATES.map((item) => <option key={item} value={item}>{stateLabel[item]}</option>)}
-              </select>
-              {hasFilters && (
-                <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
-                  <X size={14} />
-                  Clear
-                </button>
-              )}
-            </div>
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className="sn-soft-button inline-flex items-center gap-2">
+                <X size={14} />
+                Clear Filters
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-[12px]" style={{ color: '#667085' }}>
@@ -377,7 +478,6 @@ export default function IncidentList() {
             <table className="sn-list-table">
               <colgroup>
                 <col style={{ width: 42 }} />
-                <col style={{ width: 64 }} />
                 <col style={{ width: 132 }} />
                 <col style={{ width: 80 }} />
                 <col style={{ width: 128 }} />
@@ -392,30 +492,125 @@ export default function IncidentList() {
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Select all incidents" /></th>
-                  <th title="Assigned to you directly or through your team">Mine</th>
-                  <th><SortButton field="number" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Number</SortButton></th>
-                  <th>Hierarchy</th>
-                  <th><SortButton field="priority" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Priority</SortButton></th>
-                  <th><SortButton field="state" activeField={sortField} sortDir={sortDir} onSort={handleSort}>State</SortButton></th>
-                  <th><SortButton field="shortDescription" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Short description</SortButton></th>
-                  <th><SortButton field="assignedTo" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Assigned to</SortButton></th>
-                  <th>Assignment group</th>
-                  <th><SortButton field="createdAt" activeField={sortField} sortDir={sortDir} onSort={handleSort}>Opened</SortButton></th>
-                  <th>SLA</th>
-                  <th>Source</th>
+                  <th>
+                    <HeaderSortFilter
+                      field="number"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Number"
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Hierarchy</th>
+                  <th>
+                    <HeaderSortFilter
+                      field="priority"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Priority"
+                      onSort={handleSort}
+                      filterValue={priority}
+                      onFilterChange={(val) => { setPriority(val); setPage(1); }}
+                      options={PRIORITIES.map(p => ({ value: p, label: priorityLabel[p] }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="state"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="State"
+                      onSort={handleSort}
+                      filterValue={state}
+                      onFilterChange={(val) => { setState(val); setPage(1); }}
+                      options={STATES.map(s => ({ value: s, label: stateLabel[s] }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="shortDescription"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Short description"
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="assignedTo"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Assigned to"
+                      onSort={handleSort}
+                      filterValue={selectedAssignedTo}
+                      onFilterChange={(val) => { setSelectedAssignedTo(val); setPage(1); }}
+                      options={uniqueAssignedTo.map(u => ({ value: u, label: u }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="createdAt"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Group"
+                      onSort={() => {}}
+                      filterValue={selectedAssignmentGroup}
+                      onFilterChange={(val) => { setSelectedAssignmentGroup(val); setPage(1); }}
+                      options={uniqueAssignmentGroups.map(u => ({ value: u ?? '', label: u ?? '' }))}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="createdAt"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Opened"
+                      onSort={handleSort}
+                      filterValue={selectedOpened}
+                      onFilterChange={(val) => { setSelectedOpened(val); setPage(1); }}
+                      options={[
+                        { value: 'Today', label: 'Today' },
+                        { value: 'Last 7 Days', label: 'Last 7 Days' },
+                        { value: 'Last 30 Days', label: 'Last 30 Days' }
+                      ]}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="createdAt"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="SLA"
+                      onSort={() => {}}
+                      filterValue={selectedSla}
+                      onFilterChange={(val) => { setSelectedSla(val); setPage(1); }}
+                      options={[
+                        { value: 'Active', label: 'Active' },
+                        { value: 'Breached', label: 'Breached' }
+                      ]}
+                    />
+                  </th>
+                  <th>
+                    <HeaderSortFilter
+                      field="createdAt"
+                      activeField={sortField}
+                      sortDir={sortDir}
+                      label="Source"
+                      onSort={() => {}}
+                      filterValue={selectedSource}
+                      onFilterChange={(val) => { setSelectedSource(val); setPage(1); }}
+                      options={uniqueSources.map(u => ({ value: u ?? '', label: u ?? '' }))}
+                    />
+                  </th>
                 </tr>
               </thead>
+
               <tbody>
                 {rows.map((incident) => {
                   const isMine = Boolean(incident.isAssignedToMe);
                   return (
                   <tr key={incident.id} className={isMine ? 'sn-row-mine' : undefined} onDoubleClick={() => navigate(`/incidents/${incident.id}`)}>
                     <td><input type="checkbox" aria-label={`Select ${incident.number}`} /></td>
-                    <td className="sn-ownership-cell">
-                      {isMine ? (
-                        <span className="sn-owned-badge" title="Assigned to you directly or through your team">Mine</span>
-                      ) : null}
-                    </td>
                     <td>
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/incidents/${incident.id}`)}>
                         {incident.number}

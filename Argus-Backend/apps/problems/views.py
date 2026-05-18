@@ -89,7 +89,8 @@ def _problem_queryset_for_request(request):
         if org_id:
             return queryset.filter(organization_id=org_id)
         return queryset
-    return queryset.filter(organization=request.organization)
+    organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
+    return queryset.filter(organization=organization)
 
 
 # ─── Mixins ───────────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ class OrgScopedMixin:
     """
 
     def _organization(self):
-        return getattr(self.request, "organization", None)
+        return getattr(self.request, "organization", None) or getattr(self.request.user, "organization", None)
 
 
 # ─── List / Create ────────────────────────────────────────────────────────────
