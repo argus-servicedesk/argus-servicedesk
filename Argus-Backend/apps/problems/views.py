@@ -29,9 +29,10 @@ from apps.common.mixins import OrgQuerysetMixin
 from apps.common.permissions import (
     DenyViewerMutations,
     ProblemTransitionRBAC,
+    can_assign_service_record,
     can_edit_service_record,
-    can_manage_service_desk,
     is_service_desk_staff,
+    user_has_any_permission,
 )
 from apps.common.pagination import DefaultPagination
 from apps.common.responses import failure, success
@@ -163,6 +164,14 @@ class ProblemListCreateView(OrgQuerysetMixin, OrgScopedMixin, generics.ListCreat
 
     def create(self, request, *args, **kwargs):
         try:
+            if not user_has_any_permission(request.user, "problem:create", "problem:manage"):
+                return failure("You do not have permission to create problems.", status_code=403)
+            if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not user_has_any_permission(
+                request.user,
+                "problem:assign",
+                "problem:manage",
+            ):
+                return failure("Only NOC, leads, or admins can set problem assignment.", status_code=403)
             if self._organization() is None:
                 return failure("Organisation context required.", status_code=400)
             serializer = self.get_serializer(data=request.data)
@@ -228,7 +237,7 @@ class ProblemDetailView(OrgQuerysetMixin, OrgScopedMixin, generics.RetrieveUpdat
             instance = self.get_object()
             if not can_edit_service_record(request.user, instance):
                 return failure("Only assigned engineers, NOC, leads, or admins can edit this problem.", status_code=403)
-            if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_manage_service_desk(request.user):
+            if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_assign_service_record(request.user, instance):
                 return failure("Only NOC, leads, or admins can change problem assignment.", status_code=403)
             tracked_before = {
                 field: _activity_value(getattr(instance, field, None))
@@ -400,6 +409,8 @@ class ProblemIncidentLinkView(OrgScopedMixin, APIView):
             return failure("Problem not found.", status_code=404)
         if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, problem):
             return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
+        if is_service_desk_staff(request.user) and not user_has_any_permission(request.user, "problem:link", "problem:manage"):
+            return failure("You do not have permission to link problems.", status_code=403)
 
         incident_id = request.data.get("incident_id") or request.data.get("incidentId")
         if not incident_id:
@@ -470,6 +481,8 @@ class ProblemChangeLinkView(OrgScopedMixin, APIView):
             return failure("Problem not found.", status_code=404)
         if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, problem):
             return failure("Only assigned engineers, NOC, leads, or admins can link changes.", status_code=403)
+        if is_service_desk_staff(request.user) and not user_has_any_permission(request.user, "problem:link", "problem:manage"):
+            return failure("You do not have permission to link problems.", status_code=403)
 
         change_id = request.data.get("change_id") or request.data.get("changeId")
         if not change_id:
@@ -528,6 +541,8 @@ class ProblemAiRcaView(OrgScopedMixin, APIView):
             return failure("Problem not found.", status_code=404)
         if not can_edit_service_record(request.user, problem):
             return failure("Only assigned engineers, NOC, leads, or admins can run RCA.", status_code=403)
+        if not user_has_any_permission(request.user, "problem:rca", "problem:manage"):
+            return failure("You do not have permission to run problem RCA.", status_code=403)
 
         try:
             problem = ProblemService.run_ai_rca(problem)
@@ -568,6 +583,8 @@ class ProblemRcaPatchView(OrgScopedMixin, APIView):
             return failure("Problem not found.", status_code=404)
         if not can_edit_service_record(request.user, problem):
             return failure("Only assigned engineers, NOC, leads, or admins can update RCA fields.", status_code=403)
+        if not user_has_any_permission(request.user, "problem:rca", "problem:manage"):
+            return failure("You do not have permission to update problem RCA fields.", status_code=403)
 
         allowed_fields = {"root_cause", "workaround", "permanent_fix"}
         update_data = {

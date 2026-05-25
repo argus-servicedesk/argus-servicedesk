@@ -64,6 +64,10 @@ INSTALLED_APPS = [
     "apps.reports",
     "apps.search",
     "apps.assets",
+    "apps.apm",
+    "apps.eod",
+    "apps.illbandwidth",
+    "apps.oms",
     "apps.webhooks",
     "apps.status",
     "apps.domain",
@@ -72,6 +76,7 @@ INSTALLED_APPS = [
     "apps.approvals",
     "apps.assignments",
     "apps.service_catalog",
+    "apps.learning",
 ]
 
 MIDDLEWARE = [
@@ -172,6 +177,34 @@ SIMPLE_JWT = {
     "SIGNING_KEY": JWT_SIGNING_KEY,
 }
 
+KEYCLOAK_ENABLED = os.getenv("KEYCLOAK_ENABLED", "true").lower() == "true"
+KEYCLOAK_ISSUER = os.getenv(
+    "KEYCLOAK_ISSUER",
+    "http://localhost:8082/realms/ArgusService%20Desk",
+).rstrip("/")
+KEYCLOAK_JWKS_URL = os.getenv(
+    "KEYCLOAK_JWKS_URL",
+    f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs",
+)
+KEYCLOAK_ALLOWED_CLIENTS = tuple(
+    client.strip()
+    for client in os.getenv("KEYCLOAK_ALLOWED_CLIENTS", "argus-frontend,Argus-Frontend").split(",")
+    if client.strip()
+)
+KEYCLOAK_RBAC_CLIENTS = tuple(
+    client.strip()
+    for client in os.getenv("KEYCLOAK_RBAC_CLIENTS", "Argus-Frontend,Argus-Backend").split(",")
+    if client.strip()
+)
+KEYCLOAK_AUTO_CREATE_USERS = os.getenv("KEYCLOAK_AUTO_CREATE_USERS", "true").lower() == "true"
+KEYCLOAK_DEFAULT_CLIENT_ORG = os.getenv("KEYCLOAK_DEFAULT_CLIENT_ORG", "").strip()
+KEYCLOAK_SYNC_LOCAL_ROLES = os.getenv("KEYCLOAK_SYNC_LOCAL_ROLES", "true").lower() == "true"
+KEYCLOAK_PASSWORD_LOGIN_ENABLED = os.getenv("KEYCLOAK_PASSWORD_LOGIN_ENABLED", "false").lower() == "true"
+KEYCLOAK_PASSWORD_GRANT_CLIENT_ID = os.getenv("KEYCLOAK_PASSWORD_GRANT_CLIENT_ID", "").strip()
+KEYCLOAK_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET", "").strip()
+KEYCLOAK_TOKEN_URL = os.getenv("KEYCLOAK_TOKEN_URL", "").strip()
+KEYCLOAK_TOKEN_TIMEOUT = int(os.getenv("KEYCLOAK_TOKEN_TIMEOUT", "10"))
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "Argus Service Desk Python API",
     "DESCRIPTION": "Production-grade Python backend for Argus Service Desk.",
@@ -192,6 +225,12 @@ PROMETHEUS_FILE_SD_PATH = os.getenv("PROMETHEUS_FILE_SD_PATH", "/etc/prometheus/
 ALERTMANAGER_URL = os.getenv("ALERTMANAGER_URL")
 if not DEBUG and not ALERTMANAGER_URL:
     raise ImproperlyConfigured("ALERTMANAGER_URL environment variable is required when DEBUG is False")
+
+# Inbound machine-to-machine webhook auth. LinkedEye sends this as:
+# Authorization: Bearer <ARGUS_API_TOKEN>
+ARGUS_WEBHOOK_API_TOKEN = os.getenv("ARGUS_WEBHOOK_API_TOKEN", os.getenv("ARGUS_API_TOKEN", "")).strip()
+ARGUS_WEBHOOK_SYSTEM_USER_EMAIL = os.getenv("ARGUS_WEBHOOK_SYSTEM_USER_EMAIL", "linkedeye.webhook@argus.local").strip()
+ARGUS_WEBHOOK_DEFAULT_ORG_SLUG = os.getenv("ARGUS_WEBHOOK_DEFAULT_ORG_SLUG", "").strip()
 
 # Default monitoring URLs for asset bootstrap
 ARGUS_DEFAULT_PROMETHEUS_URL = os.getenv("ARGUS_DEFAULT_PROMETHEUS_URL", "")

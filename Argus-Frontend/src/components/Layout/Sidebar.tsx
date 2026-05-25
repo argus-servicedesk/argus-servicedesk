@@ -20,6 +20,7 @@ import {
   GitBranch,
   GitMerge,
   Globe,
+  GraduationCap,
   Layers,
   LayoutDashboard,
   LifeBuoy,
@@ -27,7 +28,6 @@ import {
   LogOut,
   MapPin,
   Monitor,
-  Package,
   Phone,
   Plug,
   Radio,
@@ -93,6 +93,13 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: 'Learning',
+    icon: GraduationCap,
+    items: [
+      { to: '/learning', icon: GraduationCap, label: 'Learning Hub', roles: SUPPORT_ROLES },
+    ],
+  },
+  {
     label: 'Operations',
     icon: Activity,
     items: [
@@ -133,11 +140,7 @@ const navGroups: NavGroup[] = [
       { to: '/clients', icon: Building2, label: 'Clients', roles: LEAD_ROLES },
       { to: '/users', icon: Shield, label: 'Users', roles: LEAD_ROLES },
       { to: '/roles', icon: Lock, label: 'Roles & Permissions', roles: ['ADMIN'] },
-      { to: '/vendors', icon: Package, label: 'Vendors', roles: MANAGER_ROLES },
       { to: '/integrations', icon: Plug, label: 'Integrations', roles: ['ADMIN'] },
-      { to: '/workflows', icon: GitBranch, label: 'Workflows', roles: ['ADMIN'] },
-      { to: '/automations', icon: Zap, label: 'Automations', roles: ['ADMIN'] },
-      { to: '/assignment-rules', icon: GitMerge, label: 'Assignment Rules', roles: MANAGER_ROLES },
       { to: '/settings/sites', icon: MapPin, label: 'Sites', superAdminOnly: true },
       { to: '/audit', icon: ScrollText, label: 'Audit Log', roles: MANAGER_ROLES },
       { to: '/profile', icon: UserCircle, label: 'Profile' },
@@ -157,8 +160,10 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const navigate = useNavigate();
   const userRole = user?.role || 'VIEWER';
   const isSuperAdmin = userRole === 'ADMIN' && !user?.organization;
+  const firstName = user?.first_name || user?.firstName || '';
+  const lastName = user?.last_name || user?.lastName || '';
   const initials = user
-    ? `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
+    ? `${(firstName[0] || '').toUpperCase()}${(lastName[0] || '').toUpperCase()}`
     : 'U';
   const showLabels = mobileOpen || !collapsed;
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Overview', 'Service Management', 'Operations']));
@@ -300,7 +305,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 {initials}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-bold">{user.first_name} {user.last_name}</span>
+                <span className="block truncate text-[12px] font-bold">{firstName} {lastName}</span>
                 <span className="block truncate text-[10px] uppercase" style={{ color: '#667085' }}>{user.role}</span>
               </span>
               <span

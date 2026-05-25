@@ -184,7 +184,23 @@ class AssetSiteListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCrea
     def perform_create(self, serializer):
         name = serializer.validated_data.get("name")
         slug = serializer.validated_data.get("slug") or slugify(name)
-        serializer.save(organization=self.request.organization, slug=slug)
+        organization = serializer.validated_data.get("organization")
+        if not is_service_desk_staff(self.request.user):
+            organization = self.request.organization
+        if organization is None:
+            raise serializers.ValidationError({"organization_id": "Site must be linked to a client organization."})
+        serializer.save(organization=organization, slug=slug)
+
+
+class AssetSiteDetailView(AssetOrgMixin, OrgQuerysetMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = AssetSiteSerializer
+    queryset = AssetSite.objects.all()
+
+    def perform_update(self, serializer):
+        organization = serializer.validated_data.get("organization")
+        if organization is not None and not is_service_desk_staff(self.request.user):
+            raise PermissionDenied("Only service desk admins can move sites between clients.")
+        serializer.save()
 
 
 class AssetCatalogListCreateView(AssetOrgMixin, OrgQuerysetMixin, generics.ListCreateAPIView):

@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from rest_framework import serializers
 
-from apps.common.permissions import Roles
+from apps.common.permissions import Roles, is_service_desk_staff, user_has_any_permission, user_permission_codes
 from apps.organizations.models import Organization
 from apps.organizations.serializers import OrganizationSerializer
 from .models import Permission, Role
@@ -55,17 +56,60 @@ def ensure_role(role_name: str) -> Role:
     )[0]
 
 
+def _team_queryset_for_request(request):
+    from apps.teams.models import Team
+
+    queryset = Team.objects.filter(is_active=True)
+    if request is None:
+        return Team.objects.none()
+    if is_service_desk_staff(request.user):
+        return queryset
+    organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
+    if organization is None:
+        return Team.objects.none()
+    return queryset.filter(Q(organization=organization) | Q(organization__isnull=True))
+
+
+def _resolve_team_ids(request, team_ids):
+    if not team_ids:
+        return []
+    unique_ids = {str(team_id) for team_id in team_ids}
+    teams = list(_team_queryset_for_request(request).filter(id__in=unique_ids))
+    if len(teams) != len(unique_ids):
+        raise serializers.ValidationError({"team_ids": "One or more selected teams are not available."})
+    return teams
+
+
+def _sync_user_teams(user, teams):
+    from apps.teams.models import TeamMember
+
+    TeamMember.objects.filter(user=user).delete()
+    for team in teams:
+        TeamMember.objects.get_or_create(team=team, user=user)
+
+
 def primary_role_name(user) -> str:
-    names = list(user.roles.values_list("name", flat=True))
+    names = list(user.role_names)
     if names:
         return names[0]
     if getattr(user, "is_superuser", False):
         return Roles.SUPER_ADMIN
-    return Roles.CLIENT_USER
+    return ""
 
 
 def frontend_role(user) -> str:
-    return ROLE_TO_FRONTEND.get(primary_role_name(user), "VIEWER")
+    role = ROLE_TO_FRONTEND.get(primary_role_name(user))
+    if role:
+        return role
+    if user_has_any_permission(user, "user:manage", "settings:manage", "*:*"):
+        return "ADMIN"
+    if user_has_any_permission(user, "incident:assign", "problem:assign", "change:assign", "team:manage"):
+        return "MANAGER"
+    if user_has_any_permission(user, "incident:update", "problem:update", "change:update", "service_request:fulfill"):
+        return "ENGINEER"
+    if user_has_any_permission(user, "incident:create", "service_request:create"):
+        return "CLIENT"
+    return "VIEWER"
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -94,6 +138,9 @@ class UserSerializer(serializers.ModelSerializer):
     role_names = serializers.SerializerMethodField()
     roleNames = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    permissionCodes = serializers.SerializerMethodField()
+    teamMemberships = serializers.SerializerMethodField()
     role_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         write_only=True,
@@ -137,6 +184,9 @@ class UserSerializer(serializers.ModelSerializer):
             "role_names",
             "roleNames",
             "role",
+            "permissions",
+            "permissionCodes",
+            "teamMemberships",
             "role_ids",
             "organization",
             "organization_id",
@@ -169,6 +219,12 @@ class UserSerializer(serializers.ModelSerializer):
     def get_role(self, obj):
         return frontend_role(obj)
 
+    def get_permissions(self, obj):
+        return sorted(user_permission_codes(obj))
+
+    def get_permissionCodes(self, obj):
+        return self.get_permissions(obj)
+
     def get_organizationId(self, obj):
         return str(obj.organization_id) if obj.organization_id else None
 
@@ -176,6 +232,20 @@ class UserSerializer(serializers.ModelSerializer):
         if not obj.is_active or not obj.is_active_member:
             return "INACTIVE"
         return "ACTIVE"
+
+    def get_teamMemberships(self, obj):
+        memberships = obj.team_memberships.select_related("team").filter(team__is_active=True).order_by("team__name")
+        return [
+            {
+                "id": str(membership.id),
+                "role": membership.role,
+                "team": {
+                    "id": str(membership.team_id),
+                    "name": membership.team.name,
+                },
+            }
+            for membership in memberships
+        ]
 
 
 class ManagedUserCreateSerializer(serializers.Serializer):
@@ -187,6 +257,11 @@ class ManagedUserCreateSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     timezone = serializers.CharField(required=False, allow_blank=True)
     role_name = serializers.CharField(default=Roles.CLIENT_USER)
+    team_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        write_only=True,
+    )
     organization_id = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.filter(is_active=True),
         required=False,
@@ -203,11 +278,15 @@ class ManagedUserCreateSerializer(serializers.Serializer):
         role_name = attrs.get("role_name") or Roles.CLIENT_USER
         attrs["role_name"] = role_name
         organization = attrs.get("organization")
+        team_ids = attrs.get("team_ids", [])
 
         if role_name in CLIENT_ROLE_NAMES and organization is None:
             raise serializers.ValidationError(
                 {"organization_id": "Client users must be linked to a client organization."}
             )
+        if role_name in CLIENT_ROLE_NAMES and team_ids:
+            raise serializers.ValidationError({"team_ids": "Client users cannot be assigned to resolver teams."})
+        _resolve_team_ids(self.context.get("request"), team_ids)
 
         if role_name == Roles.SUPER_ADMIN:
             attrs["organization"] = None
@@ -216,6 +295,7 @@ class ManagedUserCreateSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         role_name = validated_data.pop("role_name")
+        team_ids = validated_data.pop("team_ids", [])
         password = validated_data.pop("password")
         user = User(**validated_data)
         user.set_password(password)
@@ -229,11 +309,18 @@ class ManagedUserCreateSerializer(serializers.Serializer):
                 }
             )
         user.roles.add(ensure_role(role_name))
+        if role_name not in CLIENT_ROLE_NAMES:
+            _sync_user_teams(user, _resolve_team_ids(self.context.get("request"), team_ids))
         return user
 
 
 class ManagedUserUpdateSerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(required=False)
+    team_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        write_only=True,
+    )
     organization_id = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.filter(is_active=True),
         source="organization",
@@ -251,6 +338,7 @@ class ManagedUserUpdateSerializer(serializers.ModelSerializer):
             "email",
             "username",
             "role_name",
+            "team_ids",
             "organization_id",
             "is_active",
             "is_active_member",
@@ -259,18 +347,29 @@ class ManagedUserUpdateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         role_name = attrs.get("role_name")
+        team_ids = attrs.get("team_ids", None)
         organization = attrs.get("organization", self.instance.organization if self.instance else None)
         if role_name in CLIENT_ROLE_NAMES and organization is None:
             raise serializers.ValidationError(
                 {"organization_id": "Client users must be linked to a client organization."}
             )
+        if role_name in CLIENT_ROLE_NAMES and team_ids:
+            raise serializers.ValidationError({"team_ids": "Client users cannot be assigned to resolver teams."})
+        if team_ids is not None:
+            _resolve_team_ids(self.context.get("request"), team_ids)
         return attrs
 
     def update(self, instance, validated_data):
         role_name = validated_data.pop("role_name", None)
+        team_ids = validated_data.pop("team_ids", None)
         instance = super().update(instance, validated_data)
         if role_name:
             instance.roles.set([ensure_role(role_name)])
+        active_role = role_name or primary_role_name(instance)
+        if active_role in CLIENT_ROLE_NAMES:
+            _sync_user_teams(instance, [])
+        elif team_ids is not None:
+            _sync_user_teams(instance, _resolve_team_ids(self.context.get("request"), team_ids))
         return instance
 
 

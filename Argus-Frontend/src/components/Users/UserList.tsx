@@ -5,12 +5,15 @@ import { KeyRound, Loader2, Search, UserPlus, Users } from 'lucide-react';
 import api from '../../lib/api';
 
 const ROLE_OPTIONS = [
-  { value: 'Client User', label: 'Client User' },
-  { value: 'Engineer', label: 'Engineer' },
+  { value: 'Super Admin', label: 'Super Admin' },
+  { value: 'Org Admin', label: 'Org Admin' },
+  { value: 'Manager', label: 'Manager' },
   { value: 'Team Lead', label: 'Team Lead' },
   { value: 'NOC', label: 'NOC / L1' },
-  { value: 'Manager', label: 'Manager' },
-  { value: 'Super Admin', label: 'Super Admin' },
+  { value: 'Operator', label: 'Operator' },
+  { value: 'Engineer', label: 'Engineer' },
+  { value: 'Client User', label: 'Client User' },
+  { value: 'Viewer', label: 'Viewer' },
 ];
 
 interface AccountForm {
@@ -20,6 +23,7 @@ interface AccountForm {
   last_name: string;
   role_name: string;
   organization_id: string;
+  team_ids: string[];
 }
 
 function extractList(payload: any): any[] {
@@ -30,7 +34,7 @@ function extractList(payload: any): any[] {
 }
 
 function displayName(user: any) {
-  return [user.firstName ?? user.first_name, user.lastName ?? user.last_name].filter(Boolean).join(' ') || user.email;
+  return [user.firstName ?? user.first_name, user.lastName ?? user.last_name].filter(Boolean).join(' ') || user.email || 'Unnamed user';
 }
 
 function primaryRole(user: any) {
@@ -44,6 +48,7 @@ const initialForm: AccountForm = {
   last_name: '',
   role_name: 'Client User',
   organization_id: '',
+  team_ids: [],
 };
 
 export default function UserList() {
@@ -75,6 +80,15 @@ export default function UserList() {
     staleTime: 60000,
   });
 
+  const teamsQuery = useQuery({
+    queryKey: ['teams', 'account-form'],
+    queryFn: async () => {
+      const { data } = await api.get('/teams/?limit=200&is_active=true');
+      return extractList(data);
+    },
+    staleTime: 60000,
+  });
+
   const createUser = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = {
@@ -83,12 +97,14 @@ export default function UserList() {
         must_change_password: true,
       };
       if (!form.organization_id) delete payload.organization_id;
+      if (!form.team_ids.length) delete payload.team_ids;
       const { data } = await api.post('/auth/users/', payload);
       return data;
     },
     onSuccess: () => {
       setForm(initialForm);
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
       toast.success('Account created');
     },
     onError: (error: any) => {
@@ -130,11 +146,12 @@ export default function UserList() {
     if (!q) return items;
     return items.filter((user) => {
       const org = user.organization?.name ?? '';
-      return `${displayName(user)} ${user.email} ${org}`.toLowerCase().includes(q);
+      return `${displayName(user)} ${user.email || ''} ${org}`.toLowerCase().includes(q);
     });
   }, [usersQuery.data, search]);
 
   const selectedRoleNeedsClient = form.role_name === 'Client User';
+  const selectedRoleCanJoinTeams = !['Client User', 'Viewer', 'Super Admin', 'Org Admin'].includes(form.role_name);
 
   return (
     <div className="min-h-full space-y-5 bg-slate-50 p-6">
@@ -155,7 +172,19 @@ export default function UserList() {
           <input className="rounded-md border px-3 py-2 text-sm lg:col-span-2" placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
           <input className="rounded-md border px-3 py-2 text-sm" placeholder="First name" value={form.first_name} onChange={(event) => setForm({ ...form, first_name: event.target.value })} />
           <input className="rounded-md border px-3 py-2 text-sm" placeholder="Last name" value={form.last_name} onChange={(event) => setForm({ ...form, last_name: event.target.value })} />
-          <select className="rounded-md border px-3 py-2 text-sm" value={form.role_name} onChange={(event) => setForm({ ...form, role_name: event.target.value })}>
+          <select
+            className="rounded-md border px-3 py-2 text-sm"
+            value={form.role_name}
+            onChange={(event) => {
+              const roleName = event.target.value;
+              setForm({
+                ...form,
+                role_name: roleName,
+                organization_id: roleName === 'Client User' ? form.organization_id : '',
+                team_ids: ['Client User', 'Viewer', 'Super Admin', 'Org Admin'].includes(roleName) ? [] : form.team_ids,
+              });
+            }}
+          >
             {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
           </select>
           <select className="rounded-md border px-3 py-2 text-sm" value={form.organization_id} onChange={(event) => setForm({ ...form, organization_id: event.target.value })} required={selectedRoleNeedsClient}>
@@ -163,7 +192,24 @@ export default function UserList() {
             {(clientsQuery.data ?? []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
           </select>
           <input className="rounded-md border px-3 py-2 text-sm lg:col-span-2" type="password" placeholder="Temporary password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required minLength={8} />
-          <button type="submit" disabled={createUser.isPending} className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 lg:col-span-4">
+          {selectedRoleCanJoinTeams ? (
+            <select
+              multiple
+              className="min-h-[42px] rounded-md border px-3 py-2 text-sm lg:col-span-4"
+              value={form.team_ids}
+              onChange={(event) => {
+                const teamIds = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                setForm({ ...form, team_ids: teamIds });
+              }}
+            >
+              {(teamsQuery.data ?? []).map((team) => (
+                <option key={team.id} value={team.id}>{team.name}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="hidden lg:block lg:col-span-4" />
+          )}
+          <button type="submit" disabled={createUser.isPending} className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 lg:col-span-6">
             {createUser.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
             Create Account
           </button>
@@ -198,6 +244,7 @@ export default function UserList() {
                 <tr>
                   <th className="px-4 py-3">User</th>
                   <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Teams</th>
                   <th className="px-4 py-3">Client</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -208,9 +255,14 @@ export default function UserList() {
                   <tr key={user.id} className="border-t" style={{ borderColor: '#eef2f7' }}>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">{displayName(user)}</div>
-                      <div className="text-xs text-slate-500">{user.email}</div>
+                      <div className="text-xs text-slate-500">{user.email || '-'}</div>
                     </td>
                     <td className="px-4 py-3">{primaryRole(user)}</td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {Array.isArray(user.teamMemberships) && user.teamMemberships.length > 0
+                        ? user.teamMemberships.map((membership: any) => membership.team?.name).filter(Boolean).join(', ')
+                        : 'None'}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{user.organization?.name ?? 'Internal'}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-1 text-xs font-semibold ${user.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>

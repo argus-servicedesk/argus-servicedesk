@@ -1,6 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.exceptions import PermissionDenied
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
@@ -22,14 +23,27 @@ class TeamListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
     queryset = Team.objects.all()
     
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = Team.objects.all()
+        if is_service_desk_staff(self.request.user):
+            org_id = (
+                self.request.query_params.get("organization")
+                or self.request.query_params.get("organization_id")
+                or getattr(self.request, "organization_id", None)
+            )
+            if org_id:
+                queryset = queryset.filter(Q(organization_id=org_id) | Q(organization__isnull=True))
+        else:
+            organization = getattr(self.request, "organization", None) or getattr(self.request.user, "organization", None)
+            if organization is None:
+                raise PermissionDenied("Organization access denied")
+            queryset = queryset.filter(Q(organization=organization) | Q(organization__isnull=True))
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) | 
                 Q(description__icontains=search)
             )
-        return queryset.select_related('manager').prefetch_related('members')
+        return queryset.select_related('manager').prefetch_related('members__user')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -61,7 +75,7 @@ class TeamDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
         return TeamSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related('manager').prefetch_related('members')
+        return super().get_queryset().select_related('manager').prefetch_related('members__user')
 
     def partial_update(self, request, *args, **kwargs):
         if not IsAdminOrManager().has_permission(request, self):

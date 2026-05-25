@@ -86,6 +86,17 @@ function shortAgent(ua?: string): string {
   return ua.slice(0, 20);
 }
 
+function uniqueStrings(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+    )
+  ).sort();
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AuditLogViewer() {
   const [page, setPage] = useState(1);
@@ -116,6 +127,7 @@ export default function AuditLogViewer() {
   const totalPages = pagination.pages || pagination.totalPages || 1;
   const total = pagination.total || 0;
   const activeAnomalies: Anomaly[] = anomalies || [];
+  const resourceTypeOptions = uniqueStrings(resourceTypes);
 
   const hasFilters = action || resourceType || (severity && severity !== 'ALL') || startDate || endDate;
 
@@ -247,8 +259,8 @@ export default function AuditLogViewer() {
             className="rounded-lg px-3 py-2 text-[12px] focus:outline-none"
             style={{ background: 'rgba(220,38,38,0.03)', border: '1px solid rgba(220,38,38,0.12)', color: '#DC2626' }}>
             <option value="" style={{ background: '#ffffff' }}>All Resources</option>
-            {(resourceTypes || []).map((t: string) => (
-              <option key={t} value={t} style={{ background: '#ffffff' }}>{t}</option>
+            {resourceTypeOptions.map((t) => (
+              <option key={`resource-${t}`} value={t} style={{ background: '#ffffff' }}>{t}</option>
             ))}
           </select>
 
@@ -317,7 +329,7 @@ export default function AuditLogViewer() {
               const hasDetails = entry.changes || entry.newData;
 
               return (
-                <div key={entry.id}>
+                <div key={entry.id || `${entry.createdAt}-${entry.action}-${idx}`}>
                   <div
                     className="grid px-4 py-3 items-center transition-colors cursor-pointer"
                     style={{

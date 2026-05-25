@@ -6,6 +6,7 @@ from apps.organizations.models import Organization
 from apps.organizations.serializers import OrganizationSerializer
 from apps.sla.serializers import TaskSLASerializer
 from apps.sla.services import derive_incident_priority, get_sla_targets, apply_incident_sla_targets
+from apps.assignments.validation import validate_assignment_attrs
 
 
 class IncidentProblemSerializer(serializers.ModelSerializer):
@@ -196,6 +197,7 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"organization_id": "Client organization is required."})
         if not is_service_desk_staff(request.user) and organization.id != request.user.organization_id:
             raise serializers.ValidationError({"organization_id": "Organization access denied."})
+        validate_assignment_attrs(validated_data, organization=organization)
         
         validated_data['number'] = generate_record_number("INC", organization, "last_incident_number")
         validated_data['created_by'] = request.user
@@ -278,6 +280,8 @@ class IncidentUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         instance = self.instance
+        organization = getattr(instance, "organization", None)
+        validate_assignment_attrs(attrs, organization=organization, instance=instance)
         target_state = attrs.get("state", instance.state if instance else Incident.State.NEW)
         resolution_code = attrs.get("resolution_code", instance.resolution_code if instance else None)
         resolution_notes = attrs.get("resolution_notes", instance.resolution_notes if instance else None)

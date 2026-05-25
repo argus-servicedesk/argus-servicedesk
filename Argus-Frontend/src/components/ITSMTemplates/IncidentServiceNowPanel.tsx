@@ -210,10 +210,13 @@ export default function IncidentServiceNowPanel({
   const [assignedToId, setAssignedToId] = useState(incident.assignedToId || incident.assignedTo?.id || '');
   const [assignmentSaving, setAssignmentSaving] = useState(false);
 
+  const incidentOrganizationId = (incident as any).organizationId || (incident as any).organization?.id || '';
   const teamsQuery = useQuery({
-    queryKey: ['assignment-teams'],
+    queryKey: ['assignment-teams', incidentOrganizationId],
     queryFn: async () => {
-      const { data } = await api.get('/teams/?limit=200&is_active=true');
+      const params = new URLSearchParams({ limit: '200', is_active: 'true' });
+      if (incidentOrganizationId) params.set('organization', incidentOrganizationId);
+      const { data } = await api.get(`/teams/?${params}`);
       return extractAssignmentList(data) as AssignmentRosterTeam[];
     },
     enabled: canAssign,

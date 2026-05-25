@@ -75,7 +75,7 @@ export default function ClientManagement() {
     const items = clientsQuery.data ?? [];
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((item) => item.name.toLowerCase().includes(q) || item.slug.toLowerCase().includes(q));
+    return items.filter((item) => String(item.name || '').toLowerCase().includes(q) || String(item.slug || '').toLowerCase().includes(q));
   }, [clientsQuery.data, search]);
 
   return (
@@ -150,7 +150,7 @@ export default function ClientManagement() {
                   return (
                     <tr key={client.id} className="border-t" style={{ borderColor: '#eef2f7' }}>
                       <td className="px-4 py-3 font-semibold text-slate-900">{client.name}</td>
-                      <td className="px-4 py-3 text-slate-500">{client.slug}</td>
+                      <td className="px-4 py-3 text-slate-500">{client.slug || '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                           {isActive ? 'Active' : 'Inactive'}

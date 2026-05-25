@@ -116,6 +116,7 @@ urlpatterns = [
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/approvals/", include("apps.approvals.urls")),
     path("api/v1/assignments/", include("apps.assignments.urls")),
+    path("api/v1/learning/", include("apps.learning.urls")),
     path("api/v1/", include("apps.service_catalog.urls")),
     path("api/v1/apm/", include("apps.apm.urls")),
     path("api/v1/eod/", include("apps.eod.urls")),

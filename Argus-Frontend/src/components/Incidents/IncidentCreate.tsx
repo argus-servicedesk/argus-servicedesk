@@ -116,12 +116,6 @@ export default function IncidentCreate() {
   const createIncident = useCreateIncident();
   const { user: currentUser, isClient } = useAuth();
 
-  const { data: teamsData } = useQuery({
-    queryKey: ['teams'],
-    queryFn: async () => { const { data } = await api.get('/teams'); return data; },
-    staleTime: 60000,
-    enabled: Boolean(currentUser),
-  });
   const { data: assetsData } = useQuery({
     queryKey: ['assets'],
     queryFn: async () => { const { data } = await api.get('/assets'); return data; },
@@ -135,7 +129,6 @@ export default function IncidentCreate() {
     enabled: Boolean(currentUser),
   });
 
-  const teams = orderedAssignmentTeams((teamsData?.data || []) as AssignmentRosterTeam[]);
   const configItems: ConfigItemOption[] = assetsData?.data || [];
   const organizationsFromApi: { id: string; name: string }[] = Array.isArray(organizationsData)
     ? organizationsData
@@ -205,8 +198,22 @@ export default function IncidentCreate() {
   const category = useWatch({ control, name: 'category' }) ?? '';
   const subcategory = useWatch({ control, name: 'subcategory' }) ?? '';
   const assignmentGroupId = useWatch({ control, name: 'assignmentGroupId' }) ?? '';
+  const selectedOrganizationId = useWatch({ control, name: 'organizationId' }) ?? currentUser?.organizationId ?? '';
   const configItemId = useWatch({ control, name: 'configItemId' }) ?? '';
 
+  const { data: teamsData } = useQuery({
+    queryKey: ['teams', 'incident-create-assignment', selectedOrganizationId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '200', is_active: 'true' });
+      if (selectedOrganizationId) params.set('organization', selectedOrganizationId);
+      const { data } = await api.get(`/teams/?${params}`);
+      return data;
+    },
+    staleTime: 60000,
+    enabled: Boolean(currentUser) && !isClient,
+  });
+
+  const teams = orderedAssignmentTeams((teamsData?.data || []) as AssignmentRosterTeam[]);
   const teamMembers = assignableUsersForTeam(teams, assignmentGroupId);
 
   const { data: suggestion } = useAssignmentPreview({
@@ -221,12 +228,13 @@ export default function IncidentCreate() {
     try {
       await createIncident.mutateAsync({
         ...data,
+        assignmentGroupId: isClient ? undefined : data.assignmentGroupId || undefined,
         assignedToId: isClient ? undefined : data.assignedToId || undefined,
         source: data.source,
         requested_by: data.openedById,
         priority,
         state: 'NEW',
-        assignment_group: data.assignmentGroupId || undefined,
+        assignment_group: isClient ? undefined : data.assignmentGroupId || undefined,
         assigned_to: isClient ? undefined : data.assignedToId || undefined,
         config_item: data.configItemId || undefined,
         subcategory: data.subcategory || undefined,
@@ -369,17 +377,19 @@ export default function IncidentCreate() {
               </select>
             </SNRecordField>
             
-            <SNRecordField label="Assignment Group">
-              <select
-                className="sn-field"
-                {...register('assignmentGroupId', {
-                  onChange: () => setValue('assignedToId', ''),
-                })}
-              >
-                <option value="">-- None --</option>
-                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-              </select>
-            </SNRecordField>
+            {!isClient && (
+              <SNRecordField label="Assignment Group">
+                <select
+                  className="sn-field"
+                  {...register('assignmentGroupId', {
+                    onChange: () => setValue('assignedToId', ''),
+                  })}
+                >
+                  <option value="">-- None --</option>
+                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </SNRecordField>
+            )}
             {!isClient && (
               <SNRecordField label="Assigned To">
                 <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>

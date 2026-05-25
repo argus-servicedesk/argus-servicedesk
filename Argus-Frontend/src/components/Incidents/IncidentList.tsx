@@ -14,6 +14,7 @@ import {
   X,
   GitBranch,
   Users,
+  Link2,
 } from 'lucide-react';
 import { useIncidents } from '../../hooks/useIncidents';
 import { SNPage, sn } from '../ITSMTemplates/ServiceNowUI';
@@ -51,6 +52,32 @@ interface Incident {
   hierarchyLevel?: number;
   isAssignedToMe?: boolean;
   canEdit?: boolean;
+  linkedProblems?: RelatedProblem[];
+  linkedChanges?: RelatedChange[];
+}
+
+interface RelatedProblem {
+  id: string;
+  linkType?: string;
+  problem?: {
+    id: string;
+    number?: string;
+    shortDescription?: string;
+    short_description?: string;
+    state?: string;
+  } | null;
+}
+
+interface RelatedChange {
+  id: string;
+  linkType?: string;
+  change?: {
+    id: string;
+    number?: string;
+    shortDescription?: string;
+    short_description?: string;
+    state?: string;
+  } | null;
 }
 
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
@@ -217,6 +244,84 @@ function HierarchyIndicator({ incident }: { incident: Incident }) {
           <Users size={12} />
           <span>{incident.childIncidents?.length}</span>
         </div>
+      )}
+    </div>
+  );
+}
+
+function relationLabel(value?: string): string {
+  const labels: Record<string, string> = {
+    CAUSED_BY: 'Caused by problem',
+    RELATED: 'Related problem',
+    SYMPTOM_OF: 'Symptom of problem',
+    FIXED_BY_CHANGE: 'Fixed by change',
+    CAUSED_BY_CHANGE: 'Caused by change',
+    RELATED_CHANGE: 'Related change',
+  };
+  return value ? labels[value] || value.replace(/_/g, ' ') : 'Related';
+}
+
+function RelatedRecordsCell({
+  incident,
+  onOpen,
+}: {
+  incident: Incident;
+  onOpen: (path: string) => void;
+}) {
+  const records = [
+    ...(incident.linkedProblems || []).map((item) => ({
+      id: item.problem?.id,
+      number: item.problem?.number,
+      type: 'Problem',
+      route: item.problem?.id ? `/problems/${item.problem.id}` : '',
+      relation: relationLabel(item.linkType),
+      title: item.problem?.shortDescription || item.problem?.short_description || '',
+      tone: 'problem',
+    })),
+    ...(incident.linkedChanges || []).map((item) => ({
+      id: item.change?.id,
+      number: item.change?.number,
+      type: 'Change',
+      route: item.change?.id ? `/changes/${item.change.id}` : '',
+      relation: relationLabel(item.linkType),
+      title: item.change?.shortDescription || item.change?.short_description || '',
+      tone: 'change',
+    })),
+  ].filter((record) => record.id && record.number);
+
+  if (records.length === 0) {
+    return <span style={{ color: '#98a2b3' }}>-</span>;
+  }
+
+  const visibleRecords = records.slice(0, 2);
+  const remaining = records.length - visibleRecords.length;
+
+  return (
+    <div className="flex max-w-full items-center gap-1 overflow-hidden">
+      <Link2 size={12} className="shrink-0 text-slate-400" />
+      {visibleRecords.map((record) => (
+        <button
+          key={`${record.type}-${record.id}`}
+          type="button"
+          className={clsx(
+            'inline-flex h-6 max-w-[96px] items-center rounded border px-1.5 text-[11px] font-bold leading-none',
+            record.tone === 'change'
+              ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+              : 'border-amber-200 bg-amber-50 text-amber-700',
+          )}
+          title={`${record.type}: ${record.number} | ${record.relation}${record.title ? ` | ${record.title}` : ''}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(record.route);
+          }}
+        >
+          <span className="truncate">{record.number}</span>
+        </button>
+      ))}
+      {remaining > 0 && (
+        <span className="inline-flex h-6 items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[11px] font-bold text-slate-600">
+          +{remaining}
+        </span>
       )}
     </div>
   );
@@ -483,6 +588,7 @@ export default function IncidentList() {
                 <col style={{ width: 128 }} />
                 <col style={{ width: 132 }} />
                 <col style={{ width: 380 }} />
+                <col style={{ width: 190 }} />
                 <col style={{ width: 160 }} />
                 <col style={{ width: 170 }} />
                 <col style={{ width: 150 }} />
@@ -535,6 +641,7 @@ export default function IncidentList() {
                       onSort={handleSort}
                     />
                   </th>
+                  <th className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Related records</th>
                   <th>
                     <HeaderSortFilter
                       field="assignedTo"
@@ -606,10 +713,8 @@ export default function IncidentList() {
               </thead>
 
               <tbody>
-                {rows.map((incident) => {
-                  const isMine = Boolean(incident.isAssignedToMe);
-                  return (
-                  <tr key={incident.id} className={isMine ? 'sn-row-mine' : undefined} onDoubleClick={() => navigate(`/incidents/${incident.id}`)}>
+                {rows.map((incident) => (
+                  <tr key={incident.id} onDoubleClick={() => navigate(`/incidents/${incident.id}`)}>
                     <td><input type="checkbox" aria-label={`Select ${incident.number}`} /></td>
                     <td>
                       <button type="button" className="sn-list-link" onClick={() => navigate(`/incidents/${incident.id}`)}>
@@ -634,6 +739,9 @@ export default function IncidentList() {
                       />
                     </td>
                     <td className="truncate" title={incident.shortDescription}>{incident.shortDescription}</td>
+                    <td>
+                      <RelatedRecordsCell incident={incident} onOpen={navigate} />
+                    </td>
                     <td className="truncate" title={displayName(incident.assignedTo)}>{displayName(incident.assignedTo) || '-'}</td>
                     <td className="truncate" title={incident.assignmentGroup?.name}>{incident.assignmentGroup?.name || '-'}</td>
                     <td>{formatDateTime(incident.createdAt)}</td>
@@ -644,8 +752,7 @@ export default function IncidentList() {
                     </td>
                     <td className="truncate">{incident.source || incident.category || '-'}</td>
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>

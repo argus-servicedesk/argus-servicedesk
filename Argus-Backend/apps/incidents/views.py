@@ -9,9 +9,10 @@ from apps.common.mixins import OrgQuerysetMixin
 from apps.common.permissions import (
     DenyViewerMutations,
     IncidentTransitionRBAC,
+    can_assign_service_record,
     can_edit_service_record,
-    can_manage_service_desk,
     is_service_desk_staff,
+    user_has_any_permission,
 )
 from apps.common.responses import success, failure
 from apps.common.pagination import DefaultPagination
@@ -94,6 +95,14 @@ class IncidentListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
         return self.get_paginated_response(serializer.data)
     
     def create(self, request, *args, **kwargs):
+        if not user_has_any_permission(request.user, "incident:create", "incident:manage"):
+            return failure("You do not have permission to create incidents.", status_code=403)
+        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not user_has_any_permission(
+            request.user,
+            "incident:assign",
+            "incident:manage",
+        ):
+            return failure("Only NOC, leads, or admins can set incident assignment.", status_code=403)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         incident = serializer.save()
@@ -136,7 +145,7 @@ class IncidentDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
         instance = self.get_object()
         if not can_edit_service_record(request.user, instance):
             return failure("Only assigned engineers, NOC, leads, or admins can edit this incident.", status_code=403)
-        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_manage_service_desk(request.user):
+        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_assign_service_record(request.user, instance):
             return failure("Only NOC, leads, or admins can change incident assignment.", status_code=403)
         previous_state = instance.state
         tracked_before = {
@@ -199,6 +208,8 @@ class IncidentProblemLinkView(APIView):
             return failure("incident not found", status_code=404)
         if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
+        if is_service_desk_staff(request.user) and not user_has_any_permission(request.user, "incident:link", "incident:manage"):
+            return failure("You do not have permission to link incidents to problems.", status_code=403)
         organization = incident.organization
 
         problem_id = request.data.get("problem_id") or request.data.get("problemId")
@@ -261,6 +272,8 @@ class IncidentChangeLinkView(APIView):
             return failure("incident not found", status_code=404)
         if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can link incidents.", status_code=403)
+        if is_service_desk_staff(request.user) and not user_has_any_permission(request.user, "incident:link", "incident:manage"):
+            return failure("You do not have permission to link incidents to changes.", status_code=403)
         organization = incident.organization
 
         change_id = request.data.get("change_id") or request.data.get("changeId")
@@ -271,15 +284,26 @@ class IncidentChangeLinkView(APIView):
         if change is None:
             return failure("change not found", status_code=404)
 
+        link_type = request.data.get("link_type") or request.data.get("linkType") or IncidentChange.LinkType.RELATED_CHANGE
+        if link_type not in IncidentChange.LinkType.values:
+            return failure("invalid link type", status_code=400)
+
         notes = request.data.get("notes")
         link, created = IncidentChange.objects.get_or_create(
             incident=incident,
             change=change,
-            defaults={"notes": notes},
+            defaults={"link_type": link_type, "notes": notes},
         )
-        if not created and notes is not None and link.notes != notes:
-            link.notes = notes
-            link.save(update_fields=["notes"])
+        if not created:
+            changed = False
+            if link.link_type != link_type:
+                link.link_type = link_type
+                changed = True
+            if notes is not None and link.notes != notes:
+                link.notes = notes
+                changed = True
+            if changed:
+                link.save(update_fields=["link_type", "notes"])
 
         create_activity(
             request=request,
@@ -477,6 +501,8 @@ class IncidentEscalateView(APIView):
             return failure("incident not found", status_code=404)
         if not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can escalate this incident.", status_code=403)
+        if not user_has_any_permission(request.user, "incident:escalate", "incident:manage"):
+            return failure("You do not have permission to escalate incidents.", status_code=403)
 
         if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
             return failure("Cannot escalate a resolved, closed, or cancelled incident.", status_code=400)
@@ -517,11 +543,11 @@ class IncidentReassignView(APIView):
     def post(self, request, pk):
         if not is_service_desk_staff(request.user):
             return failure("Only service desk staff can assign incidents.", status_code=403)
-        if not can_manage_service_desk(request.user):
-            return failure("Only NOC, leads, or admins can assign incidents.", status_code=403)
         incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
             return failure("incident not found", status_code=404)
+        if not can_assign_service_record(request.user, incident):
+            return failure("Only NOC, leads, or admins can assign incidents.", status_code=403)
             
         assigned_to_id = request.data.get("assigned_to")
         assignment_group_id = request.data.get("assignment_group")
@@ -573,6 +599,8 @@ class IncidentResolveView(APIView):
             return failure("incident not found", status_code=404)
         if not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can resolve this incident.", status_code=403)
+        if not user_has_any_permission(request.user, "incident:resolve", "incident:manage"):
+            return failure("You do not have permission to resolve incidents.", status_code=403)
 
         if incident.state in {Incident.State.RESOLVED, Incident.State.CLOSED, Incident.State.CANCELLED}:
             return failure(f"Incident is already {incident.state}.", status_code=400)
@@ -631,7 +659,7 @@ class IncidentCloseView(APIView):
         from django.utils import timezone
         if not is_service_desk_staff(request.user):
             return failure("Only service desk staff can close incidents.", status_code=403)
-        if not can_manage_service_desk(request.user):
+        if not user_has_any_permission(request.user, "incident:close", "incident:manage"):
             return failure("Only NOC, leads, or admins can close incidents.", status_code=403)
         incident = _incident_queryset_for_request(request).filter(pk=pk).first()
         if not incident:
@@ -665,6 +693,8 @@ class IncidentReopenView(APIView):
             return failure("incident not found", status_code=404)
         if is_service_desk_staff(request.user) and not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can reopen this incident.", status_code=403)
+        if is_service_desk_staff(request.user) and not user_has_any_permission(request.user, "incident:reopen", "incident:manage"):
+            return failure("You do not have permission to reopen incidents.", status_code=403)
 
         if incident.state not in [Incident.State.RESOLVED, Incident.State.CLOSED]:
             return failure("Only RESOLVED or CLOSED incidents can be reopened.", status_code=400)
@@ -698,7 +728,7 @@ class IncidentBulkUpdateView(APIView):
         
         if not ids:
             return failure("no incident ids provided", status_code=400)
-        if not can_manage_service_desk(request.user):
+        if not user_has_any_permission(request.user, "incident:bulk_update", "incident:manage"):
             return failure("Only NOC, leads, or admins can bulk update incidents.", status_code=403)
             
         incidents = _incident_queryset_for_request(request).filter(pk__in=ids)
@@ -740,8 +770,12 @@ class IncidentChildBulkOperationsView(APIView):
         updates = request.data.get("updates", {})
         if not can_edit_service_record(request.user, parent_incident):
             return failure("Only assigned engineers, NOC, leads, or admins can update child incidents.", status_code=403)
-        if ASSIGNMENT_FIELDS.intersection(updates.keys()) and not can_manage_service_desk(request.user):
+        if ASSIGNMENT_FIELDS.intersection(updates.keys()) and not can_assign_service_record(request.user, parent_incident):
             return failure("Only NOC, leads, or admins can change incident assignment.", status_code=403)
+        if action == "resolve" and not user_has_any_permission(request.user, "incident:resolve", "incident:manage"):
+            return failure("You do not have permission to resolve child incidents.", status_code=403)
+        if action == "close" and not user_has_any_permission(request.user, "incident:close", "incident:manage"):
+            return failure("You do not have permission to close child incidents.", status_code=403)
 
         # If no specific child IDs provided, operate on all children
         if not child_ids:
@@ -903,9 +937,7 @@ class IncidentPromoteToProblemView(APIView):
         if not can_edit_service_record(request.user, incident):
             return failure("Only assigned engineers, NOC, leads, or admins can promote this incident.", status_code=403)
 
-        # Operators and Viewers cannot promote
-        if not (request.user.has_role("Super Admin") or request.user.has_role("Org Admin")
-                or request.user.has_role("Manager") or request.user.has_role("Engineer")):
+        if not user_has_any_permission(request.user, "incident:promote", "problem:create", "problem:manage"):
             return failure("Only Engineers and above can promote incidents to problems.", status_code=403)
 
         # Generate unique PRB number
@@ -941,3 +973,82 @@ class IncidentPromoteToProblemView(APIView):
         )
 
         return success(ProblemSerializer(problem, context={"request": request}).data, f"Incident promoted to Problem {problem.number}", 201)
+
+
+class IncidentPromoteToChangeView(APIView):
+    """
+    POST /api/v1/incidents/<id>/promote-to-change/
+    Creates a Change from this incident's context and auto-links them.
+    """
+    permission_classes = [IsAuthenticated, DenyViewerMutations]
+
+    def post(self, request, pk):
+        from apps.changes.serializers import ChangeSerializer
+        from apps.common.utils import generate_record_number
+
+        incident = _incident_queryset_for_request(request).filter(pk=pk).first()
+        if not incident:
+            return failure("incident not found", status_code=404)
+        if not can_edit_service_record(request.user, incident):
+            return failure("Only assigned engineers, NOC, leads, or admins can create a change from this incident.", status_code=403)
+
+        if not user_has_any_permission(request.user, "incident:promote", "change:create", "change:manage"):
+            return failure("Only Engineers and above can create changes from incidents.", status_code=403)
+
+        link_type = request.data.get("link_type") or request.data.get("linkType") or IncidentChange.LinkType.FIXED_BY_CHANGE
+        if link_type not in IncidentChange.LinkType.values:
+            return failure("invalid link type", status_code=400)
+
+        priority_to_risk = {
+            Incident.Priority.P1: Change.RiskLevel.HIGH,
+            Incident.Priority.P2: Change.RiskLevel.HIGH,
+            Incident.Priority.P3: Change.RiskLevel.MEDIUM,
+            Incident.Priority.P4: Change.RiskLevel.LOW,
+        }
+        change_type = request.data.get("change_type") or request.data.get("changeType") or Change.Type.NORMAL
+        if change_type not in Change.Type.values:
+            return failure("invalid change type", status_code=400)
+
+        number = generate_record_number("CHG", incident.organization, "last_change_number")
+        change = Change.objects.create(
+            number=number,
+            short_description=incident.short_description,
+            description=incident.description or "",
+            type=change_type,
+            risk_level=priority_to_risk.get(incident.priority, Change.RiskLevel.MEDIUM),
+            category=incident.category or "",
+            organization=incident.organization,
+            created_by=request.user,
+            assigned_to=incident.assigned_to,
+            assignment_group=incident.assignment_group,
+            justification=f"Created from incident {incident.number}.",
+            implementation_plan="Assess incident impact, prepare remediation steps, and implement during an approved window.",
+            rollback_plan="Restore the previous known-good configuration if validation fails.",
+            test_plan="Confirm the affected service is reachable and the original incident symptom is resolved.",
+        )
+
+        IncidentChange.objects.create(
+            incident=incident,
+            change=change,
+            link_type=link_type,
+            notes=f"Created from incident {incident.number}",
+        )
+
+        create_activity(
+            request=request,
+            action="PROMOTED_TO_CHANGE",
+            description=f"Created change {change.number} from incident",
+            user=request.user,
+            incident=incident,
+            change=change,
+        )
+        create_activity(
+            request=request,
+            action="CREATED_FROM_INCIDENT",
+            description=f"Created from incident {incident.number}",
+            user=request.user,
+            incident=incident,
+            change=change,
+        )
+
+        return success(ChangeSerializer(change, context={"request": request}).data, f"Incident linked to Change {change.number}", 201)

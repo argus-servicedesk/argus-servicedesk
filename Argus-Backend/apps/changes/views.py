@@ -6,7 +6,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from apps.common.activity_log import create_activity
 from apps.common.mixins import OrgQuerysetMixin
-from apps.common.permissions import ChangeApprovalRBAC, ChangeTransitionRBAC, DenyViewerMutations, can_edit_service_record, can_manage_service_desk
+from apps.common.permissions import (
+    ChangeApprovalRBAC,
+    ChangeTransitionRBAC,
+    DenyViewerMutations,
+    can_assign_service_record,
+    can_edit_service_record,
+    user_has_any_permission,
+)
 from apps.common.responses import failure, success
 from .models import Change, Approval
 from .serializers import ChangeSerializer, ChangeCreateSerializer, ChangeUpdateSerializer, ApprovalSerializer
@@ -81,6 +88,14 @@ class ChangeListCreateView(OrgQuerysetMixin, generics.ListCreateAPIView):
         return self.get_paginated_response(serializer.data)
     
     def create(self, request, *args, **kwargs):
+        if not user_has_any_permission(request.user, "change:create", "change:manage"):
+            return failure("You do not have permission to create changes.", status_code=403)
+        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not user_has_any_permission(
+            request.user,
+            "change:assign",
+            "change:manage",
+        ):
+            return failure("Only NOC, leads, or admins can set change assignment.", status_code=403)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         change = serializer.save()
@@ -115,7 +130,7 @@ class ChangeDetailView(OrgQuerysetMixin, generics.RetrieveUpdateAPIView):
         instance = self.get_object()
         if not can_edit_service_record(request.user, instance):
             return failure("Only assigned engineers, NOC, leads, or admins can edit this change.", status_code=403)
-        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_manage_service_desk(request.user):
+        if ASSIGNMENT_FIELDS.intersection(request.data.keys()) and not can_assign_service_record(request.user, instance):
             return failure("Only NOC, leads, or admins can change assignment.", status_code=403)
         tracked_before = {
             field: _activity_value(getattr(instance, field, None))

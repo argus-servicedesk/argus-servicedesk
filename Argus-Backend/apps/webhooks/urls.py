@@ -1,3 +1,8 @@
 from django.urls import path
 
-urlpatterns = []
+from .views import LinkedEyeIncidentWebhookView
+
+
+urlpatterns = [
+    path("linkedeye/incident/", LinkedEyeIncidentWebhookView.as_view(), name="linkedeye-incident-webhook"),
+]

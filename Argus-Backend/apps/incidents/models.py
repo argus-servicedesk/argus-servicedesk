@@ -185,6 +185,7 @@ class Incident(models.Model):
             models.Index(fields=["created_at"]),
             models.Index(fields=["organization", "state", "created_at"]),
             models.Index(fields=["organization", "priority", "created_at"]),
+            models.Index(fields=["organization", "source_alert_id", "state"], name="incidents_organiz_b99a3c_idx"),
         ]
 
     def __str__(self):

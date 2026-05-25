@@ -43,6 +43,7 @@ const routeTitles: Record<string, string> = {
   '/aiops': 'AIOps Insights',
   '/automation': 'Runbook Automation',
   '/runbooks': 'Runbook Automation',
+  '/learning': 'Learning Hub',
   '/knowledge-base': 'Knowledge Base',
   '/audit': 'Audit Logs',
   '/notifications': 'Notifications',

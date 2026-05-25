@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Change, Approval, ChangeCI
 from apps.accounts.serializers import UserSerializer
+from apps.assignments.validation import validate_assignment_attrs
 from apps.organizations.serializers import OrganizationSerializer
 from apps.incidents.models import Activity, WorkNote
 
@@ -144,6 +145,7 @@ class ChangeCreateSerializer(serializers.ModelSerializer):
         organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
         if organization is None:
             raise serializers.ValidationError("User must belong to an organisation to create a change.")
+        validate_assignment_attrs(validated_data, organization=organization)
         validated_data['number'] = generate_record_number("CHG", organization, "last_change_number")
         validated_data['created_by'] = request.user
         validated_data['organization'] = organization
@@ -217,6 +219,8 @@ class ChangeUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         instance = self.instance
+        organization = getattr(instance, "organization", None)
+        validate_assignment_attrs(attrs, organization=organization, instance=instance)
         target_state = attrs.get("state", instance.state if instance else Change.State.NEW)
 
         implementation_plan = attrs.get("implementation_plan", instance.implementation_plan if instance else None)

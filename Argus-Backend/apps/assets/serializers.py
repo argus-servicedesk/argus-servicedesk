@@ -13,6 +13,7 @@ from .models import (
 )
 from .validators import validate_metrics_management_interfaces, validate_network_type_fields
 from apps.accounts.serializers import UserSerializer
+from apps.organizations.models import Organization
 from apps.organizations.serializers import OrganizationSerializer
 
 
@@ -212,10 +213,18 @@ class ConfigurationItemUpdateSerializer(CamelCaseInputMixin, serializers.ModelSe
 
 
 class AssetSiteSerializer(serializers.ModelSerializer):
+    organization = OrganizationSerializer(read_only=True)
+    organization_id = serializers.PrimaryKeyRelatedField(
+        source='organization',
+        queryset=Organization.objects.all(),
+        write_only=True,
+        required=False,
+    )
+
     class Meta:
         model = AssetSite
         fields = [
-            'id', 'name', 'slug', 'environment', 'location', 'country', 'state',
+            'id', 'organization', 'organization_id', 'name', 'slug', 'environment', 'location', 'country', 'state',
             'latitude', 'longitude', 'entity_host', 'entity_port', 'entity_secure',
             'websocket_host', 'websocket_port', 'websocket_secure', 'redis_url',
             'prometheus_url', 'grafana_url', 'redmine_url', 'incident_url',

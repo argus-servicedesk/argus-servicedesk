@@ -505,7 +505,7 @@ class UserListView(APIView):
         if not is_service_desk_staff(request.user):
             data["organization_id"] = str(request.organization_id)
 
-        serializer = ManagedUserCreateSerializer(data=data)
+        serializer = ManagedUserCreateSerializer(data=data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         create_audit_log(
@@ -546,7 +546,7 @@ class UserDetailView(APIView):
         data = request.data.copy()
         if not is_service_desk_staff(request.user):
             data.pop("organization_id", None)
-        serializer = ManagedUserUpdateSerializer(user, data=data, partial=True)
+        serializer = ManagedUserUpdateSerializer(user, data=data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return success(UserSerializer(user).data, "user updated")

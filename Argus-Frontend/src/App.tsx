@@ -6,6 +6,7 @@ const SignupPage = lazy(() => import('./components/Auth/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('./components/Auth/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./components/Auth/ResetPasswordPage'));
 const ChangePasswordRequiredPage = lazy(() => import('./components/Auth/ChangePasswordRequiredPage'));
+const KeycloakCallbackPage = lazy(() => import('./components/Auth/KeycloakCallbackPage'));
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 import { useAuthStore } from './stores/authStore';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -69,13 +70,10 @@ const ServiceRequestDetail = lazy(() => import('./components/ServiceRequests/Ser
 const KBArticleList = lazy(() => import('./components/KnowledgeBase/KBArticleList'));
 const KBArticleCreate = lazy(() => import('./components/KnowledgeBase/KBArticleCreate'));
 const KBArticleDetail = lazy(() => import('./components/KnowledgeBase/KBArticleDetail'));
+const LearningHub = lazy(() => import('./components/Learning/LearningHub'));
 const RoleManagement = lazy(() => import('./components/Admin/RoleManagement'));
 const ClientManagement = lazy(() => import('./components/Admin/ClientManagement'));
-const WorkflowDesigner = lazy(() => import('./components/Workflows/WorkflowDesigner'));
-const AutomationRulesPage = lazy(() => import('./components/Automation/AutomationRulesPage'));
 const ApprovalCenter = lazy(() => import('./components/Auth/ApprovalCenter'));
-const VendorList = lazy(() => import('./components/Vendors/VendorList'));
-const AssignmentRulesPage = lazy(() => import('./components/Assignments/AssignmentRulesPage'));
 
 function LoadingFallback() {
   return (
@@ -109,6 +107,7 @@ export default function App() {
       {/* Public routes */}
       <Route path="/" element={<HomeRoute />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/keycloak/callback" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><KeycloakCallbackPage /></Suspense>} />
       <Route path="/signup" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><SignupPage /></Suspense>} />
       <Route path="/forgot-password" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><ForgotPasswordPage /></Suspense>} />
       <Route path="/reset-password" element={<Suspense fallback={<div style={{ background: '#fff', minHeight: '100vh' }} />}><ResetPasswordPage /></Suspense>} />
@@ -153,21 +152,6 @@ export default function App() {
             <Suspense fallback={<LoadingFallback />}><RoleManagement /></Suspense>
           </ProtectedRoute>
         } />
-        <Route path="/workflows" element={
-          <ProtectedRoute allowedRoles={['ADMIN']}>
-            <Suspense fallback={<LoadingFallback />}><WorkflowDesigner /></Suspense>
-          </ProtectedRoute>
-        } />
-        <Route path="/automations" element={
-          <ProtectedRoute allowedRoles={['ADMIN']}>
-            <Suspense fallback={<LoadingFallback />}><AutomationRulesPage /></Suspense>
-          </ProtectedRoute>
-        } />
-        <Route path="/assignment-rules" element={
-          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
-            <Suspense fallback={<LoadingFallback />}><AssignmentRulesPage /></Suspense>
-          </ProtectedRoute>
-        } />
         <Route path="/approvals" element={
           <Suspense fallback={<LoadingFallback />}><ApprovalCenter /></Suspense>
         } />
@@ -205,8 +189,12 @@ export default function App() {
         <Route path="/service-requests" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestList /></Suspense>} />
         <Route path="/service-requests/create" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestCreate /></Suspense>} />
         <Route path="/service-requests/:id" element={<Suspense fallback={<LoadingFallback />}><ServiceRequestDetail /></Suspense>} />
+        <Route path="/learning" element={
+          <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'OPERATOR', 'ENGINEER']}>
+            <Suspense fallback={<LoadingFallback />}><LearningHub /></Suspense>
+          </ProtectedRoute>
+        } />
         {/* ── Knowledge Base (new) ── */}
-        <Route path="/vendors" element={<Suspense fallback={<LoadingFallback />}><VendorList /></Suspense>} />
         <Route path="/kb" element={<Suspense fallback={<LoadingFallback />}><KBArticleList /></Suspense>} />
         <Route path="/kb/create" element={<Suspense fallback={<LoadingFallback />}><KBArticleCreate /></Suspense>} />
         <Route path="/kb/:id" element={<Suspense fallback={<LoadingFallback />}><KBArticleDetail /></Suspense>} />

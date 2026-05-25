@@ -1,24 +1,31 @@
 import { useState } from 'react';
 import {
-  MapPin, Plus, Server, Shield, Wifi, WifiOff, CheckCircle, XCircle,
-  Edit3, Trash2, Activity, RefreshCw, Loader2, X, Globe, Database,
+  MapPin, Plus, Server,
+  Edit3, Trash2, Activity, Loader2, X, Globe, Database,
   BarChart3, Clock,
 } from 'lucide-react';
-import { useSites, useCreateSite, useUpdateSite, useDeleteSite, useTestSiteConnectivity } from '../../hooks/useSites';
+import { useSites, useCreateSite, useUpdateSite, useDeleteSite } from '../../hooks/useSites';
 import type { Site } from '../../hooks/useSites';
+import { useOrganizations } from '../../hooks/useOrganizations';
 
 // ── Empty form state ──
 const EMPTY_FORM: Record<string, string | number | boolean> = {
-  name: '', code: '', location: '', city: '', state: '', country: '', timezone: '',
-  serverIp: '', sshPort: 22, sshUser: '', redisHost: '', redisPort: 6379,
-  prometheusUrl: '', grafanaUrl: '', lokiUrl: '', isPrimary: false,
+  organizationId: '', name: '', code: '', environment: 'Production', status: 'ACTIVE',
+  location: '', state: '', country: '',
+  serverIp: '', sshPort: '', redisHost: '',
+  prometheusUrl: '', grafanaUrl: '', redmineUrl: '', incidentUrl: '',
 };
 
-// ── Connectivity result per site ──
-type ConnResult = { prometheus?: boolean; redis?: boolean; grafana?: boolean; loki?: boolean; loading?: boolean };
+function extractList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
 
 export default function SiteManagement() {
   const { data, isLoading } = useSites();
+  const { data: organizationsData } = useOrganizations();
   const createSite = useCreateSite();
   const updateSite = useUpdateSite();
   const deleteSite = useDeleteSite();
@@ -27,26 +34,27 @@ export default function SiteManagement() {
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [form, setForm] = useState<Record<string, string | number | boolean>>({ ...EMPTY_FORM });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [connResults, setConnResults] = useState<Record<string, ConnResult>>({});
 
-  const sites: Site[] = Array.isArray(data) ? data : data?.data ?? data?.sites ?? [];
+  const sites: Site[] = Array.isArray(data) ? data : data?.data ?? data?.results ?? data?.sites ?? [];
+  const organizations = extractList(organizationsData);
 
   // ── Handlers ──
   function openCreate() {
     setEditingSite(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, organizationId: organizations.length === 1 ? organizations[0].id : '' });
     setModalOpen(true);
   }
 
   function openEdit(site: Site) {
     setEditingSite(site);
     setForm({
-      name: site.name || '', code: site.code || '', location: site.location || '',
-      city: site.city || '', state: site.state || '', country: site.country || '',
-      timezone: site.timezone || '', serverIp: site.serverIp || '', sshPort: site.sshPort || 22,
-      sshUser: site.sshUser || '', redisHost: site.redisHost || '', redisPort: site.redisPort || 6379,
+      organizationId: site.organizationId || site.organization?.id || '',
+      name: site.name || '', code: site.slug || site.code || '', environment: site.environment || 'Production',
+      status: site.status || 'ACTIVE', location: site.location || '', state: site.state || '', country: site.country || '',
+      serverIp: site.serverIp || site.entityHost || '', sshPort: site.sshPort || site.entityPort || '',
+      redisHost: site.redisHost || '',
       prometheusUrl: site.prometheusUrl || '', grafanaUrl: site.grafanaUrl || '',
-      lokiUrl: site.lokiUrl || '', isPrimary: site.isPrimary || false,
+      redmineUrl: site.redmineUrl || '', incidentUrl: site.incidentUrl || '',
     });
     setModalOpen(true);
   }
@@ -64,41 +72,6 @@ export default function SiteManagement() {
   async function handleDelete(id: string) {
     await deleteSite.mutateAsync(id);
     setDeleteConfirm(null);
-  }
-
-  function TestButton({ site }: { site: Site }) {
-    const test = useTestSiteConnectivity(site.id);
-    const result = connResults[site.id];
-
-    async function handleTest() {
-      setConnResults(prev => ({ ...prev, [site.id]: { loading: true } }));
-      try {
-        const res = await test.mutateAsync();
-        setConnResults(prev => ({ ...prev, [site.id]: res }));
-      } catch {
-        setConnResults(prev => ({ ...prev, [site.id]: { prometheus: false, redis: false, grafana: false, loki: false } }));
-      }
-    }
-
-    return (
-      <div>
-        <button onClick={handleTest} disabled={result?.loading}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer' }}>
-          {result?.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
-          Test
-        </button>
-        {result && !result.loading && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-            {(['prometheus', 'redis', 'grafana', 'loki'] as const).map(svc => (
-              <span key={svc} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: result[svc] ? '#10b981' : '#ef4444' }}>
-                {result[svc] ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                {svc}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    );
   }
 
   // ── Render ──
@@ -187,17 +160,12 @@ export default function SiteManagement() {
                           fontSize: 10, fontWeight: 700, fontFamily: 'monospace', padding: '2px 7px',
                           borderRadius: 4, background: 'rgba(99,102,241,0.1)', color: '#6366f1',
                         }}>{site.code}</span>
-                        {site.isPrimary && (
-                          <span style={{
-                            fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4,
-                            background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)',
-                          }}>PRIMARY</span>
-                        )}
+                        {site.organization?.name && <span style={{ fontSize: 10, color: '#64748b' }}>{site.organization.name}</span>}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
                         <MapPin className="w-3 h-3" style={{ color: '#94a3b8' }} />
                         <span style={{ fontSize: 11, color: '#64748b' }}>
-                          {[site.city, site.state, site.country].filter(Boolean).join(', ') || site.location || 'No location'}
+                          {[site.state, site.country].filter(Boolean).join(', ') || site.location || 'No location'}
                         </span>
                       </div>
                     </div>
@@ -217,7 +185,7 @@ export default function SiteManagement() {
                   {/* Server IP */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                     <Globe className="w-3.5 h-3.5" style={{ color: '#94a3b8' }} />
-                    <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#475569' }}>{site.serverIp || '—'}</span>
+                    <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: '#475569' }}>{site.serverIp || '--'}</span>
                     {site.sshPort && <span style={{ fontSize: 10, color: '#94a3b8' }}>:{site.sshPort}</span>}
                   </div>
 
@@ -227,7 +195,7 @@ export default function SiteManagement() {
                       { label: 'Prometheus', url: site.prometheusUrl, icon: Activity },
                       { label: 'Redis', url: site.redisHost, icon: Database },
                       { label: 'Grafana', url: site.grafanaUrl, icon: BarChart3 },
-                      { label: 'Loki', url: site.lokiUrl, icon: Clock },
+                      { label: 'Incident URL', url: site.incidentUrl, icon: Clock },
                     ].map(svc => (
                       <div key={svc.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <div style={{
@@ -242,7 +210,7 @@ export default function SiteManagement() {
 
                   {/* Actions */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <TestButton site={site} />
+                    <span style={{ fontSize: 10, color: '#94a3b8' }}>Updated {site.updatedAt ? new Date(site.updatedAt).toLocaleDateString('en-IN') : '--'}</span>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => openEdit(site)} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px',
@@ -325,58 +293,77 @@ export default function SiteManagement() {
             {/* Modal body */}
             <form onSubmit={handleSubmit} style={{ padding: 24 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Client Organization
+                  </label>
+                  <select
+                    value={String(form.organizationId ?? '')}
+                    onChange={e => setForm(prev => ({ ...prev, organizationId: e.target.value }))}
+                    required={!editingSite}
+                    style={{
+                      width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+                      border: '1px solid #e2e8f0', background: '#f8fafc', outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <option value="">Select client</option>
+                    {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+                  </select>
+                </div>
+
                 {[
                   { key: 'name', label: 'Site Name', span: 1 },
-                  { key: 'code', label: 'Site Code', span: 1 },
+                  { key: 'code', label: 'Site Code / Slug', span: 1 },
+                  { key: 'environment', label: 'Environment', span: 1 },
+                  { key: 'status', label: 'Status', span: 1, type: 'select' },
                   { key: 'location', label: 'Location / Address', span: 2 },
-                  { key: 'city', label: 'City', span: 1 },
                   { key: 'state', label: 'State', span: 1 },
                   { key: 'country', label: 'Country', span: 1 },
-                  { key: 'timezone', label: 'Timezone', span: 1 },
-                  { key: 'serverIp', label: 'Server IP', span: 1 },
-                  { key: 'sshPort', label: 'SSH Port', span: 1, type: 'number' },
-                  { key: 'sshUser', label: 'SSH User', span: 1 },
-                  { key: 'redisHost', label: 'Redis Host', span: 1 },
-                  { key: 'redisPort', label: 'Redis Port', span: 1, type: 'number' },
+                  { key: 'serverIp', label: 'Entity Host', span: 1 },
+                  { key: 'sshPort', label: 'Entity Port', span: 1, type: 'number' },
+                  { key: 'redisHost', label: 'Redis URL', span: 2 },
                   { key: 'prometheusUrl', label: 'Prometheus URL', span: 2 },
                   { key: 'grafanaUrl', label: 'Grafana URL', span: 2 },
-                  { key: 'lokiUrl', label: 'Loki URL', span: 2 },
+                  { key: 'redmineUrl', label: 'Redmine URL', span: 2 },
+                  { key: 'incidentUrl', label: 'Incident URL', span: 2 },
                 ].map(field => (
                   <div key={field.key} style={{ gridColumn: field.span === 2 ? '1 / -1' : undefined }}>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       {field.label}
                     </label>
-                    <input
-                      type={field.type || 'text'}
-                      value={String(form[field.key] ?? '')}
-                      onChange={e => setForm(prev => ({ ...prev, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value }))}
-                      style={{
-                        width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
-                        border: '1px solid #e2e8f0', background: '#f8fafc', outline: 'none',
-                        fontFamily: ['serverIp', 'sshUser', 'redisHost', 'prometheusUrl', 'grafanaUrl', 'lokiUrl'].includes(field.key) ? 'monospace' : 'inherit',
-                        boxSizing: 'border-box',
-                      }}
-                      onFocus={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.08)'; }}
-                      onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
-                    />
+                    {field.type === 'select' ? (
+                      <select
+                        value={String(form[field.key] ?? '')}
+                        onChange={e => setForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+                          border: '1px solid #e2e8f0', background: '#f8fafc', outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="DEGRADED">Degraded</option>
+                        <option value="OFFLINE">Offline</option>
+                        <option value="RETIRED">Retired</option>
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type || 'text'}
+                        value={String(form[field.key] ?? '')}
+                        onChange={e => setForm(prev => ({ ...prev, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value }))}
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+                          border: '1px solid #e2e8f0', background: '#f8fafc', outline: 'none',
+                          fontFamily: ['serverIp', 'redisHost', 'prometheusUrl', 'grafanaUrl', 'redmineUrl', 'incidentUrl'].includes(field.key) ? 'monospace' : 'inherit',
+                          boxSizing: 'border-box',
+                        }}
+                        onFocus={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.08)'; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+                      />
+                    )}
                   </div>
                 ))}
-
-                {/* isPrimary toggle */}
-                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
-                  <button type="button" onClick={() => setForm(prev => ({ ...prev, isPrimary: !prev.isPrimary }))}
-                    style={{
-                      width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', position: 'relative',
-                      background: form.isPrimary ? '#7c3aed' : '#e2e8f0', transition: 'background 0.2s',
-                    }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                      position: 'absolute', top: 3, left: form.isPrimary ? 21 : 3, transition: 'left 0.2s',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                    }} />
-                  </button>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>Primary Site</span>
-                </div>
               </div>
 
               {/* Submit */}

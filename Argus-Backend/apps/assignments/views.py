@@ -1,8 +1,10 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
 from uuid import UUID
 from apps.common.mixins import OrgQuerysetMixin
+from apps.common.permissions import is_service_desk_staff
 from apps.common.responses import success, failure
 from apps.teams.models import Team, TeamMember
 from apps.teams.serializers import TeamSerializer, TeamMemberSerializer
@@ -97,9 +99,21 @@ class TeamMembersFilteredView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, team_id):
+        organization = getattr(request, "organization", None) or getattr(request.user, "organization", None)
+        team_scope = Q(team__organization__isnull=True)
+        if organization is not None:
+            team_scope |= Q(team__organization=organization)
+        if is_service_desk_staff(request.user):
+            org_id = request.query_params.get("organization") or request.query_params.get("organization_id")
+            if org_id:
+                team_scope = Q(team__organization_id=org_id) | Q(team__organization__isnull=True)
+            else:
+                team_scope = Q()
+
         members = TeamMember.objects.filter(
-            team_id=team_id, 
-            team__organization=request.organization
+            team_scope,
+            team_id=team_id,
+            team__is_active=True,
         ).select_related('user')
         
         users = [m.user for m in members if m.user.is_active]

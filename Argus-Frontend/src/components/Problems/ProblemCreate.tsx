@@ -6,8 +6,14 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useCreateProblem } from '../../hooks/useProblems';
 import { useAuth } from '../../hooks/useAuth';
-import { useTeamMembers, useAssignmentPreview } from '../../hooks/useAssignments';
+import { useAssignmentPreview } from '../../hooks/useAssignments';
 import api from '../../lib/api';
+import {
+  assignableUsersForTeam,
+  assignmentPersonLabel,
+  orderedAssignmentTeams,
+  type AssignmentRosterTeam,
+} from '../../utils/assignmentRoster';
 import {
   SNCollapsibleSection,
   SNPage,
@@ -49,9 +55,8 @@ function priorityTone(priority: Priority) {
 }
 
 function personLabel(user: any): string {
-  const firstName = user.firstName || user.first_name || '';
-  const lastName = user.lastName || user.last_name || '';
-  return [firstName, lastName].filter(Boolean).join(' ').trim() || user.email || user.username || 'Unknown user';
+  const label = assignmentPersonLabel(user);
+  return label === 'Unassigned' ? 'Unknown user' : label;
 }
 
 function nowForHeader(): string {
@@ -77,12 +82,6 @@ export default function ProblemCreate() {
     staleTime: 60000,
     enabled: !isClient,
   });
-  const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => { const { data } = await api.get('/auth/users/?limit=200'); return data; },
-    staleTime: 60000,
-    enabled: !isClient,
-  });
   const { data: assetsData } = useQuery({
     queryKey: ['assets'],
     queryFn: async () => { const { data } = await api.get('/assets/'); return data; },
@@ -90,8 +89,7 @@ export default function ProblemCreate() {
     enabled: !isClient,
   });
 
-  const teams: { id: string; name: string }[] = teamsData?.data || [];
-  const users: any[] = usersData?.data || [];
+  const teams = orderedAssignmentTeams((teamsData?.data || []) as AssignmentRosterTeam[]);
   const configItems: { id: string; name: string; hostname?: string; type?: string }[] = assetsData?.data || [];
 
   const {
@@ -120,8 +118,7 @@ export default function ProblemCreate() {
   const category = watch('category');
   const subcategory = watch('subcategory');
   const assignmentGroupId = watch('assignmentGroupId');
-  const { data: teamMembersResponse } = useTeamMembers(assignmentGroupId);
-  const teamMembers = teamMembersResponse?.data || [];
+  const teamMembers = assignableUsersForTeam(teams, assignmentGroupId);
 
   const { data: suggestion } = useAssignmentPreview({ category }, !isClient);
 
@@ -215,7 +212,12 @@ export default function ProblemCreate() {
 
             {!isClient && (
               <SNRecordField label="Assignment Group">
-                <select className="sn-field" {...register('assignmentGroupId')}>
+                <select
+                  className="sn-field"
+                  {...register('assignmentGroupId', {
+                    onChange: () => setValue('assignedToId', ''),
+                  })}
+                >
                   <option value="">-- None --</option>
                   {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                 </select>
@@ -259,15 +261,13 @@ export default function ProblemCreate() {
                 <select className="sn-field" {...register('assignedToId')} disabled={!assignmentGroupId}>
                   <option value="">-- None --</option>
                   {teamMembers.map((user: any) => (
-                    <option key={user.id} value={user.id}>{personLabel(user)}</option>
+                    <option key={user.id} value={user.id} disabled={Boolean(user.disabled)}>{personLabel(user)}</option>
                   ))}
                 </select>
+                {!assignmentGroupId && <div className="text-[10px] text-gray-400 mt-1">Select group to filter members</div>}
               </SNRecordField>
             )}
 
-            <SNRecordField label="Description" fullWidth tall stack>
-              <textarea className="sn-field" placeholder="Detailed problem description" {...register('description')} />
-            </SNRecordField>
           </SNRecordGrid>
         </SNCollapsibleSection>
 

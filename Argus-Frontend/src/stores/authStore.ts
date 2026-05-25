@@ -30,6 +30,9 @@ export interface User {
   timezone?: string | null;
   role_names: string[];
   roleNames?: string[];
+  permission_codes?: string[];
+  permissionCodes?: string[];
+  permissions?: string[];
   role: string;
   organization: any;
   organizationId?: string | null;
@@ -189,7 +192,7 @@ export const useAuthStore = create<AuthState>()(
           return { user };
         } catch (err: any) {
           set({ isLoading: false });
-          throw new Error(err?.response?.data?.message || err?.message || 'Invalid credentials');
+          throw err;
         }
       },
 

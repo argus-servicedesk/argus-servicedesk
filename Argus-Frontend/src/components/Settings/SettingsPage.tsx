@@ -29,6 +29,13 @@ function avatarGrad(id: string): string {
   return avatarGradients[Math.abs(h) % avatarGradients.length];
 }
 
+function extractList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
 // ── Section wrapper ──
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -94,7 +101,7 @@ export default function SettingsPage() {
 
   // ── Org data for admin ──
   const { data: orgData } = useOrganizations();
-  const orgs: any[] = orgData?.data || [];
+  const orgs: any[] = extractList(orgData);
   const createOrg = useCreateOrganization();
   const updateOrg = useUpdateOrganization();
 

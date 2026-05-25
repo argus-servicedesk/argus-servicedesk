@@ -9,6 +9,7 @@ import {
   Radio, Server, Cloud, GitBranch, Terminal, Search,
 } from 'lucide-react';
 import { useIntegrations, useCreateIntegration, useUpdateIntegration, useTestConnection } from '../../hooks/useIntegrations';
+import { useOrganizations } from '../../hooks/useOrganizations';
 
 interface IntegrationDef {
   type: string;
@@ -98,6 +99,13 @@ function safeParseConfig(config: any): Record<string, any> {
   try { return JSON.parse(config); } catch { return {}; }
 }
 
+function extractList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
 const statusConfig: Record<string, { icon: any; label: string; color: string; bg: string; border: string }> = {
   ACTIVE: { icon: CheckCircle, label: 'Active', color: '#10B981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)' },
   INACTIVE: { icon: XCircle, label: 'Inactive', color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.25)' },
@@ -147,17 +155,20 @@ export default function IntegrationHub() {
 
   // ── Form state for modal ──
   const [formName, setFormName] = useState('');
+  const [formOrganizationId, setFormOrganizationId] = useState('');
   const [formEnabled, setFormEnabled] = useState(true);
   const [formConfig, setFormConfig] = useState<Record<string, string>>({});
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const { data: intgData, isLoading } = useIntegrations();
+  const { data: organizationsData } = useOrganizations();
   const createIntegration = useCreateIntegration();
   const updateIntegration = useUpdateIntegration();
   const testConnection = useTestConnection();
 
-  const apiIntegrations: any[] = intgData?.data || [];
+  const apiIntegrations: any[] = extractList(intgData);
+  const organizations = extractList(organizationsData);
 
   const integrations = INTEGRATION_DEFS.map((def, idx) => {
     const apiMatch = apiIntegrations.find((a: any) => a.type === def.type);
@@ -167,6 +178,7 @@ export default function IntegrationHub() {
       status: apiMatch?.status || 'INACTIVE',
       lastSync: apiMatch?.lastSyncAt ? relativeTime(apiMatch.lastSyncAt) : 'Never',
       config: apiMatch?.config || {},
+      organizationId: apiMatch?.organizationId || apiMatch?.organization?.id || '',
       connected: !!apiMatch,
       apiId: apiMatch?.id || null,
     };
@@ -184,12 +196,13 @@ export default function IntegrationHub() {
     const intg = integrations.find(i => i.id === configModal);
     if (!intg) return;
     setFormName(intg.connected ? intg.name : '');
+    setFormOrganizationId(intg.organizationId || (organizations.length === 1 ? organizations[0].id : ''));
     setFormEnabled(intg.status === 'ACTIVE');
     const parsed = safeParseConfig(intg.config);
     setFormConfig(parsed);
     setTestResult(null);
     setSaveMsg(null);
-  }, [configModal]);
+  }, [configModal, organizations.length]);
 
   const handleCardClick = (integration: typeof integrations[0]) => {
     if (integration.dashboardRoute && integration.connected) {
@@ -202,12 +215,17 @@ export default function IntegrationHub() {
   function handleSave(intg: typeof integrations[0]) {
     setSaveMsg(null);
     setTestResult(null);
-    const configStr = JSON.stringify(formConfig);
     const name = formName || intg.name;
+    const payload = {
+      name,
+      config: formConfig,
+      isActive: formEnabled,
+      organizationId: formOrganizationId,
+    };
 
     if (intg.apiId) {
       updateIntegration.mutate(
-        { id: intg.apiId, data: { name, config: configStr, status: formEnabled ? 'ACTIVE' : 'INACTIVE' } },
+        { id: intg.apiId, data: payload },
         {
           onSuccess: () => { setSaveMsg('Integration updated successfully'); },
           onError: (err: any) => { setSaveMsg(`Error: ${err?.response?.data?.error || err.message}`); },
@@ -215,7 +233,7 @@ export default function IntegrationHub() {
       );
     } else {
       createIntegration.mutate(
-        { name, type: intg.type, config: configStr },
+        { ...payload, type: intg.type },
         {
           onSuccess: () => { setSaveMsg('Integration created successfully'); },
           onError: (err: any) => { setSaveMsg(`Error: ${err?.response?.data?.error || err.message}`); },
@@ -438,6 +456,13 @@ export default function IntegrationHub() {
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Integration Name</label>
                   <input style={inputStyle} placeholder={intg.name} value={formName} onChange={e => setFormName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: '#64748b' }}>Client Organization</label>
+                  <select style={inputStyle} value={formOrganizationId} onChange={e => setFormOrganizationId(e.target.value)}>
+                    <option value="">Select client</option>
+                    {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+                  </select>
                 </div>
 
                 {/* Type-specific fields */}

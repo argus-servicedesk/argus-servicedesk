@@ -4,8 +4,15 @@ import {
   Eye, EyeOff, Shield, Zap, ArrowRight, Activity,
   Server, Bell, Brain, Lock, ChevronRight,
   CheckCircle2, Globe, Layers, BarChart3,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { startKeycloakLogin } from '../../lib/keycloak';
+import {
+  type AuthErrorMessage,
+  authErrorFromMessage,
+  describeAuthError,
+} from '../../utils/authErrors';
 
 // ══════════════════════════════════════════════════════════════
 // Feature bullet for left panel
@@ -60,7 +67,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AuthErrorMessage | null>(null);
   const [shake, setShake] = useState(false);
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaToken, setMfaToken] = useState('');
@@ -71,10 +78,20 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { setError('Enter your email and password to continue'); setShake(true); setTimeout(() => setShake(false), 500); return; }
-    if (mfaStep && !mfaToken) { setError('Enter your 6-digit MFA code'); setShake(true); setTimeout(() => setShake(false), 500); return; }
+    if (!email || !password) {
+      setError(authErrorFromMessage('Missing login details', 'Enter both email address and password to continue.'));
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
+    if (mfaStep && !mfaToken) {
+      setError(authErrorFromMessage('MFA code required', 'Enter the 6-digit code from your authenticator app.'));
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       const result = await login(email, password, mfaStep ? mfaToken : undefined);
       if (result?.requiresMfa) {
@@ -89,11 +106,22 @@ export default function LoginPage() {
           : redirectPath;
       navigate(target, { replace: true });
     } catch (err: any) {
-      setError(err?.message || 'Invalid credentials. Please try again.');
+      setError(describeAuthError(err, 'password'));
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleKeycloakLogin = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await startKeycloakLogin(redirectPath);
+    } catch (err: any) {
+      setLoading(false);
+      setError(describeAuthError(err, 'sso'));
     }
   };
 
@@ -151,7 +179,7 @@ export default function LoginPage() {
                   backgroundClip: 'text',
                 }}
               >
-                ARGUS
+                ArgusService Desk
               </span>
             </div>
           </div>
@@ -168,7 +196,7 @@ export default function LoginPage() {
                     backgroundClip: 'text',
                   }}
                 >
-                  ARGUS
+                  ArgusService Desk
                 </span>
               </h2>
               <p className="text-[14px] mt-3 leading-relaxed max-w-sm" style={{ color: '#64748b' }}>
@@ -255,7 +283,7 @@ export default function LoginPage() {
                 backgroundClip: 'text',
               }}
             >
-              ARGUS
+              ArgusService Desk
             </h1>
             <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Enterprise Service Desk Platform</p>
           </div>
@@ -279,21 +307,33 @@ export default function LoginPage() {
             {error && (
               <div
                 className="mb-5 flex items-start gap-2.5 px-3.5 py-3 rounded-xl"
-                aria-live="polite"
+                role="alert"
+                aria-live="assertive"
                 style={{ backgroundColor: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)' }}
               >
                 <div
                   className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5"
                   style={{ backgroundColor: 'rgba(220,38,38,0.10)' }}
                 >
-                  <span className="block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#DC2626' }} />
+                  <ShieldAlert size={13} style={{ color: '#DC2626' }} />
                 </div>
-                <p className="text-[12px] leading-relaxed" style={{ color: '#DC2626' }}>{error}</p>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold leading-relaxed" style={{ color: '#991b1b' }}>{error.title}</p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#DC2626' }}>{error.message}</p>
+                  {error.detail && (
+                    <p className="mt-1 break-words text-[11px] leading-relaxed" style={{ color: '#b91c1c' }}>
+                      {error.detail}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
             {/* SSO Button */}
             <button
+              type="button"
+              onClick={handleKeycloakLogin}
+              disabled={loading}
               className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl transition-all text-[13px] font-medium mb-5 group"
               style={{
                 backgroundColor: 'rgba(99,102,241,0.04)',
@@ -326,7 +366,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
                   placeholder="you@company.com"
                   className="w-full px-3.5 py-2.5 text-[13px] rounded-xl focus:outline-none transition-all"
                   style={{
@@ -352,7 +392,7 @@ export default function LoginPage() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
                     placeholder="Enter your password"
                     className="w-full px-3.5 py-2.5 text-[13px] rounded-xl focus:outline-none transition-all pr-10"
                     style={{
@@ -383,7 +423,7 @@ export default function LoginPage() {
                   <input
                     type="text"
                     value={mfaToken}
-                    onChange={(e) => { setMfaToken(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                    onChange={(e) => { setMfaToken(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(null); }}
                     placeholder="Enter 6-digit code from authenticator"
                     maxLength={6}
                     className="w-full px-3.5 py-2.5 text-[13px] rounded-xl focus:outline-none transition-all text-center tracking-[0.3em] font-mono"
@@ -460,7 +500,7 @@ export default function LoginPage() {
 
           {/* Version footer */}
           <p className="text-center text-[10px] mt-6 font-mono" style={{ color: '#94a3b8' }}>
-            ARGUS &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100 &middot; 9176772077
+            ArgusService Desk &middot; FinSpot Technology Solutions Private Limited &middot; No.55B, First Main, Electronic City Phase – 1, Bengaluru – 560 100 &middot; 9176772077
           </p>
         </div>
       </div>

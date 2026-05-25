@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Team, TeamMember
 from apps.accounts.serializers import UserSerializer
+from apps.common.permissions import is_service_desk_staff
 from apps.organizations.models import Organization
 from apps.organizations.serializers import OrganizationSerializer
 
@@ -23,6 +24,13 @@ class TeamMemberSerializer(serializers.ModelSerializer):
         model = TeamMember
         fields = ['id', 'user', 'user_id', 'team_id', 'role', 'joined_at', 'joinedAt']
         read_only_fields = ['id', 'joined_at']
+
+    def validate_user_id(self, user):
+        if not user.is_active or not user.is_active_member:
+            raise serializers.ValidationError("Selected user is not active.")
+        if not is_service_desk_staff(user):
+            raise serializers.ValidationError("Team members must be internal resolver users.")
+        return user
 
 
 class TeamSerializer(serializers.ModelSerializer):
@@ -62,6 +70,17 @@ class TeamSerializer(serializers.ModelSerializer):
             'updated_at', 'updatedAt'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_member_ids(self, member_ids):
+        if not member_ids:
+            return member_ids
+        unique_ids = {str(member_id) for member_id in member_ids}
+        users = list(User.objects.filter(id__in=unique_ids, is_active=True, is_active_member=True))
+        if len(users) != len(unique_ids):
+            raise serializers.ValidationError("One or more selected members are not active.")
+        if any(not is_service_desk_staff(user) for user in users):
+            raise serializers.ValidationError("Team members must be internal resolver users.")
+        return member_ids
 
 
 class TeamCreateSerializer(TeamSerializer):

@@ -15,7 +15,8 @@ export function useVendors(filters: F = {}) {
     queryFn: async () => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') params.append(k, String(v)); });
-      const { data } = await api.get(`/vendors?${params}`);
+      const query = params.toString();
+      const { data } = await api.get(`/assets/vendors${query ? `?${query}` : ''}`);
       return data;
     },
     staleTime: 30000,
@@ -25,7 +26,7 @@ export function useVendors(filters: F = {}) {
 export function useCreateVendor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/vendors', input); return data; },
+    mutationFn: async (input: Record<string, unknown>) => { const { data } = await api.post('/assets/vendors', input); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
@@ -33,7 +34,7 @@ export function useCreateVendor() {
 export function useUpdateVendor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/vendors/${id}`, d); return data; },
+    mutationFn: async ({ id, data: d }: { id: string; data: Record<string, unknown> }) => { const { data } = await api.patch(`/assets/vendors/${id}`, d); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }
@@ -41,7 +42,7 @@ export function useUpdateVendor() {
 export function useDeleteVendor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => { const { data } = await api.delete(`/vendors/${id}`); return data; },
+    mutationFn: async (id: string) => { const { data } = await api.delete(`/assets/vendors/${id}`); return data; },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }),
   });
 }

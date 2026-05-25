@@ -10,6 +10,18 @@ const api = axios.create({
 
 const apiBaseURL = String(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
+function isPublicAuthRequest(url = '') {
+  const path = url.split('?')[0].replace(apiBaseURL, '');
+  return [
+    '/auth/login',
+    '/auth/keycloak-login',
+    '/auth/refresh',
+    '/auth/signup',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+  ].some((endpoint) => path === endpoint || path.endsWith(endpoint));
+}
+
 // Request interceptor: attach Bearer token + org header
 api.interceptors.request.use((config) => {
   try {
@@ -57,6 +69,10 @@ api.interceptors.response.use(
     }
 
     const originalRequest = error.config;
+    if (isPublicAuthRequest(String(originalRequest?.url || ''))) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status !== 401 || originalRequest._retry) return Promise.reject(error);
 
     if (isRefreshing) {

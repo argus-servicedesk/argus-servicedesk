@@ -10,7 +10,6 @@ import {
   MessageSquare, Bell,
 } from 'lucide-react';
 import { useTeams, useCreateTeam } from '../../hooks/useTeams';
-import { useAuthStore } from '../../stores/authStore';
 import { useAuth } from '../../hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
@@ -29,8 +28,8 @@ const TEAM_TYPES: Record<string, { icon: any; label: string; hex: string; bg: st
   OTHER:     { icon: Users,        label: 'General',          hex: '#6366f1', bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.2)' },
 };
 
-function detectTeamType(name: string): string {
-  const n = name.toLowerCase();
+function detectTeamType(name: unknown): string {
+  const n = String(name || '').toLowerCase();
   if (n.includes('devops') || n.includes('dev ops') || n.includes('cicd') || n.includes('deploy')) return 'DEVOPS';
   if (n.includes('network') || n.includes('noc') || n.includes('connectivity') || n.includes('wan') || n.includes('firewall')) return 'NETWORK';
   if (n.includes('database') || n.includes('dba') || n.includes('db ') || n.includes('mysql') || n.includes('postgres') || n.includes('redis')) return 'DATABASE';
@@ -54,6 +53,19 @@ function getFullName(user: any): string {
   return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Unknown';
 }
 
+function extractList(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+}
+
+function isResolverAccount(user: any): boolean {
+  const roles = [...(user.roleNames || []), ...(user.role_names || []), user.role || '']
+    .map((role) => String(role).toLowerCase());
+  return !roles.some((role) => role.includes('client') || role.includes('viewer'));
+}
+
 const roleDarkStyles: Record<string, React.CSSProperties> = {
   LEAD:     { background: 'rgba(217,119,6,0.15)',  color: '#D97706', border: '1px solid rgba(217,119,6,0.3)' },
   MEMBER:   { background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' },
@@ -69,9 +81,10 @@ const avatarGradientPairs = [
   ['#a855f7', '#6366f1'],
 ];
 
-function avatarGradStyle(id: string): React.CSSProperties {
+function avatarGradStyle(id: unknown): React.CSSProperties {
+  const value = String(id || 'member');
   let h = 0;
-  for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h);
+  for (let i = 0; i < value.length; i++) h = value.charCodeAt(i) + ((h << 5) - h);
   const pair = avatarGradientPairs[Math.abs(h) % avatarGradientPairs.length];
   return { background: `linear-gradient(135deg, ${pair[0]}, ${pair[1]})` };
 }
@@ -83,7 +96,16 @@ function CreateTeamModal({ open, onClose, onCreated }: { open: boolean; onClose:
   const [email, setEmail] = useState('');
   const [slackChannel, setSlackChannel] = useState('');
   const [teamType, setTeamType] = useState('DEVOPS');
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   const createTeam = useCreateTeam();
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users', 'team-create-members'],
+    queryFn: async () => { const { data } = await api.get('/auth/users/?limit=200'); return data; },
+    staleTime: 60000,
+    enabled: open,
+  });
+  const resolverUsers = extractList(usersData).filter(isResolverAccount);
 
   if (!open) return null;
 
@@ -94,8 +116,9 @@ function CreateTeamModal({ open, onClose, onCreated }: { open: boolean; onClose:
       description: description || undefined,
       email: email || undefined,
       slackChannel: slackChannel || undefined,
+      memberIds,
     });
-    setName(''); setDescription(''); setEmail(''); setSlackChannel('');
+    setName(''); setDescription(''); setEmail(''); setSlackChannel(''); setMemberIds([]);
     onCreated();
     onClose();
   };
@@ -184,6 +207,24 @@ function CreateTeamModal({ open, onClose, onCreated }: { open: boolean; onClose:
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#94a3b8' }}>Members</label>
+            <select
+              multiple
+              className="w-full min-h-[92px] rounded-lg px-3 py-2 text-sm focus:outline-none"
+              style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)', color: '#0f172a' }}
+              value={memberIds}
+              onChange={(event) => {
+                const selected = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                setMemberIds(selected);
+              }}
+            >
+              {resolverUsers.map((user) => (
+                <option key={user.id} value={user.id}>{getFullName(user)} - {user.email}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid rgba(99,102,241,0.08)' }}>
             <button
               type="submit"
@@ -217,7 +258,7 @@ function TeamCard({ team, expanded, onToggle }: { team: any; expanded: boolean; 
   const members = (team.members || []).map((m: any) => {
     const u = m.user || m;
     return {
-      id: u.id,
+      id: u.id || m.id,
       name: getFullName(u),
       role: m.role || (team.manager && u.id === team.manager.id ? 'LEAD' : 'MEMBER'),
       avatar: getInitials(u.firstName, u.lastName),
@@ -225,7 +266,7 @@ function TeamCard({ team, expanded, onToggle }: { team: any; expanded: boolean; 
       jobTitle: u.jobTitle,
       department: u.department,
       mfaEnabled: u.mfaEnabled,
-      gradStyle: avatarGradStyle(u.id),
+      gradStyle: avatarGradStyle(u.id || m.id),
     };
   });
 
@@ -310,7 +351,7 @@ function TeamCard({ team, expanded, onToggle }: { team: any; expanded: boolean; 
               <Activity className="w-3 h-3" style={{ color: '#a855f7' }} /> <span className="font-medium" style={{ color: '#6366f1' }}>{problemCount}</span> Problems
             </span>
             <span className="flex items-center gap-1.5 text-xs ml-auto" style={{ color: '#94a3b8' }}>
-              <Clock className="w-3 h-3" /> Created {new Date(team.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              <Clock className="w-3 h-3" /> Created {team.createdAt || team.created_at ? new Date(team.createdAt || team.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '--'}
             </span>
           </div>
 
@@ -367,18 +408,8 @@ export default function TeamList() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const { data: teamsData, isLoading, isError, refetch } = useTeams();
   const { canManage } = useAuth();
-  const user = useAuthStore(s => s.user);
   const canModify = canManage('teams');
-
-  // Fetch orgs for admin view
-  const { data: orgsData } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: async () => { const { data } = await api.get('/organizations'); return data; },
-    staleTime: 60000,
-    enabled: user?.role === 'ADMIN',
-  });
-
-  const teams = teamsData?.data || [];
+  const teams = extractList(teamsData);
 
   // Enrich teams with detected type
   const enrichedTeams = useMemo(() =>
@@ -393,7 +424,7 @@ export default function TeamList() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter((t: any) =>
-        t.name.toLowerCase().includes(q) ||
+        String(t.name || '').toLowerCase().includes(q) ||
         (t.description || '').toLowerCase().includes(q) ||
         (t.members || []).some((m: any) => {
           const u = m.user || m;

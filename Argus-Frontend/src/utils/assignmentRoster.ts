@@ -1,11 +1,3 @@
-export const ASSIGNMENT_TEAM_ROSTER: Record<string, string[]> = {
-  'Infra Team': ['Devendra Reddy', 'Edukondalu', 'Siva', 'Udhayakumar'],
-  'DevOps Team': ['Rajkumar-Madhu', 'Hoysala Bisa'],
-  'Software Team': ['Vediyappan M', 'Rajkumar-Ashokan'],
-};
-
-export const ASSIGNMENT_TEAM_ORDER = Object.keys(ASSIGNMENT_TEAM_ROSTER);
-
 export type AssignmentRosterUser = {
   id: string;
   email?: string;
@@ -16,13 +8,24 @@ export type AssignmentRosterUser = {
   last_name?: string;
   name?: string;
   displayName?: string;
+  role?: string;
+  roleNames?: string[];
+  role_names?: string[];
+  isActive?: boolean;
+  is_active?: boolean;
+  isActiveMember?: boolean;
+  is_active_member?: boolean;
   disabled?: boolean;
 };
+
+export type AssignmentRosterMember = { user?: AssignmentRosterUser | null } | AssignmentRosterUser;
 
 export type AssignmentRosterTeam = {
   id: string;
   name: string;
-  members?: Array<{ user?: AssignmentRosterUser | null }>;
+  isActive?: boolean;
+  is_active?: boolean;
+  members?: AssignmentRosterMember[];
 };
 
 export function extractAssignmentList(payload: unknown): any[] {
@@ -49,34 +52,55 @@ export function assignmentPersonLabel(value: unknown): string {
   return 'Unassigned';
 }
 
-export function normalizeAssignmentName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+function isActiveUser(user: AssignmentRosterUser): boolean {
+  return user.isActive !== false && user.is_active !== false && user.isActiveMember !== false && user.is_active_member !== false;
+}
+
+function isResolverUser(user: AssignmentRosterUser): boolean {
+  const roles = [...(user.roleNames || []), ...(user.role_names || []), user.role || '']
+    .map((role) => String(role).toLowerCase());
+  if (roles.some((role) => role.includes('client') || role.includes('viewer'))) {
+    return false;
+  }
+  return true;
+}
+
+function memberUser(member: AssignmentRosterMember): AssignmentRosterUser | null {
+  if (!member) return null;
+  if ('user' in member) return member.user || null;
+  return member as AssignmentRosterUser;
 }
 
 export function orderedAssignmentTeams(teams: AssignmentRosterTeam[]): AssignmentRosterTeam[] {
-  return ASSIGNMENT_TEAM_ORDER
-    .map((teamName) => teams.find((team) => team.name === teamName))
-    .filter(Boolean) as AssignmentRosterTeam[];
+  return teams
+    .filter((team) => team?.id && team?.name && team.isActive !== false && team.is_active !== false)
+    .sort((a, b) => {
+      const aIsNoc = a.name.toLowerCase() === 'noc';
+      const bIsNoc = b.name.toLowerCase() === 'noc';
+      if (aIsNoc !== bIsNoc) return aIsNoc ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export function assignableUsersForTeam(
   teams: AssignmentRosterTeam[],
   assignmentGroupId: string,
-  _currentAssigned?: AssignmentRosterUser | null,
+  currentAssigned?: AssignmentRosterUser | null,
 ): AssignmentRosterUser[] {
   const selectedTeam = teams.find((team) => team.id === assignmentGroupId);
-  const selectedRoster = selectedTeam ? ASSIGNMENT_TEAM_ROSTER[selectedTeam.name] || [] : [];
-  const teamUsersByName = new Map(
-    (selectedTeam?.members || [])
-      .map((member) => member.user)
-      .filter(Boolean)
-      .map((user) => [normalizeAssignmentName(assignmentPersonLabel(user)), user as AssignmentRosterUser]),
-  );
-  const users = selectedRoster.map((displayName) => {
-    const user = teamUsersByName.get(normalizeAssignmentName(displayName));
-    return user
-      ? { ...user, displayName }
-      : { id: `missing:${displayName}`, displayName, disabled: true };
-  });
-  return users;
+  const users = (selectedTeam?.members || [])
+    .map(memberUser)
+    .filter(Boolean)
+    .filter((user) => isActiveUser(user as AssignmentRosterUser) && isResolverUser(user as AssignmentRosterUser)) as AssignmentRosterUser[];
+
+  const seen = new Set(users.map((user) => user.id));
+  if (currentAssigned?.id && assignmentGroupId && !seen.has(currentAssigned.id)) {
+    users.push({
+      ...currentAssigned,
+      displayName: `${assignmentPersonLabel(currentAssigned)} (not in selected team)`,
+      disabled: true,
+    });
+  }
+
+  return users.sort((a, b) => assignmentPersonLabel(a).localeCompare(assignmentPersonLabel(b)));
 }

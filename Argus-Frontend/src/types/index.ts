@@ -45,6 +45,9 @@ export interface User {
   avatar: string | null;
   roles: string[];
   roleNames?: string[];
+  permissionCodes?: string[];
+  permission_codes?: string[];
+  permissions?: string[];
   status: UserStatus;
   organizationId: string | null;
   organization?: { id: string; name: string; slug: string } | null;
@@ -739,4 +742,75 @@ export interface KBFeedback {
   comment: string | null;
   user?: User;
   createdAt: string;
+}
+
+// Learning Hub / KT
+export type LearningModuleType = 'ARTICLE' | 'SOP' | 'VIDEO' | 'TASK' | 'LINK';
+export type LearningAudienceRole = 'NOC' | 'INFRA' | 'DEVOPS' | 'SOFTWARE' | 'SERVICE_DESK' | 'GENERAL';
+export type LearningEnrollmentStatus = 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface LearningModule {
+  id: string;
+  order: number;
+  title: string;
+  module_type?: LearningModuleType;
+  moduleType?: LearningModuleType;
+  content: string;
+  external_url?: string;
+  externalUrl?: string;
+  estimated_minutes?: number;
+  estimatedMinutes?: number;
+  is_required?: boolean;
+  isRequired?: boolean;
+  isCompleted?: boolean;
+  completedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LearningTrack {
+  id: string;
+  title: string;
+  audience_role?: LearningAudienceRole;
+  audienceRole?: LearningAudienceRole;
+  description: string;
+  team?: Team | null;
+  owner?: User | null;
+  is_active?: boolean;
+  isActive?: boolean;
+  modules?: LearningModule[];
+  moduleCount?: number;
+  enrollmentCount?: number;
+  createdBy?: User | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LearningEnrollment {
+  id: string;
+  track: LearningTrack;
+  user?: User;
+  assignedBy?: User | null;
+  mentor?: User | null;
+  due_date?: string | null;
+  dueDate?: string | null;
+  status: LearningEnrollmentStatus;
+  completed_at?: string | null;
+  completedAt?: string | null;
+  isOverdue?: boolean;
+  progressPercent: number;
+  completedModules: number;
+  totalModules: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LearningSummary {
+  total: number;
+  assigned: number;
+  inProgress: number;
+  completed: number;
+  overdue: number;
+  dueSoon: number;
+  averageProgress: number;
 }

@@ -1,66 +1,126 @@
-// ═══════════════════════════════════════════════════════════
-// Argus Service Desk — useAuth Hook
-// Ergonomic wrapper over authStore + TanStack Query mutations
-// for profile update and password change.
-// ═══════════════════════════════════════════════════════════
-
 import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import api from '../lib/api';
 
-// ── Main selector hook ────────────────────────────────────
+type ManageResource =
+  | 'incidents'
+  | 'changes'
+  | 'problems'
+  | 'assets'
+  | 'teams'
+  | 'kb'
+  | 'catalog'
+  | 'learning'
+  | 'vendors'
+  | 'users'
+  | 'settings';
+
+const RESOURCE_PERMISSIONS: Record<ManageResource, string[]> = {
+  incidents: ['incident:create', 'incident:update', 'incident:assign', 'incident:manage'],
+  problems: ['problem:create', 'problem:update', 'problem:assign', 'problem:manage'],
+  changes: ['change:create', 'change:update', 'change:assign', 'change:manage'],
+  assets: ['asset:manage'],
+  teams: ['team:manage'],
+  kb: ['kb:manage', 'kb:create', 'kb:update'],
+  catalog: ['catalog:manage', 'service_request:create'],
+  learning: ['learning:manage', 'learning:assign'],
+  vendors: ['vendor:manage', 'asset:manage'],
+  users: ['user:manage'],
+  settings: ['settings:manage'],
+};
+
+function normalizeRoleName(role: string): string {
+  return role.replace(/_/g, ' ').trim().toLowerCase();
+}
+
+function normalizePermission(code: string): string {
+  const value = String(code || '').trim().replace(/\s+/g, '_');
+  if (!value) return '';
+  if (!value.includes(':') && value.includes('.')) {
+    const parts = value.split('.').filter(Boolean);
+    if (parts.length >= 2) return `${parts.slice(0, -1).join('_')}:${parts[parts.length - 1]}`.toLowerCase();
+  }
+  return value.toLowerCase();
+}
+
+function permissionMatches(granted: Set<string>, requiredCode: string): boolean {
+  const required = normalizePermission(requiredCode);
+  if (!required) return true;
+  if (granted.has('*') || granted.has('*:*') || granted.has(required)) return true;
+  if (required.includes(':')) {
+    const [resource] = required.split(':', 1);
+    return granted.has(`${resource}:*`);
+  }
+  return false;
+}
 
 export function useAuth() {
   const store = useAuthStore();
   const roles = store.user?.roleNames ?? [];
+  const permissions = store.user?.permissionCodes ?? store.user?.permission_codes ?? store.user?.permissions ?? [];
 
-  const normalizedRoles = roles.map((role) => role.replace(/_/g, ' ').trim().toLowerCase());
+  const normalizedRoles = roles.map(normalizeRoleName);
+  const normalizedPermissions = new Set(permissions.map(normalizePermission).filter(Boolean));
   const hasNormalizedRole = (...targetRoles: string[]) =>
-    targetRoles.some((role) => normalizedRoles.includes(role.replace(/_/g, ' ').trim().toLowerCase()));
+    targetRoles.some((role) => normalizedRoles.includes(normalizeRoleName(role)));
 
-  const isAdmin    = hasNormalizedRole('Super Admin', 'Org Admin');
-  const isManager  = hasNormalizedRole('Manager', 'Team Lead', 'NOC') || isAdmin;
-  const isEngineer = hasNormalizedRole('Engineer', 'NOC') || isManager;
-  const isClient   = store.user?.role === 'CLIENT' || hasNormalizedRole('Client User');
+  function hasPermission(...requiredPermissions: string[]): boolean {
+    return requiredPermissions.some((code) => permissionMatches(normalizedPermissions, code));
+  }
+
+  const isAdmin =
+    hasNormalizedRole('Super Admin', 'Org Admin') ||
+    hasPermission('*:*', 'settings:manage', 'user:manage');
+  const isManager =
+    isAdmin ||
+    hasNormalizedRole('Manager', 'Team Lead', 'NOC') ||
+    hasPermission('team:manage', 'service_request:approve');
+  const isEngineer =
+    isManager ||
+    hasNormalizedRole('Engineer', 'NOC') ||
+    hasPermission('incident:update', 'problem:update', 'change:update', 'service_request:fulfill');
+  const isClient =
+    store.user?.role === 'CLIENT' ||
+    hasNormalizedRole('Client User') ||
+    (hasPermission('service_request:create', 'incident:create') && !isEngineer && !isManager);
 
   function hasRole(...targetRoles: string[]): boolean {
     return hasNormalizedRole(...targetRoles);
   }
 
-  /**
-   * Returns true if the current user may create/edit the given resource.
-   * Viewers and operators are read-only.
-   */
-  function canManage(resource: 'incidents' | 'changes' | 'problems' | 'assets' | 'teams' | 'kb' | 'catalog' | 'vendors' | 'users' | 'settings'): boolean {
+  function canManage(resource: ManageResource): boolean {
     if (isAdmin) return true;
+    if (hasPermission(...RESOURCE_PERMISSIONS[resource])) return true;
+
+    // Compatibility fallback for local non-Keycloak development users.
     if (isManager) {
-      if (resource === 'settings') return isAdmin; // Only Super/Org Admin for settings
+      if (resource === 'settings' || resource === 'users') return isAdmin;
+      if (resource === 'learning') return hasPermission(...RESOURCE_PERMISSIONS.learning);
       return true;
     }
     if (hasNormalizedRole('Engineer')) {
-      if (['incidents', 'problems', 'kb', 'catalog', 'assets', 'vendors'].includes(resource)) return true;
+      return ['incidents', 'problems', 'kb', 'catalog', 'assets', 'vendors'].includes(resource);
     }
     if (isClient) {
       return ['incidents', 'problems', 'changes', 'kb', 'catalog'].includes(resource);
     }
-    if (hasNormalizedRole('Operator') && (resource === 'incidents' || resource === 'kb')) return true;
-    return false;
+    return hasNormalizedRole('Operator') && (resource === 'incidents' || resource === 'kb');
   }
 
   return {
     ...store,
     roles,
+    permissions,
     isAdmin,
     isManager,
     isEngineer,
     isClient,
     hasRole,
+    hasPermission,
     canManage,
   };
 }
-
-// ── Profile update ────────────────────────────────────────
 
 interface ProfileInput {
   firstName?: string;
@@ -87,8 +147,6 @@ export function useUpdateProfile() {
     },
   });
 }
-
-// ── Change password ───────────────────────────────────────
 
 interface ChangePasswordInput {
   oldPassword: string;

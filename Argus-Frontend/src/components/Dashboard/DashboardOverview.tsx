@@ -515,34 +515,40 @@ export default function DashboardOverview() {
   [assetsByType]);
 
   return (
-    <div className="min-h-screen -m-4 p-5 space-y-4" style={{ background: '#F8FAFC' }}>
+    <div className="min-h-screen -m-4 space-y-4 p-4 sm:p-5" style={{ background: '#F8FAFC' }}>
 
       {/* ═══════ HEADER BAR ═══════ */}
       <SafePanel name="Header">
-        <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%)' }}>
-          <div className="px-5 py-4">
-            <div className="flex items-center justify-between gap-4">
+        <div
+          className="overflow-hidden rounded-xl border border-slate-800/70 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 52%, #334155 100%)' }}
+        >
+          <div className="px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               {/* Left: branding + greeting */}
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', boxShadow: '0 2px 12px rgba(79,70,229,0.4)' }}>
                   <Eye size={18} className="text-white" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-bold text-white">{orgName}</span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 max-w-full truncate text-lg font-bold text-white sm:text-base">{orgName}</span>
                     <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono uppercase tracking-wider"
                       style={{ color: ec.text, border: `1px solid ${ec.border}`, background: ec.bg }}>
                       {env}
                     </span>
-                    <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-md" style={{ background: systemStatus.bg + '20' }}>
+                    <div
+                      className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-2 py-1"
+                      style={{ background: systemStatus.bg + '20' }}
+                    >
                       <Pulse color={systemStatus.color} size={6} />
-                      <span className="text-[11px] font-semibold" style={{ color: systemStatus.color }}>{systemStatus.label}</span>
+                      <span className="truncate text-[11px] font-semibold" style={{ color: systemStatus.color }}>{systemStatus.label}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="text-xs text-white/60">{greeting}{user?.firstName ? `, ${safeStr(user.firstName)}` : ''}</span>
-                    <span className="text-white/20">|</span>
+                    <span className="hidden text-white/20 sm:inline">|</span>
                     <span className="text-[11px] font-mono text-white/40">
                       {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                       {' \u00B7 '}
@@ -553,21 +559,21 @@ export default function DashboardOverview() {
               </div>
 
               {/* Right: actions */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end xl:flex-shrink-0">
                 <button onClick={() => refetchDash()} title="Refresh"
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white/80 hover:bg-white/10 transition-all">
                   <RefreshCw size={14} />
                 </button>
                 {canManage('incidents') && (
                   <button onClick={() => navigate('/incidents/create')}
-                    className="flex items-center gap-1.5 px-3 py-2 text-white text-[11px] font-semibold rounded-lg transition-all hover:opacity-90"
+                    className="flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-white text-[11px] font-semibold rounded-lg transition-all hover:opacity-90"
                     style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED)' }}>
                     <Plus size={12} /> New Incident
                   </button>
                 )}
                 {canManage('changes') && (
                   <button onClick={() => navigate('/changes/create')}
-                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-lg text-white/80 bg-white/10 border border-white/10 hover:bg-white/15 transition-all">
+                    className="flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[11px] font-semibold rounded-lg text-white/80 bg-white/10 border border-white/10 hover:bg-white/15 transition-all">
                     <Plus size={12} /> New Change
                   </button>
                 )}
@@ -582,13 +588,28 @@ export default function DashboardOverview() {
                 </button>
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/10 pt-3 sm:grid-cols-4">
+              {[
+                { label: 'Open', value: activeIncidents, color: '#F59E0B' },
+                { label: 'P1', value: p1Critical, color: '#EF4444' },
+                { label: 'SLA', value: `${slaCompliance}%`, color: '#10B981' },
+                { label: 'Alerts', value: firingAlerts, color: '#F43F5E' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-wider text-white/35">{item.label}</div>
+                  <div className="mt-1 font-mono text-lg font-bold leading-none" style={{ color: item.color }}>
+                    {dashLoading ? '--' : item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </SafePanel>
 
       {/* ═══════ KPI CARDS ═══════ */}
       <SafePanel name="KPIs">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           {[
             { label: 'Open Incidents', value: activeIncidents, sub: `${p1Critical} P1 active`, icon: <AlertTriangle size={16} />, color: '#D97706', route: '/incidents' },
             { label: 'P1 Critical', value: p1Critical, sub: p1Critical > 0 ? 'Requires attention' : 'None active', icon: <Zap size={16} />, color: '#DC2626', route: '/incidents?priority=P1' },
@@ -598,18 +619,21 @@ export default function DashboardOverview() {
             { label: 'Total Assets', value: totalAssets, sub: `${assetsByType.length} types`, icon: <Database size={16} />, color: '#0891B2', route: '/assets' },
           ].map(item => (
             <div key={item.label} onClick={() => navigate(item.route)}
-              className="rounded-xl border border-slate-200 bg-white p-3.5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</span>
+              className="group min-h-[118px] cursor-pointer rounded-xl border border-slate-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <span className="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</span>
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110"
                   style={{ background: `${item.color}08`, color: item.color }}>
                   {item.icon}
                 </div>
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-900 leading-none mb-1">
+              <div className="mb-1 break-words font-mono text-2xl font-bold leading-none text-slate-900">
                 {dashLoading ? <div className="h-6 w-16 rounded-md bg-slate-100 animate-pulse" /> : item.value}
               </div>
-              <span className="text-[10px] text-slate-400">{item.sub}</span>
+              <span className="inline-flex max-w-full items-center gap-1 text-[10px] text-slate-400">
+                <span className="h-1 w-1 rounded-full" style={{ background: item.color }} />
+                <span className="truncate">{item.sub}</span>
+              </span>
             </div>
           ))}
         </div>
@@ -1068,8 +1092,8 @@ export default function DashboardOverview() {
             </div>
           </Section>
 
-          <Section title="Workflow Automation" icon={<GitMerge size={14} />} accent="#7C3AED"
-            actions={<SmBtn onClick={() => navigate('/workflows')}>Designer</SmBtn>}>
+          <Section title="Runbook Activity" icon={<GitMerge size={14} />} accent="#7C3AED"
+            actions={<SmBtn onClick={() => navigate('/runbooks')}>Runbooks</SmBtn>}>
             <div className="space-y-3">
               <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
                 <div className="h-full bg-indigo-500" style={{ width: '45%' }} />

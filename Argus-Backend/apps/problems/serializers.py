@@ -20,6 +20,7 @@ from rest_framework import serializers
 
 from apps.changes.models import Change
 from apps.accounts.serializers import UserSerializer
+from apps.assignments.validation import validate_assignment_attrs
 from apps.incidents.models import Activity
 from apps.organizations.serializers import OrganizationSerializer
 from apps.teams.models import Team
@@ -255,18 +256,9 @@ class ProblemCreateSerializer(serializers.ModelSerializer):
         if organization is None:
             return attrs
 
-        assignment_group = attrs.get("assignment_group")
-        assigned_to = attrs.get("assigned_to")
         related_change = attrs.get("related_change")
 
-        if assignment_group and assignment_group.organization_id != organization.id:
-            raise serializers.ValidationError(
-                {"assignment_group": "Selected team does not belong to your organisation."}
-            )
-        if assigned_to and assigned_to.organization_id != organization.id:
-            raise serializers.ValidationError(
-                {"assigned_to": "Selected user does not belong to your organisation."}
-            )
+        validate_assignment_attrs(attrs, organization=organization)
         if related_change and related_change.organization_id != organization.id:
             raise serializers.ValidationError(
                 {"related_change": "Selected change does not belong to your organisation."}
@@ -349,6 +341,12 @@ class ProblemUpdateSerializer(serializers.ModelSerializer):
                 f"Allowed: {allowed or ['none']}."
             )
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        attrs = super().validate(attrs)
+        organization = getattr(self.instance, "organization", None)
+        validate_assignment_attrs(attrs, organization=organization, instance=self.instance)
+        return attrs
 
     def update(self, instance: Problem, validated_data: dict) -> Problem:
         target_state = validated_data.get("state", instance.state)
