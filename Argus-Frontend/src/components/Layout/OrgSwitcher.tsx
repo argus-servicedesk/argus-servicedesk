@@ -36,17 +36,19 @@ export default function OrgSwitcher() {
   }
   const isSuperAdmin = user?.role === 'ADMIN' && !user?.organizationId;
 
-  const { data } = useQuery({
+  const { data } = useQuery<Org[]>({
     queryKey: ['organizations'],
     queryFn: async () => {
       const { data } = await api.get('/organizations?limit=50');
-      return data;
+      // Normalize to a bare array so this cache shape matches ClientManagement,
+      // which uses the same query key.
+      return Array.isArray(data) ? data : (data?.data ?? []);
     },
     staleTime: 120000,
     enabled: isSuperAdmin,
   });
 
-  const orgs: Org[] = data?.data || [];
+  const orgs: Org[] = data ?? [];
   const selected = orgs.find((o) => o.id === selectedOrgId);
 
   useEffect(() => {

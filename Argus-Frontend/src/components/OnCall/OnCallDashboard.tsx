@@ -108,10 +108,12 @@ export default function OnCallDashboard() {
   const { data: historyData } = useOnCallHistory(activeTeamId);
 
   const overview = overviewData?.data;
-  const schedules: any[] = schedulesData?.data || [];
-  const escalationPolicies: any[] = escalationData?.data || [];
+  // API responses wrap arrays inside named keys: data.schedules / data.levels /
+  // data.entries. Keep downstream filter/map calls on arrays.
+  const schedules: any[] = schedulesData?.data?.schedules || [];
+  const escalationPolicies: any[] = escalationData?.data?.levels || [];
   const history = historyData?.data;
-  const recentIncidents: any[] = history?.recentIncidents || [];
+  const recentIncidents: any[] = history?.entries || history?.recentIncidents || [];
 
   const stats = overview?.stats || { activeResponders: 0, teamsCovered: 0, openCritical: 0, totalSchedules: 0 };
   const allOnCall: any[] = overview?.schedules || [];
