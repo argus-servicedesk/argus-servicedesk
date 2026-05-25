@@ -18,7 +18,7 @@ def create_learning_permissions(apps, _schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("accounts", "0006_user_keycloak_rbac"),
+        ("accounts", "0005_user_must_change_password"),
     ]
 
     operations = [
