@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import SimpleRouter
 from .views import (
-    AuthIndexView, LoginView, LogoutView, MeView, RefreshView, 
+    AuthIndexView, KeycloakLoginView, LoginView, LogoutView, MeView, RefreshView,
     SignupView, UserListView, ForgotPasswordView, ResetPasswordView,
     InviteUserView, AcceptInviteView, UserDetailView,
     MFASetupView, MFADisableView, RoleViewSet, PermissionViewSet,
@@ -18,6 +18,8 @@ urlpatterns = [
     path("signup", SignupView.as_view()),
     path("register", SignupView.as_view()),
     path("login", LoginView.as_view()),
+    path("keycloak-login", KeycloakLoginView.as_view()),
+    path("keycloak-login/", KeycloakLoginView.as_view()),
     path("logout", LogoutView.as_view()),
     path("refresh", RefreshView.as_view()),
     path("me", MeView.as_view()),

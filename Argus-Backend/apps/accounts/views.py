@@ -153,6 +153,107 @@ class LoginView(APIView):
         return success({"user": MeSerializer(user).data, **payload}, "login successful")
 
 
+_keycloak_jwks_client = None
+
+
+def _get_keycloak_jwks_client():
+    """Lazy singleton; PyJWKClient caches fetched JWKS internally."""
+    global _keycloak_jwks_client
+    if _keycloak_jwks_client is None:
+        from django.conf import settings
+        from jwt import PyJWKClient
+
+        jwks_url = getattr(settings, "KEYCLOAK_JWKS_URL", "").strip()
+        if not jwks_url:
+            raise RuntimeError("KEYCLOAK_JWKS_URL not configured")
+        _keycloak_jwks_client = PyJWKClient(jwks_url)
+    return _keycloak_jwks_client
+
+
+def _verify_keycloak_token(token):
+    """Verify a Keycloak-issued JWT against the realm JWKS and return claims."""
+    import jwt
+    from django.conf import settings
+
+    signing_key = _get_keycloak_jwks_client().get_signing_key_from_jwt(token).key
+    issuer = getattr(settings, "KEYCLOAK_ISSUER", "").strip() or None
+    return jwt.decode(
+        token,
+        signing_key,
+        algorithms=["RS256"],
+        issuer=issuer,
+        # Keycloak audience can vary by client setup. Verify signature + issuer
+        # and keep audience checking out of this exchange endpoint.
+        options={"verify_aud": False},
+    )
+
+
+class KeycloakLoginView(APIView):
+    """
+    Frontend posts the Keycloak access token received after the OIDC code flow.
+    We verify it, find or create the matching Django user, and return local JWTs.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        access_token = request.data.get("accessToken") or request.data.get("access_token")
+        if not access_token:
+            return failure("accessToken required", status_code=400)
+
+        try:
+            claims = _verify_keycloak_token(access_token)
+        except Exception as exc:
+            create_audit_log(
+                request,
+                "KEYCLOAK_LOGIN_FAILED",
+                "USER",
+                description=f"Keycloak token verification failed: {exc}",
+            )
+            return failure("invalid Keycloak token", status_code=401)
+
+        email = (claims.get("email") or claims.get("preferred_username") or "").lower().strip()
+        if not email:
+            return failure("Keycloak token has no email/preferred_username", status_code=400)
+
+        from django.conf import settings
+        from apps.organizations.models import Organization
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            if not getattr(settings, "KEYCLOAK_AUTO_CREATE_USERS", False):
+                return failure(f"no local user for {email}", status_code=403)
+
+            default_org_slug = getattr(settings, "KEYCLOAK_DEFAULT_CLIENT_ORG", "").strip() or "default-org"
+            default_org = Organization.objects.filter(slug=default_org_slug).first()
+            user = User.objects.create(
+                username=email,
+                email=email,
+                first_name=claims.get("given_name") or "",
+                last_name=claims.get("family_name") or "",
+                organization=default_org,
+                is_active=True,
+            )
+            user.set_unusable_password()
+            user.save()
+
+        if not user.is_active or not user.is_active_member:
+            return failure("account is disabled", status_code=403)
+
+        if not _ensure_user_organization(user):
+            return failure("user does not have organization access", status_code=403)
+
+        create_audit_log(
+            request,
+            "KEYCLOAK_LOGIN_SUCCESS",
+            "USER",
+            resource_id=user.id,
+            description=f"Keycloak SSO login for {user.username}",
+            organization=user.organization,
+        )
+        payload = _token_payload(user)
+        return success({"user": MeSerializer(user).data, **payload}, "login successful")
+
+
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
