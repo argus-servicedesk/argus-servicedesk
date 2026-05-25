@@ -36,19 +36,25 @@ export default function OrgSwitcher() {
   }
   const isSuperAdmin = user?.role === 'ADMIN' && !user?.organizationId;
 
-  const { data } = useQuery<Org[]>({
+  const { data } = useQuery<any>({
     queryKey: ['organizations'],
     queryFn: async () => {
       const { data } = await api.get('/organizations?limit=50');
-      // Normalize to a bare array so this cache shape matches ClientManagement,
-      // which uses the same query key.
       return Array.isArray(data) ? data : (data?.data ?? []);
     },
     staleTime: 120000,
     enabled: isSuperAdmin,
   });
 
-  const orgs: Org[] = data ?? [];
+  // Defensive: other components share queryKey ['organizations'] with different
+  // response shape contracts. Unwrap whatever cache shape we got.
+  const orgs: Org[] = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.results)
+        ? data.results
+        : [];
   const selected = orgs.find((o) => o.id === selectedOrgId);
 
   useEffect(() => {
