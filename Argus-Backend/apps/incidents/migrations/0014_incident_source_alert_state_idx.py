@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("incidents", "0013_incidentchange_link_type"),
+        ("incidents", "0012_add_site_and_location_to_incident"),
     ]
 
     operations = [
