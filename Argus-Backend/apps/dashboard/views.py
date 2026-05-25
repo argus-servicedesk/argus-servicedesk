@@ -24,8 +24,12 @@ def _sql_day_to_date(val):
 
 
 def _dashboard_payload(org_id):
+    # For service desk staff without a selected org, org_id is None - show all orgs.
+    def _scope(qs):
+        return qs.filter(organization_id=org_id) if org_id else qs
+
     # Incident stats
-    incidents = Incident.objects.filter(organization_id=org_id)
+    incidents = _scope(Incident.objects.all())
     incident_stats = {
         "total": incidents.count(),
         "open": incidents.filter(state__in=["NEW", "IN_PROGRESS", "ON_HOLD", "ESCALATED"]).count(),
@@ -41,7 +45,7 @@ def _dashboard_payload(org_id):
     }
 
     # Change stats
-    changes = Change.objects.filter(organization_id=org_id)
+    changes = _scope(Change.objects.all())
     change_stats = {
         "total": changes.count(),
         "pending": changes.filter(state__in=["NEW", "ASSESSMENT", "APPROVAL", "SCHEDULED"]).count(),
@@ -50,7 +54,7 @@ def _dashboard_payload(org_id):
     }
 
     # Problem stats
-    problems = Problem.objects.filter(organization_id=org_id)
+    problems = _scope(Problem.objects.all())
     problem_stats = {
         "total": problems.count(),
         "open": problems.filter(state__in=["NEW", "INVESTIGATION", "RCA_IN_PROGRESS", "KNOWN_ERROR"]).count(),
@@ -58,7 +62,7 @@ def _dashboard_payload(org_id):
     }
 
     # Alert stats
-    alerts = Alert.objects.filter(organization_id=org_id)
+    alerts = _scope(Alert.objects.all())
     now = timezone.now()
     alert_stats = {
         "firing": alerts.filter(status="FIRING").count(),
